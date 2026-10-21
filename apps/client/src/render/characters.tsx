@@ -193,8 +193,15 @@ export function FriendsScene({ compact = false }: { compact?: boolean }) {
       <Bunting count={9} />
       <div className="badminton">
         <svg viewBox="0 0 300 120" className="badminton-svg">
-          <line x1="150" y1="40" x2="150" y2="110" stroke="#c9a15b" strokeWidth="2" />
-          <rect x="112" y="40" width="76" height="22" fill="none" stroke="#f6ebd9" strokeOpacity=".5" strokeDasharray="3 3" />
+          {/* badminton net: two posts, mesh, white top tape */}
+          <g>
+            <line x1="122" y1="44" x2="122" y2="112" stroke="#8a5a32" strokeWidth="2.5" strokeLinecap="round" />
+            <line x1="178" y1="44" x2="178" y2="112" stroke="#8a5a32" strokeWidth="2.5" strokeLinecap="round" />
+            <rect x="122" y="46" width="56" height="24" fill="#f6ebd9" fillOpacity=".06" />
+            {Array.from({ length: 9 }, (_, i) => <line key={'v' + i} x1={128 + i * 6} y1="46" x2={128 + i * 6} y2="70" stroke="#f6ebd9" strokeOpacity=".28" strokeWidth=".7" />)}
+            {Array.from({ length: 4 }, (_, i) => <line key={'h' + i} x1="122" y1={52 + i * 6} x2="178" y2={52 + i * 6} stroke="#f6ebd9" strokeOpacity=".28" strokeWidth=".7" />)}
+            <rect x="121" y="44" width="58" height="3" rx="1" fill="#fffaf0" />
+          </g>
           <g>
             <path id={pid} d="M70 60 Q150 -10 230 60 Q150 -10 70 60" fill="none" />
             <g>
