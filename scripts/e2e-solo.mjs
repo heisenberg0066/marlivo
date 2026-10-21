@@ -67,7 +67,8 @@ while (Date.now() - t0 < maxMs) {
     await btn(/Memori|mémoris/i); continue;
   }
   if (st.phase === 'ROUND_END') {
-    await p.waitForTimeout(1200);
+    await p.locator('.end-panel .panel').waitFor({ timeout: 15000 }).catch(() => {});
+    await p.waitForTimeout(700); // let the panel finish rising before the screenshot
     await once('round-end');
     const nb = p.locator('.end-panel button.primary'); if (await nb.count() && await nb.isEnabled()) { await nb.click(); rounds++; }
     continue;
