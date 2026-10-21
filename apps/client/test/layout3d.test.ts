@@ -34,7 +34,7 @@ describe('3D layout', () => {
             if (++step % 7 || !s.round || s.phase !== 'PLAY') return;
             for (let me = 0; me < players; me++) {
               const v = projectView(s, me, { helper: 'full', log: false });
-              const L = layout3(v);
+              const L = layout3(v, false, (step + me) % 2 === 0);
               const deck = corners({ p: DECK, yaw: 0.06, w: 0.118, h: 0.165 });
               const bySeat: Record<number, P[][]> = {};
               for (const seat of v.round!.participants) {

@@ -47,6 +47,8 @@ export interface Layout3 {
   seats: Record<number, { pos: SeatPos; a: number }>;
   slots: Record<string, Place3 & { owner: number }>;
   areas: Record<number, Place3>;
+  /** the biggest box each area can grow to (the camera fits these, so it never jumps when cards come and go) */
+  maxAreas: Record<number, Place3>;
   /** where each seat's held (drawn) card floats */
   hands: Record<number, Place3>;
   /** where each character sits */
@@ -56,20 +58,24 @@ export interface Layout3 {
   pile: (i: number, key: string) => Place3;
 }
 
-export function layout3(view: PlayerView, large = false): Layout3 {
+/** portrait: phone held upright — my own cards get bigger (there is room towards me, the width is the limit). */
+export function layout3(view: PlayerView, large = false, portrait = false): Layout3 {
   const pos = seatPositions(view);
   const r = view.round;
   const k = large ? 1.12 : 1;
-  const out: Layout3 = { seats: {}, slots: {}, areas: {}, hands: {}, chars: {}, dice: {}, deck: { p: [...DECK] as V3, yaw: 0.06, ...CARD_OPP, count: r?.deckCount ?? 0 }, pile: () => ({ p: [PILE.x, 0, PILE.z], yaw: 0, ...CARD_OPP }) };
+  const out: Layout3 = { seats: {}, slots: {}, areas: {}, maxAreas: {}, hands: {}, chars: {}, dice: {}, deck: { p: [...DECK] as V3, yaw: 0.06, ...CARD_OPP, count: r?.deckCount ?? 0 }, pile: () => ({ p: [PILE.x, 0, PILE.z], yaw: 0, ...CARD_OPP }) };
   for (const [seatS, sp] of Object.entries(pos)) {
     const seat = Number(seatS);
     const a = SEAT_ANGLE[sp];
     const spec = AREA[sp];
     out.seats[seat] = { pos: sp, a };
     const [dx, dz] = seatDir(a);
-    const cx = dx * spec.dist, cz = dz * spec.dist;
-    const card = { w: spec.card.w * k, h: spec.card.h * k };
-    const anchor: Anchor = { x: 0, y: 0, rot: 0, maxW: spec.maxW, maxH: spec.maxH, cw: card.w, ch: card.h };
+    const dist = spec.dist - (portrait && sp === 'bottom' ? 0.05 : 0);
+    const cx = dx * dist, cz = dz * dist;
+    const kk = k * (portrait && sp === 'bottom' ? 1.3 : 1);
+    const card = { w: spec.card.w * kk, h: spec.card.h * kk };
+    const mh = spec.maxH * (portrait && sp === 'bottom' ? 1.3 : 1);
+    const anchor: Anchor = { x: 0, y: 0, rot: 0, maxW: spec.maxW, maxH: mh, cw: card.w, ch: card.h };
     const slots = r?.areas[seat] ?? [];
     const L = areaLayout(slots, anchor);
     // areaLayout shrinks the grid to its box, so a big penalty pile never leaves the seat's part of the table.
@@ -77,6 +83,7 @@ export function layout3(view: PlayerView, large = false): Layout3 {
     const depth = L.h * s;
     const ccx = cx, ccz = cz;
     out.areas[seat] = { p: [ccx, 0, ccz], yaw: a, w: Math.max(L.w * s, card.w), h: Math.max(depth, card.h) };
+    out.maxAreas[seat] = { p: [ccx, 0, ccz], yaw: a, w: spec.maxW * k, h: mh * k };
     for (const sv of slots) {
       const pl = L.places[sv.id]!;
       const [x, z] = toWorld(a, ccx, ccz, pl.x * s, pl.y * s);

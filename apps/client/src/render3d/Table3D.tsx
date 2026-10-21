@@ -37,18 +37,20 @@ type OverlayPoints = Map<string, () => V3 | null>;
 /** Fits the seat-view camera so every seat's card area, the deck/pile and the opponents' heads are on screen. */
 function CameraRig({ L, me, mode, portrait }: { L: Layout3; me: number | null; mode: 'seat' | 'top'; portrait: boolean }) {
   const { camera, size } = useThree();
-  const seatsKey = Object.entries(L.seats).map(([s, x]) => s + x.pos).join(',');
+  const seatsKey = Object.entries(L.seats).map(([s, x]) => s + x.pos + (L.maxAreas[Number(s)]?.w ?? 0).toFixed(2)).join(',');
   useLayoutEffect(() => {
     const cam = camera as THREE.PerspectiveCamera;
     cam.fov = portrait ? 56 : 44; cam.aspect = size.width / size.height;
-    const el = mode === 'top' ? 1.15 : portrait ? 0.82 : 0.6;
+    const el = mode === 'top' ? 1.15 : portrait ? 0.98 : 0.6;
     // key points: the full box of every area (as big as it can grow), deck, pile, heads of the opponents
     const pts: THREE.Vector3[] = [];
-    for (const [seatS, a] of Object.entries(L.areas)) {
+    for (const [seatS, a] of Object.entries(L.maxAreas)) {
       const yaw = a.yaw; const mine = Number(seatS) === me; const hw = Math.max(a.w, 0.3) / 2 + 0.03, hh = Math.max(a.h, 0.2) / 2 + (mine ? 0.07 : 0.03); // my cards tilt up when face up: extra room
       for (const [x, z] of [[-hw, -hh], [hw, -hh], [hw, hh], [-hw, hh]]) pts.push(new THREE.Vector3(a.p[0] + x! * Math.cos(yaw) + z! * Math.sin(yaw), 0, a.p[2] - x! * Math.sin(yaw) + z! * Math.cos(yaw)));
       const seat = Number(seatS);
-      if (seat !== me && L.chars[seat]) { const c = L.chars[seat]!.p; const y = mode === 'top' ? 0.2 : 0.66; const sx = Math.cos(L.seats[seat]!.a) * 0.2, sz = -Math.sin(L.seats[seat]!.a) * 0.2; pts.push(new THREE.Vector3(c[0], y, c[2]), new THREE.Vector3(c[0] + sx, 0.3, c[2] + sz), new THREE.Vector3(c[0] - sx, 0.3, c[2] - sz)); }
+      // phone portrait: side characters may be cut at the screen edge (their name plates stay pinned), the cards matter more
+      const side = portrait && mode === 'seat' && Math.abs(Math.sin(L.seats[seat]?.a ?? 0)) > 0.9;
+      if (seat !== me && L.chars[seat] && !side) { const c = L.chars[seat]!.p; const y = mode === 'top' ? 0.2 : 0.66; const sx = Math.cos(L.seats[seat]!.a) * 0.2, sz = -Math.sin(L.seats[seat]!.a) * 0.2; pts.push(new THREE.Vector3(c[0], y, c[2]), new THREE.Vector3(c[0] + sx, 0.3, c[2] + sz), new THREE.Vector3(c[0] - sx, 0.3, c[2] - sz)); }
     }
     pts.push(new THREE.Vector3(-0.3, 0, 0), new THREE.Vector3(0.32, 0, 0));
     const dir = new THREE.Vector3(0, Math.sin(el), Math.cos(el));
@@ -83,7 +85,11 @@ function OverlaySync({ points, els, stage }: { points: React.MutableRefObject<Ov
       if (!p) { el.style.visibility = 'hidden'; continue; }
       const s = project(p);
       el.style.visibility = s.inFront ? 'visible' : 'hidden';
-      el.style.transform = `translate(${(s.x - r.left).toFixed(1)}px, ${(s.y - r.top).toFixed(1)}px) translate(-50%, -100%)`;
+      // keep plates on screen: a side player cut off at the edge still shows his name pinned to that edge
+      const hw = el.offsetWidth / 2 + 4;
+      const x = Math.min(Math.max(s.x - r.left, hw), r.width - hw);
+      const y = Math.min(Math.max(s.y - r.top, el.offsetHeight + 2), r.height - 2);
+      el.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) translate(-50%, -100%)`;
     }
   });
   return null;
@@ -214,7 +220,7 @@ export const Table3D = memo(function Table3D(p: TableProps & { onFail?(why: stri
   const [portrait, setPortrait] = useState(() => innerHeight > innerWidth * 1.05);
   useLayoutEffect(() => { const f = () => setPortrait(innerHeight > innerWidth * 1.05); addEventListener('resize', f); return () => removeEventListener('resize', f); }, []);
   const v = p.view; const r = v.round; const me = v.you;
-  const L = useMemo(() => layout3(v, prefs.largeCards), [v, prefs.largeCards]);
+  const L = useMemo(() => layout3(v, prefs.largeCards, portrait), [v, prefs.largeCards, portrait]);
   useEffect(() => { setFlyBackend(backend3d); return () => { backend3d.clear(); setFlyBackend(null); setCtx3(null); }; }, []);
   const seatsShown = r ? r.participants : v.players.length ? v.players : v.seats.map((s, i) => (s ? i : -1)).filter((i) => i >= 0);
   // Hooks for the headless end-to-end check: where to click (real canvas clicks, ray-cast like a finger).
