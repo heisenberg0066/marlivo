@@ -251,7 +251,7 @@ export const Table3D = memo(function Table3D(p: TableProps & { onFail?(why: stri
           const si = v.seats[seat]; if (!si || seat === me || !L.chars[seat]) return null;
           const c = L.chars[seat]!.p;
           return (
-            <div key={seat} className="ov3d-item plate3d" ref={reg('plate' + seat, () => [c[0], 0.74, c[2]])}>
+            <div key={seat} className="ov3d-item plate3d" ref={reg('plate' + seat, () => (Math.abs(Math.sin(L.seats[seat]?.a ?? 0)) > 0.9 ? [c[0] * 0.9, 0.66, c[2]] : [c[0], 0.74, c[2]]))}>
               {p.bubbles[seat] && Date.now() - p.bubbles[seat]!.at < 5000 && <div className="bubble">{p.bubbles[seat]!.text}</div>}
               {p.ov.badges[seat] && <div className="plus-badge in3d">{p.ov.badges[seat]}</div>}
               <div className={p.ov.pulse[seat] ?? ''}><NamePlate view={v} seat={seat} /></div>
