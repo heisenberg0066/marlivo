@@ -346,7 +346,7 @@ function RoundEnd({ view, me, nameOf, act }: { view: PlayerView; me: number | nu
       <div className="panel">
         <button className="drawer-close" onClick={() => setOpen(false)}>▾</button>
         {w !== null ? <h2>{w === me ? t('end.roundYou') : t('end.round', { name: nameOf(w) })}</h2> : <h2>{t('end.noWinner')}</h2>}
-        {w !== null && <p className="muted">{nameOf(w)} {t('end.starts')}</p>}
+        {w !== null && <p className="muted">{t('end.starts', { name: nameOf(w) })}</p>}
         <Scores view={view} nameOf={nameOf} />
         <p className={`verify ${ok ? 'ok' : 'bad'}`}>{ok === null ? '' : ok ? t('end.verified') : t('end.notVerified')}</p>
         <div className="row-btns">

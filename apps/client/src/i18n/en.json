@@ -166,7 +166,7 @@
  "end.round": "{{name}} won the round",
  "end.roundYou": "You won the round!",
  "end.noWinner": "No winner this round (no cards left anywhere)",
- "end.starts": "and starts the next one",
+ "end.starts": "{{name}} starts the next round",
  "end.match": "{{name}} wins the match!",
  "end.matchYou": "You win the match!",
  "end.byHost": "Ended by host",

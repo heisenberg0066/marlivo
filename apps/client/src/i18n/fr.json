@@ -166,7 +166,7 @@
  "end.round": "{{name}} gagne la manche",
  "end.roundYou": "Tu gagnes la manche !",
  "end.noWinner": "Pas de gagnant (plus aucune carte nulle part)",
- "end.starts": "et commence la suivante",
+ "end.starts": "{{name}} commence la manche suivante",
  "end.match": "{{name}} gagne la partie !",
  "end.matchYou": "Tu gagnes la partie !",
  "end.byHost": "Terminée par l'hôte",
