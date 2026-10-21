@@ -29,7 +29,7 @@ describe('3D layout', () => {
       for (const seed of [1, 2, 3]) {
         let step = 0;
         simulateMatch(`l3-${players}-${seed}`, {
-          players, target: 2, cards: 4 + seed,
+          players, target: 2, cards: 4 + seed, randomLayouts: true,
           onStep: (s) => {
             if (++step % 7 || !s.round || s.phase !== 'PLAY') return;
             for (let me = 0; me < players; me++) {

@@ -268,5 +268,11 @@
  "log.TENTATIVE_REMOVED": "{{who}} a retourné une carte",
  "reject.NOT_TARGET": "Les cartes visibles ne font pas encore la cible.",
  "reject.NOTHING_UP": "Retournez d'abord au moins une carte.",
- "reject.ALREADY_UP": "Cette carte est déjà visible — touchez-la pour la retourner."
+ "reject.ALREADY_UP": "Cette carte est déjà visible — touchez-la pour la retourner.",
+ "layout.title": "Disposition de vos cartes",
+ "layout.hint": "Comment vos cartes sont posées sur la table. Verrouillé dès que la partie commence.",
+ "layout.locked": "Verrouillé pour cette partie",
+ "layout.line": "Une ligne de {{n}}",
+ "layout.rowsOf": "{{k}} rangées de {{m}}",
+ "layout.rows": "{{k}} rangées ({{list}})"
 }

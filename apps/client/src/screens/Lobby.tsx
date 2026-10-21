@@ -6,6 +6,7 @@ import { CharacterBust, SEAT_COLORS, CHARACTER_IDS } from '../render/characters'
 import { BackRoom } from '../render/BackRoom';
 import { t } from '../i18n';
 import { setPrefs } from '../prefs';
+import { LayoutPicker } from './LayoutPicker';
 
 export function Lobby({ session, view, onExit }: { session: Session; view: PlayerView; onExit(): void }) {
   const me = view.you;
@@ -51,6 +52,7 @@ export function Lobby({ session, view, onExit }: { session: Session; view: Playe
             <div className="chars">{CHARACTER_IDS.map((c) => (
               <button key={c} className={`char ${mine.characterId === c ? 'on' : ''}`} onClick={() => { setPrefs({ characterId: c }); act({ t: 'PICK_CHARACTER', id: c }); }} aria-label={t('char.' + c)}>
                 <CharacterBust id={c} size={40} /><small>{t('char.' + c)}</small></button>))}</div>
+            <LayoutPicker n={st.cardsPerPlayer} value={mine.layout} onPick={(id) => { setPrefs({ layout: id }); act({ t: 'SET_LAYOUT', layout: id }); }} />
             <button className={`act ${mine.ready ? '' : 'primary'}`} onClick={() => act({ t: 'SET_READY', ready: !mine.ready })}>{mine.ready ? t('lobby.notReady') : t('lobby.ready')}</button>
           </div>
         )}

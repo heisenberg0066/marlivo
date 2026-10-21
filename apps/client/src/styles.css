@@ -355,3 +355,16 @@ details { margin: 10px 0; } summary { cursor: pointer; color: var(--cream-2); }
 .plate3d .nameplate { transform: scale(.92); }
 .plus-badge.in3d, .target-badge.in3d { position: static; transform: none; }
 .deck-count.in3d { position: static; transform: none; }
+
+/* v0.7 layout picker */
+.layout-picker { margin: 8px 0; padding: 10px; border-radius: 14px; background: #2a170c99; border: 1px solid #ffb36655; }
+.lp-head { display: flex; flex-direction: column; gap: 2px; margin-bottom: 8px; }
+.lp-head b { color: var(--pumpkin-2, #ffb366); font-size: 16px; }
+.lp-opts { display: flex; gap: 8px; flex-wrap: wrap; }
+.lp-opt { flex: 1 1 90px; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px 6px; border-radius: 12px; min-height: 84px; }
+.lp-opt.on { outline: 3px solid var(--pumpkin, #f28a2e); background: #f28a2e33; }
+.lp-opt small { font-size: 12px; line-height: 1.2; text-align: center; }
+.lp-grid { display: flex; flex-direction: column; gap: 3px; align-items: center; }
+.lp-row { display: flex; gap: 3px; }
+.lp-card { display: block; border-radius: 2px; background: linear-gradient(135deg, #c8642a, #7a3b16); border: 1px solid #ffe2b8; }
+.lp-opt.on .lp-card { background: linear-gradient(135deg, #ffb366, #f28a2e); }

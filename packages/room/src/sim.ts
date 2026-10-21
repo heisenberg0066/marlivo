@@ -1,5 +1,5 @@
 // Simulation helpers: bot-vs-bot games straight on the engine (soak / property tests) and a virtual-time scheduler.
-import { createGame, reduce, projectView, SeededRng, allSlots, type GameState, type Intent, type Rng, type BotLevel } from '@marlivo/engine';
+import { createGame, reduce, projectView, SeededRng, allSlots, layoutOptions, type GameState, type Intent, type Rng, type BotLevel } from '@marlivo/engine';
 import { botDecide, createBrain, type BotBrain } from '@marlivo/bots';
 import type { Scheduler } from './host';
 
@@ -22,7 +22,7 @@ export function checkInvariants(s: GameState, prevSlotIds?: Map<number, string[]
 }
 export const slotSnapshot = (s: GameState) => new Map(Object.entries(s.round?.areas ?? {}).map(([k, v]) => [Number(k), v.map((x) => `${x.id}@${x.row},${x.col}`)]));
 
-export function simulateMatch(seed: string | number, opts: { players?: number; levels?: BotLevel[]; target?: number; cards?: number; invariants?: boolean; maxSteps?: number; onStep?: (s: GameState) => void } = {}): SimResult {
+export function simulateMatch(seed: string | number, opts: { players?: number; levels?: BotLevel[]; target?: number; cards?: number; invariants?: boolean; maxSteps?: number; onStep?: (s: GameState) => void; randomLayouts?: boolean } = {}): SimResult {
   const rng: Rng = new SeededRng(seed);
   const botRng: Rng = new SeededRng(String(seed) + 'b');
   const n = opts.players ?? 2 + Math.floor(rng.next() * 3);
@@ -34,6 +34,10 @@ export function simulateMatch(seed: string | number, opts: { players?: number; l
     if (!r.ok) throw new Error(r.reason);
     s = r.state;
     brains.push(createBrain(levels[i % levels.length]!));
+  }
+  if (opts.randomLayouts) for (let i = 0; i < n; i++) {
+    const ops = layoutOptions(s.settings.cardsPerPlayer);
+    const r = reduce(s, i, { t: 'SET_LAYOUT', layout: ops[Math.floor(rng.next() * ops.length)]! }, rng); if (r.ok) s = r.state;
   }
   for (let i = 1; i < n; i++) { const r = reduce(s, i, { t: 'SET_READY', ready: true }, rng); if (r.ok) s = r.state; }
   const st = reduce(s, 0, { t: 'START' }, rng); if (!st.ok) throw new Error(st.reason); s = st.state;

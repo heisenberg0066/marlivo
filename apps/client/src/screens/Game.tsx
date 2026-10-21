@@ -81,6 +81,7 @@ export function Game({ session, onExit }: { session: Session; onExit(): void }) 
     const bots = v.seats.filter((s) => s?.isBot).length;
     if (bots < session.autoStart) return;
     session.autoStart = 0;
+    session.intent({ t: 'SET_LAYOUT', layout: prefs.layout });
     session.intent({ t: 'SET_READY', ready: true });
     session.intent({ t: 'START' });
   });

@@ -6,6 +6,8 @@ import { createLocalRoom } from '../game/localRoom';
 import { go } from '../App';
 import { BackRoom } from '../render/BackRoom';
 import { Logo } from './Home';
+import { LayoutPicker } from './LayoutPicker';
+import { usePrefs, setPrefs } from '../prefs';
 
 export function Practice({ test }: { test: boolean }) {
   const [bots, setBots] = useState(test ? 1 : 2);
@@ -15,6 +17,7 @@ export function Practice({ test }: { test: boolean }) {
   const [speed, setSpeed] = useState<Settings['botSpeed']>('normal');
   const [helper, setHelper] = useState<Settings['memoryHelper']>('off');
   const [tools, setTools] = useState(test);
+  const prefs = usePrefs();
   const start = () => {
     const code = createLocalRoom({ cardsPerPlayer: cards, targetPoints: target, botSpeed: speed, memoryHelper: helper, test: tools, maxPlayers: Math.max(2, bots + 1 + (tools ? 1 : 0)) }, Array(bots).fill(level));
     go('/play/' + code);
@@ -29,6 +32,7 @@ export function Practice({ test }: { test: boolean }) {
         <label>{t('practice.bots')}<div className="seg">{[1, 2, 3].map((n) => <button key={n} className={bots === n ? 'on' : ''} onClick={() => setBots(n)}>{n}</button>)}</div></label>
         <label>{t('practice.level')}<div className="seg">{(['easy', 'normal', 'hard'] as const).map((l) => <button key={l} className={level === l ? 'on' : ''} onClick={() => setLevel(l)}>{t('practice.' + l)}</button>)}</div></label>
         <label>{t('practice.cards')}<div className="seg">{[4, 5, 6, 7, 8].map((n) => <button key={n} className={cards === n ? 'on' : ''} onClick={() => setCards(n)}>{n}</button>)}</div></label>
+        <LayoutPicker n={cards} value={prefs.layout} onPick={(id) => setPrefs({ layout: id })} />
         <label>{t('practice.target')}<div className="seg">{[1, 2, 3, 5, 7].map((n) => <button key={n} className={target === n ? 'on' : ''} onClick={() => setTarget(n)}>{n}</button>)}</div></label>
         <label>{t('practice.speed')}<div className="seg">{(['slow', 'normal', 'fast', 'instant'] as const).map((s) => <button key={s} className={speed === s ? 'on' : ''} onClick={() => setSpeed(s)}>{t('practice.' + s)}</button>)}</div></label>
         <label>{t('practice.helper')}<div className="seg">{(['off', 'own', 'full'] as const).map((h) => <button key={h} className={helper === h ? 'on' : ''} onClick={() => setHelper(h)}>{h === 'off' ? t('common.off') : t(h === 'own' ? 'practice.helperOwn' : 'practice.helperFull')}</button>)}</div></label>

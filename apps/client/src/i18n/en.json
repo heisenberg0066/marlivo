@@ -268,5 +268,11 @@
  "log.TENTATIVE_REMOVED": "{{who}} turned a card back",
  "reject.NOT_TARGET": "The face-up cards don't add up to the target yet.",
  "reject.NOTHING_UP": "Flip at least one card first.",
- "reject.ALREADY_UP": "That card is already face up — tap it to turn it back."
+ "reject.ALREADY_UP": "That card is already face up — tap it to turn it back.",
+ "layout.title": "Your card layout",
+ "layout.hint": "How your cards are laid out on the table. Locked once play starts.",
+ "layout.locked": "Locked for this match",
+ "layout.line": "Single line of {{n}}",
+ "layout.rowsOf": "{{k}} rows of {{m}}",
+ "layout.rows": "{{k}} rows ({{list}})"
 }
