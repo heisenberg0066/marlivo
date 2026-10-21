@@ -32,3 +32,7 @@ node scripts/e2e-solo.mjs phone en   # plays a full solo match through the UI (n
 ```
 Test room tools (reveal all, presets, forced deck/dice, step mode, inspector, latency, drop, autoplay ×100,
 replay export) are available in local practice via *Test room* and online only with the owner key.
+
+## Screenshots
+
+A few picks are in [`docs/screenshots/selected/`](docs/screenshots/selected/) (phone 390×844 and laptop 1366×768, English and French). The full set of PNGs is made by `node scripts/e2e-solo.mjs <phone|laptop> <en|fr>`. It is kept out of git because of its size.
