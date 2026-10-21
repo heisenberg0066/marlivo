@@ -129,8 +129,17 @@ export function botDecide(view: PlayerView, brain: BotBrain, rng: Rng): Intent |
     return ok ? { t: 'FINISH_TRY' } : { t: 'FINISH_LET_WIN' };
   }
   if (a?.k === 'attempt' && a.seat === me) {
+    // v0.7 flow: flip cards (they stay face up), turn back any that overshoot, press Done on the exact sum,
+    // or Stop. Every flipped card that is not in the final combination costs 2 penalty cards.
+    if (a.tentative.length && a.sum === a.target) return { t: 'SUBMIT_MATCH' };
+    if (a.sum > a.target) {
+      // turn back the card that makes it overshoot (largest first)
+      const up = a.tentative.map((id) => ({ id, r: mine.find((s) => s.id === id)?.face?.r ?? 0 })).sort((x, y) => y.r - x.r);
+      const drop = up.find((u) => a.sum - u.r <= a.target) ?? up[0]!;
+      return { t: 'REMOVE_TENTATIVE', slot: drop.id };
+    }
     const need = a.target - a.sum;
-    const cands = ownKnown().filter((x) => !a.flipped.includes(x.id));
+    const cands = ownKnown().filter((x) => !a.tentative.includes(x.id));
     const limit = a.finishTry || brain.level === 'hard' ? 8 : Math.max(1, 2 - a.tentative.length);
     const combo = findCombo(cands, need, limit);
     if (combo?.length) return { t: 'FLIP', slot: combo[0]! };

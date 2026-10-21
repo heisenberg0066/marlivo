@@ -194,6 +194,7 @@ async function choreograph(prev: PlayerView, u: Update, apply: (ov: Overrides, b
         break;
       }
       case 'WINDOW_OPEN': sfx('tick'); break;
+      case 'TENTATIVE_REMOVED': sfx('flip'); break;
       case 'CLAIM_QUEUED': sfx('chime'); ov.pulse[p.seat] = 'claim'; apply(ov); break;
       case 'FLIPPED': {
         sfx('flip');

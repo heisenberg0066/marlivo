@@ -2,12 +2,18 @@ import { expect } from 'vitest';
 import { createGame, reduce, SeededRng, testPutCard, allSlots, type GameState, type Intent, type Actor, type GameEvent, type Settings } from '../src';
 
 export const rng = () => new SeededRng('test');
-export interface Run { s: GameState; ev: GameEvent[]; rng: SeededRng }
+/** autoDone (default on): after a FLIP that makes the exact sum, the helper presses Done (SUBMIT_MATCH) itself, so
+ *  tests about later rules (powers, stacking, finish) stay short. The v0.7 attempt tests switch it off. */
+export interface Run { s: GameState; ev: GameEvent[]; rng: SeededRng; autoDone?: boolean }
 
 export function act(run: Run, actor: Actor, intent: Intent): GameEvent[] {
   const r = reduce(run.s, actor, intent, run.rng);
   if (!r.ok) throw new Error(`rejected ${intent.t} by ${actor}: ${r.reason}`);
   run.s = r.state; run.ev.push(...r.events);
+  const a = run.s.round?.active;
+  if (intent.t === 'FLIP' && run.autoDone !== false && a?.k === 'attempt' && r.events[0]?.p.exact) {
+    return [...r.events, ...act(run, actor, { t: 'SUBMIT_MATCH' })];
+  }
   return r.events;
 }
 export function rej(run: Run, actor: Actor, intent: Intent): string {

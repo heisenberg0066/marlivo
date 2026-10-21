@@ -15,6 +15,17 @@ import { usePrefs, setPrefs } from '../prefs';
 import { Lobby } from './Lobby';
 import { TestPanel } from './TestPanel';
 
+/** UI tap guards (not game timers): a button that just appeared ignores taps for a moment, so a finger still
+ *  tapping "Match" or "Draw" cannot hit the "Stop" or "Throw" button that replaces it. */
+export const BUTTON_ARM_MS = 450;
+export const TAP_BOUNCE_MS = 280;
+export function armed(mountedAt: number, now: number) { return now - mountedAt >= BUTTON_ARM_MS; }
+function ActButton({ b }: { b: { label: string; on(): void; kind?: string; disabled?: boolean } }) {
+  const born = useRef(performance.now());
+  return <button className={`act ${b.kind ?? ''}`} disabled={b.disabled}
+    onClick={() => { if (armed(born.current, performance.now())) b.on(); }}>{b.label}</button>;
+}
+
 const SUIT_CH: Record<string, string> = { S: '♠', H: '♥', D: '♦', C: '♣' };
 export const cardStr = (c: CardFace) => RANK_LABEL[c.r] + SUIT_CH[c.s];
 
@@ -76,6 +87,7 @@ export function Game({ session, onExit }: { session: Session; onExit(): void }) 
   const keyRef = useRef<(e: KeyboardEvent) => void>(() => {});
   useEffect(() => { const f = (e: KeyboardEvent) => keyRef.current(e); addEventListener('keydown', f); return () => removeEventListener('keydown', f); }, []);
   const lastHover = useRef(0);
+  const lastTap = useRef({ id: '', at: 0 });
 
   if (!v) return <div className="screen center"><div className="spinner" /><p>{session.error ? t('err.' + session.error.code) : t('lobby.waiting')}</p><button onClick={onExit}>{t('common.back')}</button></div>;
   if (v.phase === 'LOBBY') return <Lobby session={session} view={v} onExit={onExit} />;
@@ -111,8 +123,12 @@ export function Game({ session, onExit }: { session: Session; onExit(): void }) 
       if (a?.k === 'attempt') {
         if (a.seat === me) {
           status = t('status.youMatch', { t: a.target }) + ` · ${t('game.sum', { s: a.sum, t: a.target })}` + (a.penaltyDue ? ` · ${t('game.penaltyDue', { n: a.penaltyDue })}` : '');
-          selectable = new Set(myAreaIds.filter((id) => !a.flipped.includes(id) || a.tentative.includes(id)));
-          buttons.push({ label: t('game.giveUp'), kind: 'danger', key: 'g', on: () => {
+          // v0.7: every card can be tapped: face down → flip (stays up), face up → turn back down. Nothing closes
+          // on its own; only Done (exact sum) or Stop ends the attempt.
+          selectable = new Set(myAreaIds);
+          const exact = a.tentative.length > 0 && a.sum === a.target;
+          buttons.push({ label: '✓ ' + t('game.matchDone', { s: a.sum, t: a.target }), kind: 'primary', key: 'enter', disabled: !exact, on: () => { if (exact) act({ t: 'SUBMIT_MATCH' }); } });
+          buttons.push({ label: t('game.stopMatching'), kind: 'danger', key: 'g', on: () => {
             const n = a.flipped.length;
             if (!n) act({ t: 'GIVE_UP' });
             else setConfirm({ text: n === 1 ? t('confirm.giveUp_one') : t('confirm.giveUp_other', { count: n, pen: n * 2 }), go: () => act({ t: 'GIVE_UP' }) });
@@ -165,6 +181,10 @@ export function Game({ session, onExit }: { session: Session; onExit(): void }) 
   const onSlot = (id: string, owner: number) => {
     unlock();
     if (!selectable.has(id)) return;
+    // a fast double tap on one card is one tap (prevents flip+unflip or select+swap by a finger bounce)
+    const now = performance.now();
+    if (lastTap.current.id === id && now - lastTap.current.at < TAP_BOUNCE_MS) return;
+    lastTap.current = { id, at: now };
     if (v.phase === 'PEEK') return act({ t: 'PEEK_PICK', slot: id });
     if (a?.k === 'attempt' && a.seat === me) return a.tentative.includes(id) ? act({ t: 'REMOVE_TENTATIVE', slot: id }) : act({ t: 'FLIP', slot: id });
     if (a?.k === 'power' && a.power === 'J') { setPicks((p) => (p.includes(id) ? p.filter((x) => x !== id) : p.length >= 2 ? [p[1]!, id] : [...p, id])); sfx('tick'); return; }
@@ -213,7 +233,7 @@ export function Game({ session, onExit }: { session: Session; onExit(): void }) 
       <TableSwitch view={v} ov={dir.ov} selectable={selectable} selected={selected} seatSelectable={seatSelectable} hover={session.hover} bubbles={session.bubbles}
         onSlot={onSlot} onSeat={(s) => seatSelectable.has(s) && act({ t: 'TEN_GIVE', to: s })}
         onDeck={() => { if (myTurn && !r?.drawn && !paused) act({ t: 'DRAW' }); }}
-        onPile={() => { if (myTurn && iDrew && !paused) act({ t: 'THROW' }); }} onHoverSlot={onHoverSlot}
+        onPile={() => { /* taps on the pile never throw: only the Throw button does (stray taps closed draws) */ }} onHoverSlot={onHoverSlot}
         onLongPressMine={() => { if (canClaim && !paused) { navigator.vibrate?.(20); act({ t: 'CLAIM_MATCH' }); } }} />
 
       <div className="fly-layer" ref={flyRef} />
@@ -238,7 +258,7 @@ export function Game({ session, onExit }: { session: Session; onExit(): void }) 
         </div>
         <div className="status-line" aria-live="polite">{status}</div>
         <div className="actions">
-          {buttons.map((b, i) => <button key={i} className={`act ${b.kind ?? ''}`} onClick={b.on} disabled={b.disabled}>{b.label}</button>)}
+          {buttons.map((b) => <ActButton key={(b.key ?? '') + '|' + b.kind + '|' + b.label.replace(/[0-9]+/g, '#')} b={b} />)}
         </div>
       </footer>
 
@@ -274,7 +294,7 @@ export function Game({ session, onExit }: { session: Session; onExit(): void }) 
       {confirm && (
         <div className="overlay"><div className="panel"><p>{confirm.text}</p><div className="row-btns">
           <button onClick={() => setConfirm(null)}>{t('common.no')}</button>
-          <button className="primary" onClick={() => { confirm.go(); setConfirm(null); }}>{t('common.yes')}</button>
+          <ActButton b={{ label: t('common.yes'), kind: 'primary', on: () => { confirm.go(); setConfirm(null); } }} />
         </div></div></div>
       )}
     </div>
@@ -392,6 +412,7 @@ export function logLine(e: { t: string; p: Record<string, any> }, nameOf: (n: nu
     case 'SWAPPED': return t('log.SWAPPED', { who, card: cardStr(p.out) });
     case 'DREW': return t('log.DREW', { who });
     case 'FLIPPED': return t('log.FLIPPED_' + p.verdict, { who, card: cardStr(p.card) });
+    case 'TENTATIVE_REMOVED': return t('log.TENTATIVE_REMOVED', { who });
     case 'ATTEMPT_END': return p.result === 'complete' ? t('log.ATTEMPT_END_complete', { who, cards: (p.played as CardFace[]).map(cardStr).join(' + ') }) : t('log.ATTEMPT_END_fail', { who });
     case 'PENALTY_DEALT': return t('log.PENALTY', { who, n: p.slots.length });
     case 'JACK_SWAPPED': return t('log.JACK_SWAPPED', { who });

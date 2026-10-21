@@ -138,8 +138,8 @@ function startRound(c: Ctx, starter: SeatId, reason: RoundState['starterReason']
   s.round = r;
   s.log = [];
   const n = s.settings.cardsPerPlayer;
-  const grid = initialGrid(n);
   for (const p of participants) {
+    const grid = initialGrid(n, s.seats[p]?.layout);
     r.areas[p] = grid.map((g, i) => ({ id: slotId(p, i + 1), num: i + 1, row: g.row, col: g.col, card: null }));
     r.nextNum[p] = n + 1;
     r.peek[p] = { picked: [], done: false };
@@ -275,9 +275,6 @@ function dealPenalty(c: Ctx, to: SeatId, n: number): boolean {
 const attemptSum = (r: RoundState, a: Extract<Active, { k: 'attempt' }>) =>
   a.tentative.reduce((sum, id) => sum + findSlot(r, id)!.slot.card!.r, 0);
 
-function unflippedLeft(r: RoundState, a: Extract<Active, { k: 'attempt' }>) {
-  return r.areas[a.seat]!.some((sl) => sl.card && !a.flipped.includes(sl.id));
-}
 
 function completeAttempt(c: Ctx, a: Extract<Active, { k: 'attempt' }>) {
   const s = c.s, r = s.round!;
@@ -447,7 +444,7 @@ function applyPreset(c: Ctx, id: string) {
 
 // ---------- the reducer ----------
 const GAME_INTENTS = new Set(['ROLL_DIE', 'PEEK_PICK', 'PEEK_DONE', 'DRAW', 'THROW', 'SWAP', 'CLAIM_MATCH', 'CANCEL_CLAIM', 'FLIP', 'REMOVE_TENTATIVE',
-  'GIVE_UP', 'FINISH_TRY', 'FINISH_LET_WIN', 'JACK_SWAP', 'JACK_SKIP', 'QUEEN_PEEK', 'QUEEN_DONE', 'QUEEN_SKIP', 'TEN_GIVE']);
+  'SUBMIT_MATCH', 'GIVE_UP', 'FINISH_TRY', 'FINISH_LET_WIN', 'JACK_SWAP', 'JACK_SKIP', 'QUEEN_PEEK', 'QUEEN_DONE', 'QUEEN_SKIP', 'TEN_GIVE']);
 
 export function reduce(state: GameState, actor: Actor, intent: Intent, rng: Rng): ReduceResult {
   const c: Ctx = { s: JSON.parse(JSON.stringify(state)) as GameState, ev: [], rng };
@@ -472,6 +469,7 @@ function apply(c: Ctx, actor: Actor, it: Intent) {
     // ----- lobby -----
     case 'PICK_CHARACTER': check(typeof it.id === 'string' && it.id.length <= 40, 'BAD_CHARACTER'); si.characterId = it.id; emit(c, '_SEAT', { seat: me }); return;
     case 'SET_NAME': check(s.phase === 'LOBBY', 'NOT_LOBBY'); si.name = cleanName(it.name); emit(c, '_SEAT', { seat: me }); return;
+    case 'SET_LAYOUT': check(s.phase === 'LOBBY' || s.phase === 'MATCH_END', 'LAYOUT_LOCKED'); check(['r1', 'r2', 'r3', 'r4'].includes(it.layout), 'BAD_LAYOUT'); si.layout = it.layout; emit(c, '_SEAT', { seat: me }); return;
     case 'SET_READY': check(s.phase === 'LOBBY', 'NOT_LOBBY'); si.ready = !!it.ready; emit(c, '_SEAT', { seat: me }); return;
     case 'HOST_UPDATE_SETTINGS': {
       check(isHost, 'NOT_HOST'); check(s.phase === 'LOBBY' || s.phase === 'MATCH_END', 'MATCH_RUNNING');
@@ -700,30 +698,38 @@ function apply(c: Ctx, actor: Actor, it: Intent) {
       return;
     }
     case 'FLIP': {
+      // v0.7: a flipped card stays face up (for everyone) until the player submits or stops. Nothing is judged
+      // or closed automatically; there are no timers (§5.2).
       check(a?.k === 'attempt' && a.seat === me, 'NOT_MATCHING');
       const at = a as Extract<Active, { k: 'attempt' }>;
       const sl = R.areas[me]!.find((x) => x.id === it.slot) ?? fail('NOT_YOUR_SLOT');
-      check(sl.card, 'EMPTY_SLOT'); check(!at.flipped.includes(sl.id), 'ALREADY_FLIPPED'); // E16
-      at.flipped.push(sl.id);
+      check(sl.card, 'EMPTY_SLOT'); check(!at.tentative.includes(sl.id), 'ALREADY_UP');
+      if (!at.flipped.includes(sl.id)) at.flipped.push(sl.id);
+      at.tentative.push(sl.id);
+      at.wrong = at.flipped.filter((x) => !at.tentative.includes(x));
       seePublic(R, sl.card!);
-      const S = attemptSum(R, at), v = sl.card!.r;
-      let verdict: 'tentative' | 'wrong' | 'complete';
-      if (S + v === at.target) { at.tentative.push(sl.id); verdict = 'complete'; }
-      else if (S + v < at.target) { at.tentative.push(sl.id); verdict = 'tentative'; }
-      else { at.wrong.push(sl.id); verdict = 'wrong'; }
-      emit(c, 'FLIPPED', { seat: me, slot: sl.id, card: face(sl.card!), verdict, sum: attemptSum(R, at), target: at.target, penaltyDue: at.wrong.length * PENALTY_PER_WRONG });
-      if (verdict === 'complete') return completeAttempt(c, at);
-      if (!unflippedLeft(R, at)) return failAttempt(c, at, 'noCards'); // auto-end (E31)
+      const sum = attemptSum(R, at);
+      emit(c, 'FLIPPED', { seat: me, slot: sl.id, card: face(sl.card!), verdict: 'tentative', sum, target: at.target, exact: sum === at.target, over: sum > at.target, penaltyDue: at.wrong.length * PENALTY_PER_WRONG });
       return;
     }
     case 'REMOVE_TENTATIVE': {
+      // turn a face-up card back face down; it stays in its spot and counts as wrong unless flipped again and used
       check(a?.k === 'attempt' && a.seat === me, 'NOT_MATCHING');
       const at = a as Extract<Active, { k: 'attempt' }>;
       check(at.tentative.includes(it.slot), 'NOT_TENTATIVE');
-      at.tentative = at.tentative.filter((x) => x !== it.slot); at.wrong.push(it.slot);
-      emit(c, 'TENTATIVE_REMOVED', { seat: me, slot: it.slot, sum: attemptSum(R, at), penaltyDue: at.wrong.length * PENALTY_PER_WRONG });
-      if (!unflippedLeft(R, at)) return failAttempt(c, at, 'noCards');
+      at.tentative = at.tentative.filter((x) => x !== it.slot);
+      at.wrong = at.flipped.filter((x) => !at.tentative.includes(x));
+      const sum = attemptSum(R, at);
+      emit(c, 'TENTATIVE_REMOVED', { seat: me, slot: it.slot, sum, exact: sum === at.target && at.tentative.length > 0, penaltyDue: at.wrong.length * PENALTY_PER_WRONG });
       return;
+    }
+    case 'SUBMIT_MATCH': {
+      // "Done": the face-up set is played if it adds up to the target (one card or a sum)
+      check(a?.k === 'attempt' && a.seat === me, 'NOT_MATCHING');
+      const at = a as Extract<Active, { k: 'attempt' }>;
+      check(at.tentative.length > 0, 'NOTHING_UP');
+      check(attemptSum(R, at) === at.target, 'NOT_TARGET');
+      return completeAttempt(c, at);
     }
     case 'GIVE_UP': {
       check(a?.k === 'attempt' && a.seat === me, 'NOT_MATCHING');

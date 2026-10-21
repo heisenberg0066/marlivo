@@ -26,6 +26,8 @@ export interface SeatInfo {
   left?: boolean;
   /** A human seat taken over by a bot via the host's "Replace with bot" button. */
   replacedByBot?: boolean;
+  /** Starting card layout ('r1'..'r4' = rows), picked in the lobby, locked once play starts (v0.7). */
+  layout?: string;
 }
 
 export interface Settings {
@@ -119,6 +121,7 @@ export type Intent =
   // lobby
   | { t: 'PICK_CHARACTER'; id: string }
   | { t: 'SET_NAME'; name: string }
+  | { t: 'SET_LAYOUT'; layout: string }
   | { t: 'SET_READY'; ready: boolean }
   | { t: 'HOST_UPDATE_SETTINGS'; patch: Partial<Settings> }
   | { t: 'HOST_SEAT_MOVE'; from: SeatId; to: SeatId }
@@ -147,6 +150,7 @@ export type Intent =
   | { t: 'CANCEL_CLAIM' }
   | { t: 'FLIP'; slot: string }
   | { t: 'REMOVE_TENTATIVE'; slot: string }
+  | { t: 'SUBMIT_MATCH' }
   | { t: 'GIVE_UP' }
   | { t: 'FINISH_TRY' }
   | { t: 'FINISH_LET_WIN' }

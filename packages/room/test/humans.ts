@@ -21,12 +21,14 @@ export function randomHuman(view: PlayerView, rng: { next(): number }, mem: Map<
   }
   if (a?.k === 'finish') return a.turnPlayer === me ? (rng.next() < 0.5 ? { t: 'FINISH_TRY' } : { t: 'FINISH_LET_WIN' }) : null;
   if (a?.k === 'attempt' && a.seat === me) {
-    const un = mine.filter((s) => !a.flipped.includes(s.id));
-    if (a.tentative.length && rng.next() < 0.1) return { t: 'REMOVE_TENTATIVE', slot: a.tentative[0]! };
-    const good = un.find((s) => mem.get(s.id) === a.target - a.sum);
+    if (a.tentative.length && a.sum === a.target && rng.next() < 0.9) return { t: 'SUBMIT_MATCH' };
+    if (a.tentative.length && (a.sum > a.target ? rng.next() < 0.7 : rng.next() < 0.1)) return { t: 'REMOVE_TENTATIVE', slot: pick(a.tentative) };
+    const down = mine.filter((s) => !a.tentative.includes(s.id));
+    const good = down.find((s) => mem.get(s.id) === a.target - a.sum);
     if (good && rng.next() < 0.9) return { t: 'FLIP', slot: good.id };
-    if (!un.length || rng.next() < 0.3) return { t: 'GIVE_UP' };
-    return { t: 'FLIP', slot: pick(un).id };
+    if (!down.length || rng.next() < 0.25) return { t: 'GIVE_UP' };
+    if (rng.next() < 0.05) return { t: 'SUBMIT_MATCH' }; // sometimes presses Done on a wrong sum (rejected, nothing happens)
+    return { t: 'FLIP', slot: pick(down).id };
   }
   if (r.drawn?.by === me) { if (rng.next() < 0.5) return { t: 'THROW' }; const sl = pick(mine).id; mem.set(sl, mem.get('drawn') ?? 0); return { t: 'SWAP', slot: sl }; }
   if (a?.k === 'attempt' && a.seat !== me) return null;

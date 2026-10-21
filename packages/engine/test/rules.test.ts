@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { act, rej, lobby, play, sid, count, total, ofType, type Run } from './helpers';
-import { initialGrid, placeCard, SeededRng, createGame, reduce, projectView, sha256Hex, parseFace, type RoundState } from '../src';
+import { initialGrid, layoutOptions, placeCard, SeededRng, createGame, reduce, projectView, sha256Hex, parseFace, type RoundState } from '../src';
 
 /** Seat 0 draws the forced top card and throws it, opening a window. Resolves a Q/J power by skipping/peeking. */
 function drawThrow(run: Run, seat = 0) { act(run, seat, { t: 'DRAW' }); act(run, seat, { t: 'THROW' }); }
@@ -136,38 +136,59 @@ describe('§3.2 turn (R7, R8)', () => {
 });
 
 describe('§3.6 match attempts: Ammar\'s examples (R14–R20)', () => {
-  it('T=12: complete with 3 cards after 6 flips → 3 wrong → +6, dealt only after the attempt ends', () => {
-    const run = play(2, [['7S', '8H', '9C', 'KD', '3S', '2H']], ['QC']);
+  it('v0.7 Ammar\'s example: T=13: 7, 2, 5 (14, over), turn the 2 back, 1 → Done: 7+5+1 played; the 2 was wrong → +2', () => {
+    const run = play(2, [['7S', '2H', '5C', 'AD', 'KS', 'KH']], ['KC']); run.autoDone = false;
     drawThrow(run); skipPower(run);
     act(run, 0, { t: 'CLAIM_MATCH' });
-    for (const n of [1, 2, 3, 4, 5]) act(run, 0, { t: 'FLIP', slot: sid(0, n) });
-    expect(attempt(run).wrong.length).toBe(3);
-    expect(ofType(run, 'PENALTY_DEALT').length).toBe(0); // none mid-attempt
-    expect(count(run, 0)).toBe(6);
-    act(run, 0, { t: 'FLIP', slot: sid(0, 6) });
-    const end = lastEnd(run);
-    expect(end.result).toBe('complete'); expect(end.played.map((c) => c.r)).toEqual([7, 3, 2]); expect(end.penalty).toBe(6);
-    expect(count(run, 0)).toBe(6 - 3 + 6);
-    const pen = ofType(run, 'PENALTY_DEALT');
-    expect(pen.length).toBe(1); expect((pen[0]!.p.slots as unknown[]).length).toBe(6);
+    for (const n of [1, 2, 3]) act(run, 0, { t: 'FLIP', slot: sid(0, n) });
+    // all three stay face up for everyone; nothing is judged yet
+    expect(projectView(run.s, 1).round!.areas[0]!.slice(0, 3).map((x) => x.face?.r)).toEqual([7, 2, 5]);
+    expect(projectView(run.s, 1).round!.active).toMatchObject({ sum: 14, penaltyDue: 0 });
+    expect(rej(run, 0, { t: 'SUBMIT_MATCH' })).toBe('NOT_TARGET');
+    act(run, 0, { t: 'REMOVE_TENTATIVE', slot: sid(0, 2) });
+    expect(projectView(run.s, 1).round!.areas[0]![1]!.face).toBeFalsy(); // turned back down, still in its spot
+    expect(projectView(run.s, 1).round!.active).toMatchObject({ sum: 12, penaltyDue: 2 });
+    act(run, 0, { t: 'FLIP', slot: sid(0, 4) });
+    expect(run.s.round!.active?.k).toBe('attempt'); // exact, but nothing happens until Done
+    expect(ofType(run, 'ATTEMPT_END').length).toBe(0);
+    act(run, 0, { t: 'SUBMIT_MATCH' });
+    expect(lastEnd(run)).toMatchObject({ result: 'complete', penalty: 2 });
+    expect(lastEnd(run).played.map((c) => c.r).sort((a, b) => a - b)).toEqual([1, 5, 7]);
+    expect(count(run, 0)).toBe(6 - 3 + 2);
     expect(run.ev.findIndex((e) => e.t === 'PENALTY_DEALT')).toBeGreaterThan(run.ev.findIndex((e) => e.t === 'ATTEMPT_END'));
     expect(total(run)).toBe(52);
   });
-  it('T=12: 7, 3, 5✗ (returns at once), 2 → played 7, 3, 2; 1 wrong → +2', () => {
-    const run = play(2, [['7S', '3H', '5C', '2D', 'KS', 'KH']], ['QC']);
+  it('v0.7: a turned-back card flipped again and used in the final set is not wrong', () => {
+    const run = play(2, [['7S', '5H', '9C', 'KD', 'KS', 'KH']], ['QC']); run.autoDone = false;
     drawThrow(run); skipPower(run);
     act(run, 0, { t: 'CLAIM_MATCH' });
+    act(run, 0, { t: 'FLIP', slot: sid(0, 1) }); act(run, 0, { t: 'REMOVE_TENTATIVE', slot: sid(0, 1) });
+    expect(projectView(run.s, 1).round!.active).toMatchObject({ penaltyDue: 2 });
     act(run, 0, { t: 'FLIP', slot: sid(0, 1) }); act(run, 0, { t: 'FLIP', slot: sid(0, 2) });
-    const ev = act(run, 0, { t: 'FLIP', slot: sid(0, 3) });
-    expect(ev[0]!.p.verdict).toBe('wrong');
-    expect(attempt(run).tentative).toEqual([sid(0, 1), sid(0, 2)]);
-    expect(run.s.round!.areas[0]![2]!.card).toBeTruthy(); // back in its own slot
-    act(run, 0, { t: 'FLIP', slot: sid(0, 4) });
-    expect(lastEnd(run)).toMatchObject({ result: 'complete', penalty: 2 });
-    expect(lastEnd(run).played.map((c) => c.r)).toEqual([7, 3, 2]);
+    expect(projectView(run.s, 1).round!.active).toMatchObject({ sum: 12, penaltyDue: 0 });
+    act(run, 0, { t: 'SUBMIT_MATCH' });
+    expect(lastEnd(run)).toMatchObject({ result: 'complete', penalty: 0 });
   });
-  it('T=12: 7, 3, 4✗, give up → 3 wrong → +6; all three back face down in their own slots', () => {
-    const run = play(2, [['7S', '3H', '4C', 'KD', 'KS', 'KH']], ['QC']);
+  it('v0.7: many flips, Done on 3 of them → the other flipped cards are wrong (+2 each), dealt only after the attempt', () => {
+    const run = play(2, [['7S', '8H', '9C', 'KD', '3S', '2H']], ['QC']); run.autoDone = false;
+    drawThrow(run); skipPower(run);
+    act(run, 0, { t: 'CLAIM_MATCH' });
+    for (const n of [1, 2]) act(run, 0, { t: 'FLIP', slot: sid(0, n) });
+    act(run, 0, { t: 'REMOVE_TENTATIVE', slot: sid(0, 2) });
+    act(run, 0, { t: 'FLIP', slot: sid(0, 3) }); act(run, 0, { t: 'REMOVE_TENTATIVE', slot: sid(0, 3) });
+    act(run, 0, { t: 'FLIP', slot: sid(0, 4) }); act(run, 0, { t: 'REMOVE_TENTATIVE', slot: sid(0, 4) });
+    act(run, 0, { t: 'FLIP', slot: sid(0, 5) }); act(run, 0, { t: 'FLIP', slot: sid(0, 6) });
+    expect(attempt(run).wrong.length).toBe(3);
+    expect(ofType(run, 'PENALTY_DEALT').length).toBe(0);
+    act(run, 0, { t: 'SUBMIT_MATCH' });
+    const end = lastEnd(run);
+    expect(end).toMatchObject({ result: 'complete', penalty: 6 });
+    expect(end.played.map((c) => c.r).sort((a, b) => a - b)).toEqual([2, 3, 7]);
+    expect(count(run, 0)).toBe(6 - 3 + 6);
+    expect(total(run)).toBe(52);
+  });
+  it('T=12: 7, 3, 4, give up → 3 wrong → +6; all three back face down in their own slots', () => {
+    const run = play(2, [['7S', '3H', '4C', 'KD', 'KS', 'KH']], ['QC']); run.autoDone = false;
     drawThrow(run); skipPower(run);
     act(run, 0, { t: 'CLAIM_MATCH' });
     for (const n of [1, 2, 3]) act(run, 0, { t: 'FLIP', slot: sid(0, n) });
@@ -177,43 +198,39 @@ describe('§3.6 match attempts: Ammar\'s examples (R14–R20)', () => {
     expect(projectView(run.s, 1).round!.areas[0]!.slice(0, 3).every((x) => !x.face)).toBe(true);
     expect(count(run, 0)).toBe(12);
   });
-  it('T=12: 7, 2, 9✗, remove the 2, 5 → played 7+5; 2 wrong → +4', () => {
-    const run = play(2, [['7S', '2H', '9C', '5D', 'KS', 'KH']], ['QC']);
-    drawThrow(run); skipPower(run);
-    act(run, 0, { t: 'CLAIM_MATCH' });
-    for (const n of [1, 2, 3]) act(run, 0, { t: 'FLIP', slot: sid(0, n) });
-    expect(attempt(run).wrong).toEqual([sid(0, 3)]);
-    expect(rej(run, 0, { t: 'REMOVE_TENTATIVE', slot: sid(0, 3) })).toBe('NOT_TENTATIVE');
-    act(run, 0, { t: 'REMOVE_TENTATIVE', slot: sid(0, 2) });
-    expect(projectView(run.s, 1).round!.active).toMatchObject({ sum: 7, penaltyDue: 4 });
-    act(run, 0, { t: 'FLIP', slot: sid(0, 4) });
-    expect(lastEnd(run)).toMatchObject({ result: 'complete', penalty: 4 });
-    expect(lastEnd(run).played.map((c) => c.r)).toEqual([7, 5]);
-  });
-  it('T=9: flip a 9 → complete, no penalty. T=9: flip a K (back), give up → +2', () => {
-    const a = play(2, [['9S', 'KH', '2C', '3D', '4S', '6H']], ['9C']);
-    drawThrow(a); act(a, 0, { t: 'CLAIM_MATCH' }); act(a, 0, { t: 'FLIP', slot: sid(0, 1) });
+  it('T=9: flip a 9, Done → complete, no penalty. T=9: flip a K, give up → +2', () => {
+    const a = play(2, [['9S', 'KH', '2C', '3D', '4S', '6H']], ['9C']); a.autoDone = false;
+    drawThrow(a); act(a, 0, { t: 'CLAIM_MATCH' }); act(a, 0, { t: 'FLIP', slot: sid(0, 1) }); act(a, 0, { t: 'SUBMIT_MATCH' });
     expect(lastEnd(a)).toMatchObject({ result: 'complete', penalty: 0 });
     const b = play(2, [['KS', '9H', '2C', '3D', '4S', '6H']], ['9C']);
     drawThrow(b); act(b, 0, { t: 'CLAIM_MATCH' }); act(b, 0, { t: 'FLIP', slot: sid(0, 1) }); act(b, 0, { t: 'GIVE_UP' });
     expect(lastEnd(b)).toMatchObject({ result: 'giveUp', penalty: 2 });
   });
-  it('T=9: 5, 2, 1 with no cards left → auto-fail → +6 (E31)', () => {
-    const run = play(2, [['5S', '2H', 'AC']], ['9C']);
+  it('v0.7: nothing ever closes on its own — every card face up on a wrong sum keeps the attempt open', () => {
+    const run = play(2, [['5S', '2H', 'AC']], ['9C']); run.autoDone = false;
     drawThrow(run); act(run, 0, { t: 'CLAIM_MATCH' });
     for (const n of [1, 2, 3]) act(run, 0, { t: 'FLIP', slot: sid(0, n) });
-    expect(lastEnd(run)).toMatchObject({ result: 'noCards', penalty: 6 });
-    expect(run.s.round!.active).toBeNull();
+    expect(run.s.round!.active?.k).toBe('attempt');
+    expect(rej(run, 0, { t: 'SUBMIT_MATCH' })).toBe('NOT_TARGET');
+    act(run, 0, { t: 'GIVE_UP' });
+    expect(lastEnd(run)).toMatchObject({ result: 'giveUp', penalty: 6 });
+  });
+  it('v0.7: Done with nothing face up is rejected; Stop before any flip is free', () => {
+    const run = play(2, [['5S', '2H', 'AC']], ['9C']); run.autoDone = false;
+    drawThrow(run); act(run, 0, { t: 'CLAIM_MATCH' });
+    expect(rej(run, 0, { t: 'SUBMIT_MATCH' })).toBe('NOTHING_UP');
+    act(run, 0, { t: 'GIVE_UP' });
+    expect(run.s.round!.active).toBeNull(); expect(count(run, 0)).toBe(3);
   });
   it('Q8: T=9 trying 4+5: flip the 5, give up → only flipped cards count → +2', () => {
     const run = play(2, [['5S', '4H', ...K6.slice(0, 4)]], ['9C']);
     drawThrow(run); act(run, 0, { t: 'CLAIM_MATCH' }); act(run, 0, { t: 'FLIP', slot: sid(0, 1) }); act(run, 0, { t: 'GIVE_UP' });
     expect(lastEnd(run).penalty).toBe(2);
   });
-  it('E16/E29: a slot can be flipped only once per attempt and counts once', () => {
+  it('E16/E29: a face-up card cannot be flipped again; a flipped card counts once', () => {
     const run = play(2, [['KS', '9H', '2C', '3D', '4S', '6H']], ['9C']);
     drawThrow(run); act(run, 0, { t: 'CLAIM_MATCH' }); act(run, 0, { t: 'FLIP', slot: sid(0, 1) });
-    expect(rej(run, 0, { t: 'FLIP', slot: sid(0, 1) })).toBe('ALREADY_FLIPPED');
+    expect(rej(run, 0, { t: 'FLIP', slot: sid(0, 1) })).toBe('ALREADY_UP');
     expect(rej(run, 0, { t: 'FLIP', slot: sid(1, 1) })).toBe('NOT_YOUR_SLOT');
     act(run, 0, { t: 'GIVE_UP' });
     expect(lastEnd(run).penalty).toBe(2);
@@ -289,7 +306,7 @@ describe('§5 windows, claims and the finish rule', () => {
   it('§5.3: C tries and fails (a 6) → X wins; no penalty cards; C lets X win → X wins', () => {
     const a = play(2, [['6S'], ['7H']], ['7C']);
     drawThrow(a); act(a, 1, { t: 'CLAIM_MATCH' }); act(a, 1, { t: 'FLIP', slot: sid(1, 1) });
-    act(a, 0, { t: 'FINISH_TRY' }); act(a, 0, { t: 'FLIP', slot: sid(0, 1) });
+    act(a, 0, { t: 'FINISH_TRY' }); act(a, 0, { t: 'FLIP', slot: sid(0, 1) }); act(a, 0, { t: 'GIVE_UP' });
     expect(a.s.round!.result!.winner).toBe(1);
     expect(ofType(a, 'PENALTY_DEALT').length).toBe(0);
     const b = play(2, [['6S'], ['7H']], ['7C']);
@@ -419,7 +436,8 @@ describe('§6 powers (R9–R13, R22)', () => {
   it('E14: an Ace can only be matched by a single Ace', () => {
     const run = play(2, [['AS', '2H']], ['AC']);
     drawThrow(run); act(run, 0, { t: 'CLAIM_MATCH' });
-    expect(act(run, 0, { t: 'FLIP', slot: sid(0, 2) })[0]!.p.verdict).toBe('wrong'); // 2 overshoots 1
+    expect(act(run, 0, { t: 'FLIP', slot: sid(0, 2) })[0]!.p.over).toBe(true); // 2 overshoots 1
+    act(run, 0, { t: 'REMOVE_TENTATIVE', slot: sid(0, 2) });
     act(run, 0, { t: 'FLIP', slot: sid(0, 1) });
     expect(lastEnd(run)).toMatchObject({ result: 'complete', penalty: 2 });
   });
@@ -517,6 +535,7 @@ describe('§10.4 pause and wait (v0.6, no timers)', () => {
     const run = play(3, [['7S', '2H', '9C', '5D', 'KS', 'KH']], ['QC']);
     drawThrow(run); skipPower(run);
     act(run, 0, { t: 'CLAIM_MATCH' }); act(run, 0, { t: 'FLIP', slot: sid(0, 1) }); act(run, 0, { t: 'FLIP', slot: sid(0, 3) });
+    act(run, 0, { t: 'REMOVE_TENTATIVE', slot: sid(0, 3) });
     return run;
   }
   it('a drop mid-attempt pauses everyone; every game intent is rejected; nothing changes; rejoin resumes the same attempt', () => {
@@ -650,5 +669,31 @@ describe('lobby, characters and test-room gating', () => {
     act(run, 0, { t: 'HOST_LOCK', locked: true });
     expect(run.s.settings.locked).toBe(true);
     expect(createGame().settings.targetPoints).toBe(5);
+  });
+});
+
+describe('v0.7 starting layout picker', () => {
+  it('offers sensible layouts per card count', () => {
+    expect(layoutOptions(4)).toEqual(['r1', 'r2']);
+    expect(layoutOptions(5)).toEqual(['r1', 'r2']);
+    expect(layoutOptions(6)).toEqual(['r1', 'r2', 'r3']);
+    expect(layoutOptions(7)).toEqual(['r2']);
+    expect(layoutOptions(8)).toEqual(['r2', 'r4']);
+    expect(initialGrid(6, 'r3').map((g) => g.row)).toEqual([0, 0, 1, 1, 2, 2]);
+    expect(initialGrid(5, 'r3').map((g) => g.row)).toEqual([0, 0, 0, 1, 1]); // not offered → default 2 rows
+  });
+  it('each player picks in the lobby; the deal uses it; locked once play starts', () => {
+    const run = lobby(2, { cardsPerPlayer: 6, test: true });
+    act(run, 0, { t: 'SET_LAYOUT', layout: 'r1' });
+    act(run, 1, { t: 'SET_LAYOUT', layout: 'r3' });
+    expect(rej(run, 1, { t: 'SET_LAYOUT', layout: 'grid' })).toBe('BAD_LAYOUT');
+    expect(projectView(run.s, 0).seats[1]!.layout).toBe('r3');
+    act(run, 0, { t: 'START' });
+    expect(rej(run, 0, { t: 'SET_LAYOUT', layout: 'r2' })).toBe('LAYOUT_LOCKED');
+    run.s.test.forcedDice = [6, 1];
+    for (const sd of [0, 1]) act(run, sd, { t: 'ROLL_DIE' });
+    const areas = run.s.round!.areas;
+    expect(new Set(areas[0]!.map((x) => x.row)).size).toBe(1);
+    expect(new Set(areas[1]!.map((x) => x.row)).size).toBe(3);
   });
 });

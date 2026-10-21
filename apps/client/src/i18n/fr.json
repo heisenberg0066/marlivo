@@ -159,8 +159,8 @@
  "hint.qPower": "Q : tu regarderas une carte si tu la défausses",
  "hint.jPower": "J : tu échangeras deux cartes si tu la défausses",
  "hint.tPower": "10 : tu donneras une carte de pénalité si tu la défausses",
- "confirm.giveUp_one": "Abandonner ? La carte retournée compte comme fausse (+2 cartes).",
- "confirm.giveUp_other": "Abandonner ? Les {{count}} cartes retournées comptent comme fausses (+{{pen}} cartes).",
+ "confirm.giveUp_one": "Arrêter ? La carte retournée compte comme fausse (+2 cartes).",
+ "confirm.giveUp_other": "Arrêter ? Les {{count}} cartes retournées comptent comme fausses (+{{pen}} cartes).",
  "confirm.skipPeek": "Passer ton coup d'œil ?",
  "confirm.endGame": "Terminer la partie pour tout le monde ?",
  "end.round": "{{name}} gagne la manche",
@@ -262,5 +262,11 @@
  "settings.r2d": "2D",
  "settings.r3d": "3D",
  "settings.no3d": "La 3D a besoin de WebGL, que ce navigateur ne peut pas utiliser : la table 2D est utilisée.",
- "game.fell2d": "La 3D n'a pas pu démarrer sur cet appareil : tu joues sur la table 2D."
+ "game.fell2d": "La 3D n'a pas pu démarrer sur cet appareil : tu joues sur la table 2D.",
+ "game.matchDone": "Valider {{s}}/{{t}}",
+ "game.stopMatching": "Arrêter",
+ "log.TENTATIVE_REMOVED": "{{who}} a retourné une carte",
+ "reject.NOT_TARGET": "Les cartes visibles ne font pas encore la cible.",
+ "reject.NOTHING_UP": "Retournez d'abord au moins une carte.",
+ "reject.ALREADY_UP": "Cette carte est déjà visible — touchez-la pour la retourner."
 }

@@ -159,8 +159,8 @@
  "hint.qPower": "Q: you'll peek if you throw it",
  "hint.jPower": "J: you'll swap two cards if you throw it",
  "hint.tPower": "10: you'll give a penalty card if you throw it",
- "confirm.giveUp_one": "Give up? The 1 flipped card counts as wrong (+2 cards).",
- "confirm.giveUp_other": "Give up? All {{count}} flipped cards count as wrong (+{{pen}} cards).",
+ "confirm.giveUp_one": "Stop matching? The 1 flipped card counts as wrong (+2 cards).",
+ "confirm.giveUp_other": "Stop matching? All {{count}} flipped cards count as wrong (+{{pen}} cards).",
  "confirm.skipPeek": "Skip your peek?",
  "confirm.endGame": "End the game for everyone?",
  "end.round": "{{name}} won the round",
@@ -262,5 +262,11 @@
  "settings.r2d": "2D",
  "settings.r3d": "3D",
  "settings.no3d": "3D needs WebGL, which this browser can't run, so the 2D table is used.",
- "game.fell2d": "3D couldn't start on this device, so you're on the 2D table."
+ "game.fell2d": "3D couldn't start on this device, so you're on the 2D table.",
+ "game.matchDone": "Done {{s}}/{{t}}",
+ "game.stopMatching": "Stop matching",
+ "log.TENTATIVE_REMOVED": "{{who}} turned a card back",
+ "reject.NOT_TARGET": "The face-up cards don't add up to the target yet.",
+ "reject.NOTHING_UP": "Flip at least one card first.",
+ "reject.ALREADY_UP": "That card is already face up — tap it to turn it back."
 }
