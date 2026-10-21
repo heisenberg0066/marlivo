@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "about": "MarLivo 3D characters. Drop a .glb next to this file and set \"model\" to its file name; see docs/ADDING-CHARACTERS.md. With \"model\": null the built-in low-poly placeholder named by \"placeholder\" is used.",
+  "characters": {
+    "biscuit": { "name": { "en": "Biscuit", "fr": "Biscuit" }, "model": null, "placeholder": "bear", "pickable": true },
+    "mint": { "name": { "en": "Mint", "fr": "Mint" }, "model": null, "placeholder": "cat", "pickable": true },
+    "pepper": { "name": { "en": "Pepper", "fr": "Pepper" }, "model": null, "placeholder": "owl", "pickable": true },
+    "tango": { "name": { "en": "Tango", "fr": "Tango" }, "model": null, "placeholder": "orange", "pickable": true },
+    "guest": { "name": { "en": "Guest", "fr": "Invité" }, "model": null, "placeholder": "generic", "pickable": false }
+  }
+}

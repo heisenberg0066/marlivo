@@ -3,12 +3,12 @@ import { useSyncExternalStore } from 'react';
 export interface Prefs {
   name: string; characterId: string; sound: boolean; ambience: boolean; volume: number;
   speed: 'cinematic' | 'normal' | 'fast'; reduced: boolean; camera: 'seat' | 'top'; confirmSwap: boolean; slotNumbers: boolean;
-  fourColor: boolean; largeCards: boolean; leftHanded: boolean; serverUrl: string; ownerKey: string; friendsKey: string;
+  fourColor: boolean; largeCards: boolean; renderer: '2d' | '3d'; leftHanded: boolean; serverUrl: string; ownerKey: string; friendsKey: string;
 }
 const reducedOS = typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 const defaults: Prefs = {
   name: '', characterId: 'biscuit', sound: true, ambience: false, volume: 0.7, speed: 'normal', reduced: reducedOS, camera: 'seat',
-  confirmSwap: true, slotNumbers: true, fourColor: false, largeCards: false, leftHanded: false, serverUrl: '', ownerKey: '', friendsKey: '',
+  confirmSwap: true, slotNumbers: true, fourColor: false, largeCards: false, renderer: '2d', leftHanded: false, serverUrl: '', ownerKey: '', friendsKey: '',
 };
 let prefs: Prefs = { ...defaults, ...JSON.parse(localStorage.getItem('marlivo.prefs') || '{}') };
 const subs = new Set<() => void>();

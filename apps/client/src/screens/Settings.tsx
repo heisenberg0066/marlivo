@@ -1,4 +1,5 @@
 // Personal settings (§12.2), stored on this device only.
+import { webglAvailable } from '../render3d/webgl';
 import { t, useLang, setLang } from '../i18n';
 import { usePrefs, setPrefs, type Prefs } from '../prefs';
 import { go } from '../App';
@@ -20,6 +21,8 @@ export function SettingsScreen() {
         <label>{t('settings.volume')}<input type="range" min={0} max={1} step={0.05} value={p.volume} onChange={(e) => setPrefs({ volume: Number(e.target.value) })} /></label>
         <label>{t('settings.speed')}<div className="seg">{(['cinematic', 'normal', 'fast'] as const).map((s) => <button key={s} className={p.speed === s ? 'on' : ''} onClick={() => setPrefs({ speed: s })}>{t('settings.' + s)}</button>)}</div></label>
         {tog('reduced', 'settings.reduced')}
+        <label>{t('settings.renderer')}<div className="seg">{(['2d', '3d'] as const).map((s) => <button key={s} className={p.renderer === s ? 'on' : ''} onClick={() => setPrefs({ renderer: s })}>{t('settings.r' + s)}</button>)}</div>
+          {p.renderer === '3d' && !webglAvailable() && <small className="muted">{t('settings.no3d')}</small>}</label>
         <label>{t('settings.camera')}<div className="seg">{(['seat', 'top'] as const).map((s) => <button key={s} className={p.camera === s ? 'on' : ''} onClick={() => setPrefs({ camera: s })}>{t('settings.' + s)}</button>)}</div></label>
         {tog('confirmSwap', 'settings.confirmSwap')}
         {tog('slotNumbers', 'settings.slotNumbers')}

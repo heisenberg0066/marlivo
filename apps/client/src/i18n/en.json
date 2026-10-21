@@ -257,5 +257,10 @@
  "reject.NO_WINDOW": "Nothing to match right now",
  "reject.QUEUED": "You're already in line",
  "reject.ALREADY_FLIPPED": "Already flipped",
- "confirm.skipQueen": "Skip your peek? (the Queen lets you look at any card)"
+ "confirm.skipQueen": "Skip your peek? (the Queen lets you look at any card)",
+ "settings.renderer": "Table",
+ "settings.r2d": "2D",
+ "settings.r3d": "3D",
+ "settings.no3d": "3D needs WebGL, which this browser can't run, so the 2D table is used.",
+ "game.fell2d": "3D couldn't start on this device, so you're on the 2D table."
 }

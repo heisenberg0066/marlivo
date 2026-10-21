@@ -257,5 +257,10 @@
  "reject.NO_WINDOW": "Rien à assortir pour l’instant",
  "reject.QUEUED": "Tu es déjà dans la file",
  "reject.ALREADY_FLIPPED": "Déjà retournée",
- "confirm.skipQueen": "Passer ton coup d’œil ? (la Dame te laisse regarder n’importe quelle carte)"
+ "confirm.skipQueen": "Passer ton coup d’œil ? (la Dame te laisse regarder n’importe quelle carte)",
+ "settings.renderer": "Table",
+ "settings.r2d": "2D",
+ "settings.r3d": "3D",
+ "settings.no3d": "La 3D a besoin de WebGL, que ce navigateur ne peut pas utiliser : la table 2D est utilisée.",
+ "game.fell2d": "La 3D n'a pas pu démarrer sur cet appareil : tu joues sur la table 2D."
 }

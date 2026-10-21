@@ -345,3 +345,13 @@ details { margin: 10px 0; } summary { cursor: pointer; color: var(--cream-2); }
 .act.quiet { min-width: 0; font-size: 14px; background: #0000; border-color: #ffffff22; }
 /* the home menu has its own bunting and badminton in the scene, so drop the wall copies behind the logo */
 .home .backroom .rackets, .home .backroom .wall-flags { display: none; }
+
+/* ---------- 3D table ---------- */
+.stage3d { position: relative; z-index: 1; overflow: hidden; min-height: 0; touch-action: manipulation; }
+.stage3d canvas { display: block; }
+.loading3d { display: grid; place-items: center; }
+.ov3d { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.ov3d-item { position: absolute; left: 0; top: 0; will-change: transform; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.plate3d .nameplate { transform: scale(.92); }
+.plus-badge.in3d, .target-badge.in3d { position: static; transform: none; }
+.deck-count.in3d { position: static; transform: none; }

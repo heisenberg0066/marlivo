@@ -1,9 +1,10 @@
 // The table screen: renderer + HUD (status line, action bar, my held card, banners, pause overlay with the host's
 // manual buttons, finish choice, round/match end panels, log & chat drawer, test tools). No timers anywhere (§10.4).
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { Component, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { sha256Hex, RANK_LABEL, type CardFace, type PlayerView, type Intent } from '@marlivo/engine';
 import type { Session } from '../game/session';
-import { Table, CardEl, NamePlate } from '../render/Table';
+import { Table, CardEl, NamePlate, type TableProps } from '../render/Table';
+import { webglAvailable, has3dFailed, mark3dFailed } from '../render3d/webgl';
 import { BackRoom } from '../render/BackRoom';
 import { useDirector } from '../render/director';
 import { setFlyLayer, clearFly } from '../render/fly';
@@ -42,6 +43,7 @@ export function Game({ session, onExit }: { session: Session; onExit(): void }) 
   const v = dir.display ?? session.view;
   const flyRef = useRef<HTMLDivElement>(null);
   useEffect(() => { setFlyLayer(flyRef.current); return () => { clearFly(); setFlyLayer(null); }; }, []);
+  useEffect(() => { const f = (e: Event) => session?.toast(String((e as CustomEvent).detail)); addEventListener('marlivo-toast', f); return () => removeEventListener('marlivo-toast', f); }, [session]);
   const [drawer, setDrawer] = useState<null | 'log' | 'chat' | 'menu' | 'test'>(null);
   const [picks, setPicks] = useState<string[]>([]);
   const [swapPick, setSwapPick] = useState<string | null>(null);
@@ -208,7 +210,7 @@ export function Game({ session, onExit }: { session: Session; onExit(): void }) 
         {session.test && <button className="icon" onClick={() => setDrawer('test')} aria-label={t('test.title')}>🧪</button>}
       </header>
 
-      <Table view={v} ov={dir.ov} selectable={selectable} selected={selected} seatSelectable={seatSelectable} hover={session.hover} bubbles={session.bubbles}
+      <TableSwitch view={v} ov={dir.ov} selectable={selectable} selected={selected} seatSelectable={seatSelectable} hover={session.hover} bubbles={session.bubbles}
         onSlot={onSlot} onSeat={(s) => seatSelectable.has(s) && act({ t: 'TEN_GIVE', to: s })}
         onDeck={() => { if (myTurn && !r?.drawn && !paused) act({ t: 'DRAW' }); }}
         onPile={() => { if (myTurn && iDrew && !paused) act({ t: 'THROW' }); }} onHoverSlot={onHoverSlot}
@@ -431,3 +433,30 @@ function ChatView({ session, nameOf }: { session: Session; nameOf(n: number): st
   );
 }
 export { NamePlate };
+
+// ---------- 2D / 3D table switch (Settings → Table). three.js is only downloaded when 3D is chosen. ----------
+const Table3D = lazy(() => import('../render3d/Table3D'));
+class Boundary3D extends Component<{ onError(e: unknown): void; children: ReactNode }, { bad: boolean }> {
+  state = { bad: false };
+  static getDerivedStateFromError() { return { bad: true }; }
+  componentDidCatch(e: unknown) { this.props.onError(e); }
+  render() { return this.state.bad ? null : this.props.children; }
+}
+function TableSwitch(p: TableProps) {
+  const prefs = usePrefs();
+  const [, bump] = useState(0);
+  const want3d = prefs.renderer === '3d' && webglAvailable() && !has3dFailed();
+  const fail = useCallback((why: unknown) => {
+    console.warn('3D table failed, falling back to 2D', why);
+    mark3dFailed(); bump((n) => n + 1);
+    window.dispatchEvent(new CustomEvent('marlivo-toast', { detail: t('game.fell2d') }));
+  }, []);
+  if (!want3d) return <Table {...p} />;
+  return (
+    <Boundary3D onError={fail}>
+      <Suspense fallback={<div className="stage stage3d loading3d"><span className="muted">3D…</span></div>}>
+        <Table3D {...p} onFail={fail} />
+      </Suspense>
+    </Boundary3D>
+  );
+}
