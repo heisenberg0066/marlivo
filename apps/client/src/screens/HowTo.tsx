@@ -16,13 +16,12 @@ export function HowTo() {
       <div className="howto-inner">
         <div className="lobby-head"><button className="icon" onClick={() => go('/')}>←</button><Logo small /></div>
         <h2>{t('howto.title')}</h2>
-        <FriendsScene compact />
+        <div className="home-footer howto-scene"><FriendsScene /></div>
         <p className="intro">{frPunct(h.intro, lang)}</p>
         {h.sections.map((s, i) => (
           <section key={i}><h3><span className="sec-n">{i + 1}</span>{frPunct(s.h, lang)}</h3><ul>{s.p.map((x, k) => <li key={k}>{frPunct(x, lang)}</li>)}</ul></section>
         ))}
         <button className="act primary wide" onClick={() => go('/practice')}>{t('home.practice')}</button>
-        <footer className="home-footer"><FriendsScene /></footer>
       </div>
     </div>
   );

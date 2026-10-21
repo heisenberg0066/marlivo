@@ -1,6 +1,6 @@
 // Original placeholder characters (§14.6): Biscuit (bear), Mint (cat), Pepper (owl) and Tango (a round orange
 // critter). 2D busts with a few expressions. A separate layer, so rigged 3D characters can replace them later.
-import { memo, useId } from 'react';
+import { memo } from 'react';
 
 export type Mood = 'idle' | 'happy' | 'sad' | 'away' | 'think' | 'surprised';
 export const CHARACTER_IDS = ['biscuit', 'mint', 'pepper', 'tango'] as const;
@@ -185,42 +185,20 @@ export function TeaGlass({ w = 22 }: { w?: number }) {
   );
 }
 
-/** Footer / rules-page scene: two friends with pumpkin drinks, two playing badminton behind them, flags as bunting. */
+/** Footer / rules-page scene, from Ammar's approved sketch (v5): Ammar and Tango on a bench sipping from pumpkin
+ *  cups, a box of chocolates on a little table, Biscuit and Mint playing badminton, Pepper on the shelf, and the
+ *  France / Palestine / Sweden bunting. Shown whole (never cropped) and scaled to fit the space it is given. */
 export function FriendsScene({ compact = false }: { compact?: boolean }) {
-  const pid = 'sp' + useId().replace(/[^a-zA-Z0-9]/g, '');
+  const base = import.meta.env.BASE_URL;
   return (
-    <div className={`friends-scene ${compact ? 'compact' : ''}`} aria-hidden>
-      <Bunting count={9} />
-      <div className="badminton">
-        <svg viewBox="0 0 300 120" className="badminton-svg">
-          {/* badminton net: two posts, mesh, white top tape */}
-          <g>
-            <line x1="122" y1="44" x2="122" y2="112" stroke="#8a5a32" strokeWidth="2.5" strokeLinecap="round" />
-            <line x1="178" y1="44" x2="178" y2="112" stroke="#8a5a32" strokeWidth="2.5" strokeLinecap="round" />
-            <rect x="122" y="46" width="56" height="24" fill="#f6ebd9" fillOpacity=".06" />
-            {Array.from({ length: 9 }, (_, i) => <line key={'v' + i} x1={128 + i * 6} y1="46" x2={128 + i * 6} y2="70" stroke="#f6ebd9" strokeOpacity=".28" strokeWidth=".7" />)}
-            {Array.from({ length: 4 }, (_, i) => <line key={'h' + i} x1="122" y1={52 + i * 6} x2="178" y2={52 + i * 6} stroke="#f6ebd9" strokeOpacity=".28" strokeWidth=".7" />)}
-            <rect x="121" y="44" width="58" height="3" rx="1" fill="#fffaf0" />
-          </g>
-          <g>
-            <path id={pid} d="M70 60 Q150 -10 230 60 Q150 -10 70 60" fill="none" />
-            <g>
-              <g transform="translate(-6 -8) scale(.6)">
-                <path d="M3 2 L17 2 L13 18 L7 18 Z" fill="#fffaf0" /><ellipse cx="10" cy="22" rx="4" ry="3.6" fill="#e8892f" />
-              </g>
-              <animateMotion dur="2.4s" repeatCount="indefinite" rotate="auto" keyPoints="0;0.5;1" keyTimes="0;0.5;1" calcMode="spline" keySplines=".45 0 .55 1;.45 0 .55 1">
-                <mpath href={`#${pid}`} />
-              </animateMotion>
-            </g>
-          </g>
-        </svg>
-        <div className="player left"><CharacterBust id="mint" mood="happy" size={compact ? 52 : 70} /><span className="swing swing-l"><Racket w={compact ? 14 : 18} rot={-30} /></span></div>
-        <div className="player right"><CharacterBust id="pepper" mood="happy" size={compact ? 52 : 70} /><span className="swing swing-r"><Racket w={compact ? 14 : 18} rot={30} /></span></div>
-      </div>
-      <div className="sippers">
-        <div className="sipper"><CharacterBust id="biscuit" mood="happy" size={compact ? 76 : 100} /><span className="pumpkin-cup"><Pumpkin w={compact ? 34 : 44} /><span className="straw" /></span></div>
-        <div className="sipper"><CharacterBust id="tango" mood="idle" size={compact ? 76 : 100} /><span className="pumpkin-cup eat"><Pumpkin w={compact ? 34 : 44} /><span className="spoon" /></span></div>
-      </div>
+    <div className={`friends-scene ${compact ? 'compact' : ''}`}>
+      <img
+        src={`${base}scene/friends-1280.webp`}
+        srcSet={`${base}scene/friends-760.webp 760w, ${base}scene/friends-1280.webp 1280w`}
+        sizes="(max-width: 800px) 100vw, 1100px"
+        width={1280} height={719} decoding="async" draggable={false}
+        alt="Ammar and Tango sipping from pumpkin cups next to a box of chocolates, while Biscuit and Mint play badminton under French, Palestinian and Swedish flags"
+      />
     </div>
   );
 }
