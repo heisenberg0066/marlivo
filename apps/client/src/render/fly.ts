@@ -7,7 +7,9 @@ import { getPrefs, speedScale } from '../prefs';
 let layer: HTMLDivElement | null = null;
 export function setFlyLayer(el: HTMLDivElement | null) { layer = el; }
 
-export interface Box { x: number; y: number; w: number; h: number; rot?: number }
+/** A screen box (px). A 3D renderer also attaches `w3`, the exact world placement it came from. */
+export interface Box { x: number; y: number; w: number; h: number; rot?: number; w3?: World3 }
+export interface World3 { p: [number, number, number]; yaw: number; w: number; h: number; tilt?: number; sx: number; sy: number }
 export const rectOf = (el: Element | null | undefined): Box | null => {
   if (!el) return null;
   const r = el.getBoundingClientRect();
@@ -61,8 +63,49 @@ export class Sprite {
     anim.cancel();
   }
   remove() { this.el.remove(); }
+  addClass(c: string) { this.el.classList.add(c); }
 }
 
-export function sprite(from: Box, face: CardFace | null = null, faceUp = false) { return new Sprite(from, face, faceUp); }
-export function clearFly() { if (layer) layer.innerHTML = ''; }
+/** What the animation director needs from a renderer: where things are, and flying cards. 2D uses the DOM;
+ *  the 3D table registers its own backend while it is mounted. */
+export interface SpriteLike {
+  move(to: Box, opts?: { ms?: number; lift?: number; spin?: number; flipAt?: { up: boolean; at: number }; easing?: string; bounce?: boolean }): Promise<void>;
+  flip(up: boolean, ms?: number): void;
+  setFace(f: CardFace): void;
+  addClass(c: string): void;
+  remove(): void;
+}
+export interface FlyBackend {
+  /** Keys: `slot:<id>`, `deck`, `hand-me`, `handspot-me`, `hand-<seat>`, `handspot-<seat>`, `area-<seat>`, `pile:<i>`, `pile-next`. */
+  rect(key: string): Box | null;
+  /** Everything at once (taken before a view changes). */
+  all(): Map<string, Box>;
+  sprite(from: Box, face: CardFace | null, faceUp: boolean): SpriteLike;
+  clear(): void;
+}
+
+const domKey = (key: string) => {
+  if (key.startsWith('slot:')) return `[data-slot="${key.slice(5)}"]`;
+  if (key.startsWith('pile:')) return `[data-pile="${key.slice(5)}"]`;
+  if (key === 'pile-next') return '[data-pile-next]';
+  return `[data-anchor="${key}"]`;
+};
+export const domBackend: FlyBackend = {
+  rect: (key) => rectOf(q(domKey(key))),
+  all: () => {
+    const m = new Map<string, Box>();
+    document.querySelectorAll<HTMLElement>('[data-slot]').forEach((el) => { const b = rectOf(el); if (b) m.set('slot:' + el.dataset.slot, b); });
+    document.querySelectorAll<HTMLElement>('[data-anchor]').forEach((el) => { const b = rectOf(el); if (b) m.set(el.dataset.anchor!, b); });
+    document.querySelectorAll<HTMLElement>('[data-pile]').forEach((el) => { const b = rectOf(el); if (b) m.set('pile:' + el.dataset.pile, b); });
+    return m;
+  },
+  sprite: (from, face, up) => new Sprite(from, face, up),
+  clear: () => { if (layer) layer.innerHTML = ''; },
+};
+let backend: FlyBackend = domBackend;
+export function setFlyBackend(b: FlyBackend | null) { backend = b ?? domBackend; }
+export const flyBackend = () => backend;
+
+export function sprite(from: Box, face: CardFace | null = null, faceUp = false): SpriteLike { return backend.sprite(from, face, faceUp); }
+export function clearFly() { backend.clear(); if (backend !== domBackend) domBackend.clear(); }
 export const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, Math.max(0, ms * speedScale())));

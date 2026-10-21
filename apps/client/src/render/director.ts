@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { CardFace, PlayerView } from '@marlivo/engine';
 import type { Session, Update } from '../game/session';
 import { emptyOverrides, type Overrides } from './Table';
-import { rectOf, q, sprite, wait, clearFly, type Box, type Sprite } from './fly';
+import { sprite, wait, clearFly, flyBackend, type Box, type SpriteLike as Sprite } from './fly';
 import { sfx } from './sound';
 import { confetti } from './confetti';
 import { getPrefs } from '../prefs';
@@ -57,21 +57,17 @@ export function useDirector(session: Session | null, bannerFor: BannerFn): Direc
   return st;
 }
 
-/** Captures the screen rect of everything that might be an animation start point, before the DOM changes. */
-function snapRects(): Map<string, Box> {
-  const m = new Map<string, Box>();
-  document.querySelectorAll<HTMLElement>('[data-slot]').forEach((el) => { const b = rectOf(el); if (b) m.set('slot:' + el.dataset.slot, b); });
-  document.querySelectorAll<HTMLElement>('[data-anchor]').forEach((el) => { const b = rectOf(el); if (b) m.set(el.dataset.anchor!, b); });
-  document.querySelectorAll<HTMLElement>('[data-pile]').forEach((el) => { const b = rectOf(el); if (b) m.set('pile:' + el.dataset.pile, b); });
-  return m;
-}
-const slotBox = (id: string) => rectOf(q(`[data-slot="${id}"]`));
-const pileBox = (i: number) => rectOf(q(`[data-pile="${i}"]`)) ?? rectOf(q('[data-pile-next]'));
-const deckBox = () => rectOf(q('[data-anchor="deck"]'));
-const handBox = (seat: number, me: number | null) => (seat === me ? rectOf(q('[data-anchor="hand-me"]')) ?? rectOf(q('[data-anchor="handspot-me"]')) : rectOf(q(`[data-anchor="hand-${seat}"]`)) ?? rectOf(q(`[data-anchor="handspot-${seat}"]`)));
-const areaBox = (seat: number) => rectOf(q(`[data-anchor="area-${seat}"]`));
+/** Captures the screen rect of everything that might be an animation start point, before the view changes. */
+const snapRects = (): Map<string, Box> => flyBackend().all();
+const R = (k: string) => flyBackend().rect(k);
+const slotBox = (id: string) => R('slot:' + id);
+const pileBox = (i: number) => R('pile:' + i) ?? R('pile-next');
+const deckBox = () => R('deck');
+const handBox = (seat: number, me: number | null) => (seat === me ? R('hand-me') ?? R('handspot-me') : R(`hand-${seat}`) ?? R(`handspot-${seat}`));
+const areaBox = (seat: number) => R(`area-${seat}`);
 const sizeLike = (b: Box, like: Box | null): Box => (like ? { ...b, w: like.w, h: like.h, rot: like.rot } : b);
-const center = (b: Box | null | undefined, size: Box | null): Box | null => (b ? { x: b.x, y: b.y, w: size?.w ?? 60, h: size?.h ?? 84, rot: size?.rot ?? 0 } : null);
+// Keeps the size's 3D placement (if any) so a 3D renderer can shift it to the new screen point.
+const center = (b: Box | null | undefined, size: Box | null): Box | null => (b ? { ...(size ?? {}), x: b.x, y: b.y, w: size?.w ?? 60, h: size?.h ?? 84, rot: size?.rot ?? 0 } : null);
 
 function findFace(v: PlayerView, id: string): CardFace | undefined {
   for (const a of Object.values(v.round?.areas ?? {})) for (const s of a) if (s.id === id) return s.face;
@@ -257,7 +253,7 @@ async function choreograph(prev: PlayerView, u: Update, apply: (ov: Overrides, b
         const A = pre.get('slot:' + p.a) ?? slotBox(p.a), B = pre.get('slot:' + p.b) ?? slotBox(p.b);
         const A2 = slotBox(p.a), B2 = slotBox(p.b);
         if (A && B && A2 && B2) {
-          const sa = sprite(A), sb = sprite(B); sa.el.classList.add('gold-trail'); sb.el.classList.add('gold-trail'); sprites.push(sa, sb);
+          const sa = sprite(A), sb = sprite(B); sa.addClass('gold-trail'); sb.addClass('gold-trail'); sprites.push(sa, sb);
           await Promise.all([sa.move(sizeLike(B2, B2), { ms: 720, lift: 70 }), sb.move(sizeLike(A2, A2), { ms: 720, lift: 20 })]);
           sfx('slide');
         }
