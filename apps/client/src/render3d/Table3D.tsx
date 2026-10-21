@@ -45,7 +45,7 @@ function CameraRig({ L, me, mode, portrait }: { L: Layout3; me: number | null; m
     // key points: the full box of every area (as big as it can grow), deck, pile, heads of the opponents
     const pts: THREE.Vector3[] = [];
     for (const [seatS, a] of Object.entries(L.areas)) {
-      const yaw = a.yaw; const hw = Math.max(a.w, 0.3) / 2 + 0.03, hh = Math.max(a.h, 0.2) / 2 + 0.03;
+      const yaw = a.yaw; const mine = Number(seatS) === me; const hw = Math.max(a.w, 0.3) / 2 + 0.03, hh = Math.max(a.h, 0.2) / 2 + (mine ? 0.07 : 0.03); // my cards tilt up when face up: extra room
       for (const [x, z] of [[-hw, -hh], [hw, -hh], [hw, hh], [-hw, hh]]) pts.push(new THREE.Vector3(a.p[0] + x! * Math.cos(yaw) + z! * Math.sin(yaw), 0, a.p[2] - x! * Math.sin(yaw) + z! * Math.cos(yaw)));
       const seat = Number(seatS);
       if (seat !== me && L.chars[seat]) { const c = L.chars[seat]!.p; const y = mode === 'top' ? 0.2 : 0.66; const sx = Math.cos(L.seats[seat]!.a) * 0.2, sz = -Math.sin(L.seats[seat]!.a) * 0.2; pts.push(new THREE.Vector3(c[0], y, c[2]), new THREE.Vector3(c[0] + sx, 0.3, c[2] + sz), new THREE.Vector3(c[0] - sx, 0.3, c[2] - sz)); }

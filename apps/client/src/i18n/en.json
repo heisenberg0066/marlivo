@@ -140,7 +140,7 @@
  "status.waitDraw": "Waiting for {{name}} to draw",
  "status.deciding": "{{name}} is deciding…",
  "status.matching": "{{name}} is matching (target {{t}})…",
- "status.youMatch": "Match {{t}}: flip cards one at a time",
+ "status.youMatch": "Match {{t}}: tap cards to flip them (tap again to turn back), then Done",
  "status.jackYou": "Jack! Swap any two face-down cards, or skip",
  "status.jackPick2": "Now tap a second card",
  "status.queenYou": "Queen! Tap a card to peek",

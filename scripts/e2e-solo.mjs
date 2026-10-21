@@ -7,19 +7,22 @@ const which = process.argv[2] ?? 'phone';
 const lang = process.argv[3] ?? 'en';
 const out = process.env.OUT ?? 'docs/screenshots';
 const maxMs = Number(process.env.MAXMS ?? 600000);
+const r3d = !!process.env.R3D; // play the whole match in the 3D renderer (canvas taps, ray-cast like a finger)
+const bots = Number(process.env.BOTS ?? 2);
 mkdirSync(out, { recursive: true });
 const sizes = { phone: { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true }, laptop: { viewport: { width: 1366, height: 768 } } };
-const b = await chromium.launch({ executablePath: '/usr/bin/google-chrome', args: ['--no-sandbox'] });
+const b = await chromium.launch({ executablePath: '/usr/bin/google-chrome', args: ['--no-sandbox', ...(r3d ? ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] : [])] });
 const ctx = await b.newContext(sizes[which]);
-await ctx.addInitScript(([l]) => {
-  if (!localStorage.getItem('marlivo.prefs')) localStorage.setItem('marlivo.prefs', JSON.stringify({ name: 'Ammar', speed: 'fast', sound: false }));
+await ctx.addInitScript(([l, r]) => {
+  if (!localStorage.getItem('marlivo.prefs')) localStorage.setItem('marlivo.prefs', JSON.stringify({ name: 'Ammar', speed: 'fast', sound: false, renderer: r ? '3d' : '2d' }));
   localStorage.setItem('marlivo.lang', l);
-}, [lang]);
+}, [lang, r3d]);
 const p = await ctx.newPage();
 const errs = [];
 p.on('pageerror', (e) => errs.push('pageerror ' + e.stack));
 p.on('console', (m) => { if (m.type() === 'error') errs.push('console ' + m.text()); });
-const shot = async (name) => { await p.screenshot({ path: `${out}/${which}-${lang}-${name}.png` }); };
+const shot = async (name) => { await p.screenshot({ path: `${out}/${which}-${lang}${r3d ? '-3d-' + (bots + 1) + 'p' : ''}-${name}.png` }); };
+const tapXY = async (x, y) => { if (sizes[which].hasTouch) await p.touchscreen.tap(x, y); else await p.mouse.click(x, y); };
 const shotsDone = new Set();
 const once = async (key) => { if (shotsDone.has(key)) return; shotsDone.add(key); await shot(key); };
 
@@ -30,7 +33,7 @@ await p.goto(base + '#/howto'); await p.waitForTimeout(600); await once('howto')
 await p.goto(base + '#/practice'); await p.waitForTimeout(300);
 await once('practice');
 // 2 bots, normal, 4 cards, target 2, fast bots
-await p.locator('.seg').nth(0).locator('button').nth(1).click();
+await p.locator('.seg').nth(0).locator('button').nth(bots - 1).click();
 await p.locator('.seg').nth(2).locator('button').nth(0).click();
 await p.locator('.seg').nth(3).locator('button').nth(1).click();
 await p.locator('.seg').nth(4).locator('button').nth(2).click();
@@ -49,7 +52,7 @@ while (Date.now() - t0 < maxMs) {
     const log = (v?.log ?? []).map((e) => e.t + (e.p.verdict ? ':' + e.p.verdict : '') + (e.p.power ? ':' + e.p.power : '') + (e.p.reason ? ':' + e.p.reason : '') + (e.t === 'ATTEMPT_END' ? ':' + e.p.result + ':' + (e.p.played?.length ?? 0) : ''));
     return { phase: v?.phase, you: v?.you, active: r?.active?.k, power: r?.active?.power, owner: r?.active?.owner, seat: r?.active?.seat, peekSlot: r?.active?.peekSlot, turnPlayer: r?.active?.turnPlayer,
       current: r?.current, drawnBy: r?.drawn?.by, window: r?.window?.target, log, roundNo: v?.roundNo, starterReason: r?.starterReason, scores: v?.scores, matchWinner: v?.matchWinner, busy: !!document.querySelector('.fly-card'),
-      mineSlots: r ? r.areas[v.you].filter((x) => !x.empty).map((x) => ({ id: x.id, g: x.ghost?.r ?? 0, f: x.face?.r ?? 0 })) : [], drawnR: r?.drawn?.face?.r ?? 0, flipped: r?.active?.flipped ?? [], tentative: r?.active?.tentative ?? [], buttons: [...document.querySelectorAll('.actions button.act')].map((x) => x.textContent), selectable: document.querySelectorAll('.slot.selectable').length, mine: r ? r.areas[v.you]?.filter((x) => !x.empty).length : 0, tentSum: r?.active?.sum, target: r?.active?.target };
+      mineSlots: r ? r.areas[v.you].filter((x) => !x.empty).map((x) => ({ id: x.id, g: x.ghost?.r ?? 0, f: x.face?.r ?? 0 })) : [], drawnR: r?.drawn?.face?.r ?? 0, flipped: r?.active?.flipped ?? [], tentative: r?.active?.tentative ?? [], buttons: [...document.querySelectorAll('.actions button.act')].map((x) => x.textContent), selectable: window.__ml3dHook ? window.__ml3dHook.selectable.length : document.querySelectorAll('.slot.selectable').length, mine: r ? r.areas[v.you]?.filter((x) => !x.empty).length : 0, tentSum: r?.active?.sum, target: r?.active?.target };
   });
   for (const l of st.log) seen.add(l.split(':').slice(0, 3).join(':'));
   if (st.starterReason) seen.add('start:' + st.starterReason);
@@ -58,9 +61,15 @@ while (Date.now() - t0 < maxMs) {
   stuck = sig === lastSig ? stuck + 1 : 0; lastSig = sig;
   if (stuck > 200) { errs.push('STUCK ' + sig); break; }
   if (st.phase === 'MATCH_END') { await p.waitForTimeout(1500); await once('match-end'); break; }
-  const btn = async (re) => { const l = p.locator('.actions button.act', { hasText: re }); if (await l.count()) { await l.first().click(); return true; } return false; };
-  const clickSel = async (k = 0, sel = '.slot.selectable') => { const l = p.locator(sel); const n = await l.count(); if (!n) return false; await l.nth(k % n).click({ force: true }); return true; };
-  const clickSlot = async (id) => { await p.locator(`[data-slot="${id}"]`).click({ force: true }); };
+  const btn = async (re) => { const l = p.locator('.actions button.act', { hasText: re }); if (await l.count()) { try { await l.first().click({ timeout: 1500 }); return true; } catch { return false; } } return false; };
+  const clickSlot = async (id) => {
+    if (r3d) { const xy = await p.evaluate((i) => window.__ml3dHook?.slot(i), id); if (xy) await tapXY(xy.x, xy.y); return; }
+    await p.locator(`[data-slot="${id}"]`).click({ force: true });
+  };
+  const clickSel = async (k = 0, sel = '.slot.selectable') => {
+    if (r3d) { const ids = await p.evaluate(() => window.__ml3dHook?.selectable ?? []); if (!ids.length) return false; await clickSlot(ids[k % ids.length]); return true; }
+    const l = p.locator(sel); const n = await l.count(); if (!n) return false; await l.nth(k % n).click({ force: true }); return true;
+  };
   if (st.phase === 'START_ROLL') { if (await btn(/Roll|Lancer/)) { await p.waitForTimeout(350); await once('dice'); await p.waitForTimeout(1500); await once('deal-anim'); } continue; }
   if (st.phase === 'PEEK') {
     if (st.selectable && st.buttons.every((x) => !/Memori|mémoris/i.test(x))) { await p.waitForTimeout(300); await once('deal-done'); await clickSel(0); await p.waitForTimeout(300); await clickSel(0); await p.waitForTimeout(400); await once('peek'); continue; }
@@ -83,12 +92,17 @@ while (Date.now() - t0 < maxMs) {
   }
   if (st.active === 'attempt' && st.seat === st.you) {
     await once('attempt');
-    const left = st.target - (st.tentSum ?? 0);
-    const unflipped = st.mineSlots.filter((x) => !st.flipped.includes(x.id));
-    const exact = unflipped.find((x) => x.g === left) ?? unflipped.find((x) => x.g && x.g < left);
-    if (exact) { await clickSlot(exact.id); }
-    else if (unflipped.length && Math.random() < 0.5) { await clickSlot(unflipped[rand(unflipped.length)].id); }
-    else { await btn(/Give up|Abandon/); await p.waitForTimeout(200); const y = p.locator('.overlay .panel button.primary'); if (await y.count()) await y.click(); }
+    const sum = st.tentSum ?? 0;
+    if (st.tentative.length && sum === st.target) { await p.waitForTimeout(400); await btn(/Done|Valider/); seen.add('ui:done'); }
+    else if (sum > st.target) { const big = st.mineSlots.filter((x) => st.tentative.includes(x.id)).sort((a, b) => b.f - a.f)[0]; if (big) { await clickSlot(big.id); seen.add('ui:turnBack'); await p.waitForTimeout(300); await once('turn-back'); } }
+    else {
+      const left = st.target - sum;
+      const down = st.mineSlots.filter((x) => !st.tentative.includes(x.id) && !st.flipped.includes(x.id));
+      const exact = down.find((x) => x.g === left) ?? down.find((x) => x.g && x.g < left);
+      if (exact) await clickSlot(exact.id);
+      else if (down.length && Math.random() < 0.5) await clickSlot(down[rand(down.length)].id);
+      else { await btn(/Stop|Arrêter/); await p.waitForTimeout(500); const y = p.locator('.overlay .panel button.primary'); if (await y.count()) await y.click(); }
+    }
     await p.waitForTimeout(150);
     continue;
   }

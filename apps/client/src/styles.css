@@ -368,3 +368,6 @@ details { margin: 10px 0; } summary { cursor: pointer; color: var(--cream-2); }
 .lp-row { display: flex; gap: 3px; }
 .lp-card { display: block; border-radius: 2px; background: linear-gradient(135deg, #c8642a, #7a3b16); border: 1px solid #ffe2b8; }
 .lp-opt.on .lp-card { background: linear-gradient(135deg, #ffb366, #f28a2e); }
+
+.lp-opt.on small { color: #fff3e0; font-weight: 700; }
+.lp-opt small { color: #f3dcc4; }

@@ -140,7 +140,7 @@
  "status.waitDraw": "On attend que {{name}} pioche",
  "status.deciding": "{{name}} réfléchit…",
  "status.matching": "{{name}} assortit (cible {{t}})…",
- "status.youMatch": "Assortir {{t}} : retourne tes cartes une par une",
+ "status.youMatch": "Assortir {{t}} : touchez vos cartes pour les retourner (encore pour les recacher), puis Valider",
  "status.jackYou": "Valet ! Échange deux cartes face cachée, ou passe",
  "status.jackPick2": "Touche maintenant une deuxième carte",
  "status.queenYou": "Dame ! Touche une carte pour la regarder",
