@@ -1,0 +1,83 @@
+name: Test and deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm test
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+        env:
+          MARLIVO_BASE: /marlivo/
+          # Set this repository variable once the Cloudflare Worker is deployed (see SETUP-CLOUDFLARE.md).
+          MARLIVO_SERVER_URL: ${{ vars.MARLIVO_SERVER_URL }}
+      - run: cp apps/client/dist/index.html apps/client/dist/404.html
+      - uses: actions/upload-pages-artifact@v3
+        with: { path: apps/client/dist }
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
+
+  server:
+    # Deploys the Cloudflare Worker only once the CLOUDFLARE_API_TOKEN secret exists (see SETUP-CLOUDFLARE.md).
+    needs: test
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      FRIENDS_KEY: ${{ secrets.MARLIVO_FRIENDS_KEY }}
+      OWNER_KEY: ${{ secrets.MARLIVO_OWNER_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+        if: env.CLOUDFLARE_API_TOKEN != ''
+      - uses: pnpm/action-setup@v4
+        if: env.CLOUDFLARE_API_TOKEN != ''
+      - uses: actions/setup-node@v4
+        if: env.CLOUDFLARE_API_TOKEN != ''
+        with: { node-version: 22, cache: pnpm }
+      - if: env.CLOUDFLARE_API_TOKEN != ''
+        run: pnpm install --frozen-lockfile
+      - if: env.CLOUDFLARE_API_TOKEN != ''
+        working-directory: apps/server
+        run: |
+          npx wrangler deploy
+          if [ -n "$FRIENDS_KEY" ]; then echo "$FRIENDS_KEY" | npx wrangler secret put FRIENDS_KEY; fi
+          if [ -n "$OWNER_KEY" ]; then echo "$OWNER_KEY" | npx wrangler secret put OWNER_KEY; fi
+      - if: env.CLOUDFLARE_API_TOKEN == ''
+        run: echo "No CLOUDFLARE_API_TOKEN secret yet, skipping the server deploy."
