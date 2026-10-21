@@ -22,7 +22,7 @@ export function checkInvariants(s: GameState, prevSlotIds?: Map<number, string[]
 }
 export const slotSnapshot = (s: GameState) => new Map(Object.entries(s.round?.areas ?? {}).map(([k, v]) => [Number(k), v.map((x) => `${x.id}@${x.row},${x.col}`)]));
 
-export function simulateMatch(seed: string | number, opts: { players?: number; levels?: BotLevel[]; target?: number; cards?: number; invariants?: boolean; maxSteps?: number } = {}): SimResult {
+export function simulateMatch(seed: string | number, opts: { players?: number; levels?: BotLevel[]; target?: number; cards?: number; invariants?: boolean; maxSteps?: number; onStep?: (s: GameState) => void } = {}): SimResult {
   const rng: Rng = new SeededRng(seed);
   const botRng: Rng = new SeededRng(String(seed) + 'b');
   const n = opts.players ?? 2 + Math.floor(rng.next() * 3);
@@ -62,6 +62,7 @@ export function simulateMatch(seed: string | number, opts: { players?: number; l
     if (!r.ok) { rejects++; continue; }
     for (const e of r.events) if (e.t === 'PENALTY_DEALT') penalties += (e.p.slots as unknown[]).length;
     s = r.state;
+    opts.onStep?.(s);
     if (opts.invariants !== false && s.phase === 'PLAY') {
       if (s.roundNo !== roundNo) { roundNo = s.roundNo; slots = slotSnapshot(s); }
       checkInvariants(s, slots);

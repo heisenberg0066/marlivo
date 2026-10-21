@@ -9,5 +9,5 @@ export default defineConfig({
       '@marlivo/room': r('./packages/room/src/index.ts'),
     },
   },
-  test: { include: ['packages/*/test/**/*.test.ts', 'apps/server/test/**/*.test.ts'], testTimeout: 120000 },
+  test: { include: ['packages/*/test/**/*.test.ts', 'apps/server/test/**/*.test.ts', 'apps/client/test/**/*.test.ts'], testTimeout: 120000 },
 });
