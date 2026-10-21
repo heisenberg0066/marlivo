@@ -38,7 +38,7 @@ export class Session {
     const store = opts.useSession ? sessionStorage : localStorage;
     this.tokenStore = store;
     this.tag = opts.tag;
-    const hello = (): ClientMsg => ({ type: 'HELLO', name: getPrefs().name || 'Player', characterId: getPrefs().characterId, lang: getLang(), seatToken: store.getItem(tokenKey) ?? undefined, password: this.password || undefined, tag: this.tag });
+    const hello = (): ClientMsg => ({ type: 'HELLO', name: (getPrefs().name || 'Player').slice(0, this.tag ? 11 : 16) + (this.tag ? ' ' + this.tag : ''), characterId: getPrefs().characterId, lang: getLang(), seatToken: store.getItem(tokenKey) ?? undefined, password: this.password || undefined, tag: this.tag });
     if (mode === 'online') this.conn = new OnlineConn(serverUrl().replace(/^http/, 'ws') + '/ws/' + code, hello);
     else if (mode === 'channel') this.conn = new ChannelConn(code, hello);
     else { const c = new LocalConn(opts.port!, opts.connId!); this.conn = c; }

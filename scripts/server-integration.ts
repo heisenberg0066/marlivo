@@ -114,8 +114,11 @@ async function playRoom(n: number, opts: { bots?: number; dropMidAttempt?: boole
       ok(await waitFor(() => !host.view?.seats[victim.seat]?.replacedByBot, 10000), 'host handed the seat back to him');
       victim.auto = true; victim.later();
     } else {
+      const mark = victim.msgs.length;
       await victim.connect();
-      const snap = victim.msgs.filter((m) => m.type === 'SNAPSHOT').pop() as any;
+      await waitFor(() => victim.msgs.slice(mark).some((m) => m.type === 'SNAPSHOT'), 5000);
+      const snap = victim.msgs.slice(mark).find((m) => m.type === 'SNAPSHOT') as any;
+      if (!(snap && JSON.stringify(snap.view.round.active) === before)) console.log('    msgs', victim.msgs.slice(mark).map((m) => m.type).join(','), 'before', before, '\n    after ', JSON.stringify(snap?.view?.round?.active), snap?.view?.phase);
       ok(snap && JSON.stringify(snap.view.round.active) === before, 'reconnected with the seat token and resumed the attempt exactly where it was');
       ok(await waitFor(() => !host.view?.paused, 5000), 'game resumed');
       victim.auto = true; victim.later();
@@ -160,6 +163,7 @@ async function main() {
   const evil = await new Promise<number>((res) => { const w = new WebSocket(BASE.replace(/^http/, 'ws') + '/ws/' + pw.j.code, { headers: { Origin: 'https://evil.example' } }); w.on('unexpected-response', (_q, r) => res(r.statusCode ?? 0)); w.on('open', () => { w.close(); res(101); }); w.on('error', () => res(-1)); });
   ok(evil === 403, `WebSocket from a foreign origin → ${evil}`);
 
+  if (process.env.ONLY_RECONNECT) { await playRoom(2, { bots: 1, dropMidAttempt: true, cards: 6, target: 1 }); console.log(`\n${checks - failures}/${checks} checks passed`); process.exit(failures ? 1 : 0); }
   await playRoom(2, { target: 1 });
   await playRoom(3, { bots: 1 });
   await playRoom(4, { target: 1 });

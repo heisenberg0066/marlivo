@@ -125,8 +125,9 @@ export class RoomHost {
         c.seat = sid; c.tag = msg.tag;
         welcome(sid);
         if (msg.lang && msg.lang !== s.seats[sid]!.lang) this.sys({ t: 'SYS_SET_LANG', seat: sid, lang: msg.lang }, false);
+        // Full snapshot first (resume exactly where he was), then announce he is back (un-pauses the table).
+        this.sendSnapshot(connId, sid);
         if (!s.seats[sid]!.connected || s.seats[sid]!.left) this.sys({ t: 'SYS_CONNECT', seat: sid, connected: true });
-        else this.sendSnapshot(connId, sid);
         return;
       }
     }

@@ -256,5 +256,6 @@
  "reject.WINDOW_CLOSED": "Window closed",
  "reject.NO_WINDOW": "Nothing to match right now",
  "reject.QUEUED": "You're already in line",
- "reject.ALREADY_FLIPPED": "Already flipped"
+ "reject.ALREADY_FLIPPED": "Already flipped",
+ "confirm.skipQueen": "Skip your peek? (the Queen lets you look at any card)"
 }

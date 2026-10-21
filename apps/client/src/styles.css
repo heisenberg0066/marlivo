@@ -343,3 +343,4 @@ details { margin: 10px 0; } summary { cursor: pointer; color: var(--cream-2); }
 }
 @media (max-height: 700px) and (max-aspect-ratio: 21/20) { .my-hand, .held-spot.me { transform: scale(.82); transform-origin: 50% 100%; } .act { min-height: 44px; font-size: 16px; } }
 @media (prefers-reduced-motion: reduce) { .lantern-wrap, .bunting-flag, .char-body, .swing, .pumpkin-cup { animation: none !important; } }
+.act.quiet { min-width: 0; font-size: 14px; background: #0000; border-color: #ffffff22; }

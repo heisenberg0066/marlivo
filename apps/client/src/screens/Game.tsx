@@ -124,7 +124,7 @@ export function Game({ session, onExit }: { session: Session; onExit(): void }) 
             if (picks.length === 2) buttons.push({ label: t('game.swap'), kind: 'primary', key: 'enter', on: () => act({ t: 'JACK_SWAP', a: picks[0]!, b: picks[1]! }) });
             buttons.push({ label: t('game.skip'), key: 's', on: () => act({ t: 'JACK_SKIP' }) });
           } else if (a.power === 'Q') {
-            if (!a.peekSlot) { status = t('status.queenYou'); selectable = new Set(allFaceDown); buttons.push({ label: t('game.skip'), key: 's', on: () => act({ t: 'QUEEN_SKIP', confirm: true }) }); }
+            if (!a.peekSlot) { status = t('status.queenYou'); selectable = new Set(allFaceDown); buttons.push({ label: t('game.skip'), key: 's', kind: 'quiet', on: () => setConfirm({ text: t('confirm.skipQueen'), go: () => act({ t: 'QUEEN_SKIP', confirm: true }) }) }); }
             else { status = t('status.queenSeen'); buttons.push({ label: t('game.done'), kind: 'primary', key: 'enter', on: () => act({ t: 'QUEEN_DONE' }) }); }
           } else {
             status = t('status.tenYou');
@@ -211,7 +211,8 @@ export function Game({ session, onExit }: { session: Session; onExit(): void }) 
       <Table view={v} ov={dir.ov} selectable={selectable} selected={selected} seatSelectable={seatSelectable} hover={session.hover} bubbles={session.bubbles}
         onSlot={onSlot} onSeat={(s) => seatSelectable.has(s) && act({ t: 'TEN_GIVE', to: s })}
         onDeck={() => { if (myTurn && !r?.drawn && !paused) act({ t: 'DRAW' }); }}
-        onPile={() => { if (myTurn && iDrew && !paused) act({ t: 'THROW' }); }} onHoverSlot={onHoverSlot} />
+        onPile={() => { if (myTurn && iDrew && !paused) act({ t: 'THROW' }); }} onHoverSlot={onHoverSlot}
+        onLongPressMine={() => { if (canClaim && !paused) { navigator.vibrate?.(20); act({ t: 'CLAIM_MATCH' }); } }} />
 
       <div className="fly-layer" ref={flyRef} />
 

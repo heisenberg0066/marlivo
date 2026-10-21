@@ -33,6 +33,8 @@ export interface TableProps {
   onDeck(): void;
   onPile(): void;
   onHoverSlot?(id: string | null): void;
+  /** Long-press one of your own cards = Match (§5.2). */
+  onLongPressMine?(): void;
 }
 
 const FaceHtml = memo(function FaceHtml({ face, four }: { face: CardFace | null; four: boolean }) {
@@ -168,7 +170,7 @@ export const Table = memo(function Table(p: TableProps) {
                   {slots.map((sv) => <SlotCard key={sv.id} sv={sv} a={a} place={L.places[sv.id]!} ov={p.ov.slot[sv.id]} four={four} rot={a.rot}
                     selectable={p.selectable.has(sv.id)} selected={p.selected.has(sv.id)} numbers={prefs.slotNumbers} hovered={Object.values(p.hover).includes(sv.id)}
                     tentative={active?.k === 'attempt' && active.tentative.includes(sv.id)} wrongMark={active?.k === 'attempt' && active.wrong.includes(sv.id)}
-                    onTap={() => p.onSlot(sv.id, seat)} onHover={p.onHoverSlot} />)}
+                    onTap={() => p.onSlot(sv.id, seat)} onHover={p.onHoverSlot} onLong={isMe ? p.onLongPressMine : undefined} />)}
                   {p.ov.badges[seat] && <div className="plus-badge" style={{ transform: `rotate(${-a.rot}deg)` }}>{p.ov.badges[seat]}</div>}
                 </div>
                 {!isMe && si && <div className="bb-anchor" data-bb={seat} style={{ left: a.x, top: plateTop }} />}
@@ -208,8 +210,11 @@ export const Table = memo(function Table(p: TableProps) {
   );
 });
 
-const SlotCard = memo(function SlotCard(p: { sv: SlotView; a: Anchor; place: { x: number; y: number }; ov?: Overrides['slot'][string]; four: boolean; rot: number; selectable: boolean; selected: boolean; numbers: boolean; hovered: boolean; tentative: boolean; wrongMark: boolean; onTap(): void; onHover?(id: string | null): void }) {
+const SlotCard = memo(function SlotCard(p: { sv: SlotView; a: Anchor; place: { x: number; y: number }; ov?: Overrides['slot'][string]; four: boolean; rot: number; selectable: boolean; selected: boolean; numbers: boolean; hovered: boolean; tentative: boolean; wrongMark: boolean; onTap(): void; onHover?(id: string | null): void; onLong?(): void }) {
   const { sv, a, place, ov } = p;
+  const lp = useRef<{ t: ReturnType<typeof setTimeout> | null; fired: boolean }>({ t: null, fired: false });
+  const down = () => { if (!p.onLong) return; lp.current.fired = false; lp.current.t = setTimeout(() => { lp.current.fired = true; p.onLong?.(); }, 500); };
+  const up = () => { if (lp.current.t) clearTimeout(lp.current.t); lp.current.t = null; };
   const forced = ov?.show;
   const face = forced && forced !== 'back' ? forced : forced === 'back' ? null : sv.face ?? null;
   const shown = !ov?.hide && (!sv.empty || (forced && forced !== 'back'));
@@ -220,7 +225,7 @@ const SlotCard = memo(function SlotCard(p: { sv: SlotView; a: Anchor; place: { x
   ].join(' ');
   return (
     <div className={cls} data-slot={sv.id} data-rot={p.rot} style={{ left: `calc(50% + ${place.x}px)`, top: `calc(50% + ${place.y}px)`, width: a.cw, height: a.ch }}
-      onClick={(e) => { e.stopPropagation(); p.onTap(); }} onPointerEnter={() => p.onHover?.(sv.id)} onPointerLeave={() => p.onHover?.(null)}
+      onClick={(e) => { e.stopPropagation(); if (lp.current.fired) { lp.current.fired = false; return; } p.onTap(); }} onPointerDown={down} onPointerUp={up} onPointerCancel={up} onContextMenu={(e) => p.onLong && e.preventDefault()} onPointerEnter={() => p.onHover?.(sv.id)} onPointerLeave={() => { up(); p.onHover?.(null); }}
       role="button" aria-label={`slot ${sv.num}${face ? ` ${face.r}${face.s}` : ''}`}>
       <div className="slot-outline" />
       {shown && <CardEl face={face} up={!!face} four={p.four} className="slot-card" />}

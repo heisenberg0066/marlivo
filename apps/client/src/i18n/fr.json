@@ -256,5 +256,6 @@
  "reject.WINDOW_CLOSED": "Fenêtre fermée",
  "reject.NO_WINDOW": "Rien à assortir pour l’instant",
  "reject.QUEUED": "Tu es déjà dans la file",
- "reject.ALREADY_FLIPPED": "Déjà retournée"
+ "reject.ALREADY_FLIPPED": "Déjà retournée",
+ "confirm.skipQueen": "Passer ton coup d’œil ? (la Dame te laisse regarder n’importe quelle carte)"
 }
