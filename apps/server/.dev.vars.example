@@ -1,0 +1,4 @@
+FRIENDS_KEY=local-friends-key
+OWNER_KEY=local-owner-key
+# local testing only: allow many room creations per hour (production default is 10)
+CREATE_LIMIT_PER_HOUR=1000

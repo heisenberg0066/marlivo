@@ -1,0 +1,26 @@
+{
+  "name": "marlivo",
+  "private": true,
+  "version": "0.1.0",
+  "description": "MarLivo: a private online multiplayer house-rules card game (Phase 1)",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "test:server": "node --import tsx scripts/server-integration.ts",
+    "soak": "node --import tsx scripts/soak.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "dev": "pnpm --filter @marlivo/client dev",
+    "build": "pnpm --filter @marlivo/client build",
+    "server:dev": "pnpm --filter @marlivo/server dev"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "fast-check": "^3.22.0",
+    "playwright-core": "^1.64.1",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0",
+    "ws": "^8.18.0"
+  },
+  "packageManager": "pnpm@10.34.6"
+}

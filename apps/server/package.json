@@ -1,0 +1,13 @@
+{
+  "name": "@marlivo/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --local --port 8787",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": { "@marlivo/engine": "workspace:*", "@marlivo/bots": "workspace:*", "@marlivo/room": "workspace:*" },
+  "devDependencies": { "wrangler": "^4.40.0", "@cloudflare/workers-types": "^4.20250101.0" }
+}
