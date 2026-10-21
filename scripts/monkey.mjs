@@ -62,7 +62,8 @@ while (Date.now() - t0 < 360000 && (draws < rounds || attempts < rounds)) {
     const at = await press(/^Match/);
     if (!at) continue;
     await p.waitForTimeout(30);
-    const sm = await state(); if (sm.a !== 'attempt' || sm.aSeat !== sm.you) continue;
+    let sm = await state(); for (let w = 0; w < 8 && !(sm.a === 'attempt' && sm.aSeat === sm.you); w++) { await p.waitForTimeout(100); sm = await state(); }
+    if (sm.a !== 'attempt' || sm.aSeat !== sm.you) continue;
     for (let k = 0; k < 4; k++) { await tap(at.x, at.y); taps++; await p.waitForTimeout(60); } // finger keeps tapping where Match was
     let s2 = await state();
     if (s2.a !== 'attempt' || s2.aSeat !== s2.you) { if (s2.a === null && !s2.window) continue; /* the window closed before my claim (someone else acted) */ }
@@ -80,12 +81,14 @@ while (Date.now() - t0 < 360000 && (draws < rounds || attempts < rounds)) {
     }
     continue;
   }
+  if (s.current === s.you && !s.a && s.drawnBy === s.you) { await press(/^Throw/); continue; }
   if (s.current === s.you && !s.a) {
     if (s.drawnBy !== s.you) {
       const at = await press(/^Draw/);
       if (!at) continue;
       await p.waitForTimeout(30);
-      const sd = await state(); if (sd.drawnBy !== sd.you) continue; // the tap landed inside the new-button guard; try again
+      let sd = await state(); for (let w = 0; w < 8 && sd.drawnBy !== sd.you; w++) { await p.waitForTimeout(100); sd = await state(); }
+      if (sd.drawnBy !== sd.you) continue; // the tap landed inside the new-button guard; try again
       for (let k = 0; k < 4; k++) { await tap(at.x, at.y); taps++; await p.waitForTimeout(70); } // where Draw was, Throw now is
       draws++;
       for (let k = 0; k < 20; k++) {

@@ -15,15 +15,13 @@ import { usePrefs, setPrefs } from '../prefs';
 import { Lobby } from './Lobby';
 import { TestPanel } from './TestPanel';
 
-/** UI tap guards (not game timers): a button that just appeared ignores taps for a moment, so a finger still
- *  tapping "Match" or "Draw" cannot hit the "Stop" or "Throw" button that replaces it. */
-export const BUTTON_ARM_MS = 350;
-export const TAP_BOUNCE_MS = 280;
-export function armed(mountedAt: number, now: number) { return now - mountedAt >= BUTTON_ARM_MS; }
+import { armed } from './tapGuard';
+import { TAP_BOUNCE_MS } from './tapGuard';
+let prevBarTap = -1e9;
 function ActButton({ b }: { b: { label: string; on(): void; kind?: string; disabled?: boolean } }) {
   const born = useRef(performance.now());
   return <button className={`act ${b.kind ?? ''}`} disabled={b.disabled}
-    onClick={() => { if (armed(born.current, performance.now())) b.on(); }}>{b.label}</button>;
+    onClick={() => { const now = performance.now(); const ok = armed(born.current, prevBarTap, now); prevBarTap = now; if (ok) b.on(); }}>{b.label}</button>;
 }
 
 const SUIT_CH: Record<string, string> = { S: '♠', H: '♥', D: '♦', C: '♣' };
