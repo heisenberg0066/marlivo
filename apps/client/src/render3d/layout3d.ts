@@ -8,9 +8,9 @@ import { areaLayout, pileSpot, seatPositions, type Anchor, type SeatPos } from '
 export type V3 = [number, number, number];
 export interface Place3 { p: V3; yaw: number; w: number; h: number; tilt?: number }
 
-export const TABLE_R = 1.25;
-export const CARD_ME = { w: 0.15, h: 0.21 };
-export const CARD_OPP = { w: 0.118, h: 0.165 };
+export const TABLE_R = 1.0;
+export const CARD_ME = { w: 0.142, h: 0.2 };
+export const CARD_OPP = { w: 0.112, h: 0.157 };
 export const CARD_T = 0.0016; // card thickness used for stacking
 
 /** Seat direction angle (radians). 0 = me (towards the camera); the next player sits on my left (§4.6). */
@@ -26,16 +26,16 @@ export const SEAT_ANGLE: Record<SeatPos, number> = {
 
 interface AreaSpec { dist: number; maxW: number; maxH: number; card: { w: number; h: number } }
 const AREA: Record<SeatPos, AreaSpec> = {
-  bottom: { dist: 0.8, maxW: 1.1, maxH: 0.5, card: CARD_ME },
-  top: { dist: 0.82, maxW: 0.86, maxH: 0.42, card: CARD_OPP },
-  left: { dist: 0.84, maxW: 0.74, maxH: 0.4, card: CARD_OPP },
-  right: { dist: 0.84, maxW: 0.74, maxH: 0.4, card: CARD_OPP },
-  topLeft: { dist: 0.82, maxW: 0.7, maxH: 0.42, card: CARD_OPP },
-  topRight: { dist: 0.82, maxW: 0.7, maxH: 0.42, card: CARD_OPP },
+  bottom: { dist: 0.64, maxW: 0.86, maxH: 0.4, card: CARD_ME },
+  top: { dist: 0.66, maxW: 0.7, maxH: 0.34, card: CARD_OPP },
+  left: { dist: 0.68, maxW: 0.6, maxH: 0.32, card: CARD_OPP },
+  right: { dist: 0.68, maxW: 0.6, maxH: 0.32, card: CARD_OPP },
+  topLeft: { dist: 0.66, maxW: 0.56, maxH: 0.34, card: CARD_OPP },
+  topRight: { dist: 0.66, maxW: 0.56, maxH: 0.34, card: CARD_OPP },
 };
 
-export const DECK: V3 = [-0.22, 0, 0.02];
-export const PILE = { x: 0.2, z: 0, r: 0.17 };
+export const DECK: V3 = [-0.17, 0, 0.0];
+export const PILE = { x: 0.16, z: 0, r: 0.12 };
 
 /** local (x = owner's right, y = towards owner) → world (x, z) for a seat angle. */
 export function toWorld(a: number, cx: number, cz: number, lx: number, ly: number): [number, number] {
@@ -84,8 +84,8 @@ export function layout3(view: PlayerView, large = false): Layout3 {
     }
     const handD = sp === 'bottom' ? TABLE_R - 0.05 : TABLE_R + 0.08;
     out.hands[seat] = { p: [dx * handD, sp === 'bottom' ? 0.2 : 0.36, dz * handD], yaw: a, ...card, tilt: sp === 'bottom' ? 0.5 : 1.25 };
-    out.chars[seat] = { p: [dx * (TABLE_R + 0.34), 0, dz * (TABLE_R + 0.34)], yaw: a + Math.PI };
-    out.dice[seat] = [dx * 0.46, 0.045, dz * 0.46];
+    out.chars[seat] = { p: [dx * (TABLE_R + 0.3), 0, dz * (TABLE_R + 0.3)], yaw: a + Math.PI };
+    out.dice[seat] = [dx * 0.34, 0, dz * 0.34];
   }
   const count = r?.deckCount ?? 0;
   out.deck = { p: [DECK[0], Math.max(1, count) * CARD_T * 0.6, DECK[2]], yaw: 0.06, ...CARD_OPP, count };

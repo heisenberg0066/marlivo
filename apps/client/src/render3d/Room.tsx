@@ -6,7 +6,7 @@ import * as THREE from 'three';
 import { TABLE_R } from './layout3d';
 import { feltTexture, woodTexture, wallTexture, skylineTexture, flagTexture, FLAG_ASPECT, shadowTexture } from './textures';
 
-const lam = (c: string, map?: THREE.Texture) => new THREE.MeshLambertMaterial({ color: c, map });
+const lam = (c: string, map?: THREE.Texture) => new THREE.MeshLambertMaterial(map ? { color: c, map } : { color: c });
 const basic = (map: THREE.Texture, color = '#ffffff') => new THREE.MeshBasicMaterial({ map, color });
 
 export function Pumpkin3D({ p, s = 1, rot = 0, tone = '#e8842c' }: { p: [number, number, number]; s?: number; rot?: number; tone?: string }) {
@@ -85,20 +85,20 @@ export const Room = memo(function Room() {
       {/* light: warm hemisphere + the pendant lamp (no realtime shadows; contact shadows are baked blobs) */}
       <hemisphereLight args={['#ffd9a8', '#3a2010', 1.1]} />
       <directionalLight position={[0.6, 3, 1.4]} intensity={0.9} color="#ffe2b8" />
-      <pointLight position={[0, 1.25, 0]} intensity={2.2} distance={4.5} decay={1.4} color="#ffc27a" />
+      <pointLight position={[0, 1.6, 0]} intensity={2.6} distance={4.5} decay={1.3} color="#ffc27a" />
 
       {/* floor, rug, walls */}
       <mesh material={M.floor} rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.75, 0]}><planeGeometry args={[12, 12]} /></mesh>
       <mesh material={M.rug} rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.745, 0]}><circleGeometry args={[2.1, 40]} /></mesh>
       <mesh material={M.rug2} rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.744, 0]}><ringGeometry args={[1.85, 1.95, 40]} /></mesh>
-      <mesh material={M.wall} position={[0, 1.0, -3.2]}><planeGeometry args={[9, 3.6]} /></mesh>
-      <mesh material={M.wall} position={[-3.6, 1.0, 0]} rotation={[0, Math.PI / 2, 0]}><planeGeometry args={[9, 3.6]} /></mesh>
-      <mesh material={M.wall} position={[3.6, 1.0, 0]} rotation={[0, -Math.PI / 2, 0]}><planeGeometry args={[9, 3.6]} /></mesh>
-      <mesh material={M.wains} position={[0, -0.45, -3.18]}><boxGeometry args={[9, 0.6, 0.04]} /></mesh>
-      <mesh material={M.trim} position={[0, -0.14, -3.16]}><boxGeometry args={[9, 0.05, 0.06]} /></mesh>
+      <mesh material={M.wall} position={[0, 1.0, -2.6]}><planeGeometry args={[9, 3.6]} /></mesh>
+      <mesh material={M.wall} position={[-3.0, 1.0, 0]} rotation={[0, Math.PI / 2, 0]}><planeGeometry args={[9, 3.6]} /></mesh>
+      <mesh material={M.wall} position={[3.0, 1.0, 0]} rotation={[0, -Math.PI / 2, 0]}><planeGeometry args={[9, 3.6]} /></mesh>
+      <mesh material={M.wains} position={[0, -0.45, -2.58]}><boxGeometry args={[9, 0.6, 0.04]} /></mesh>
+      <mesh material={M.trim} position={[0, -0.14, -2.56]}><boxGeometry args={[9, 0.05, 0.06]} /></mesh>
 
       {/* big window with the evening city */}
-      <group position={[0, 1.05, -3.17]}>
+      <group position={[0, 1.05, -2.57]}>
         <mesh material={M.sky}><planeGeometry args={[2.7, 1.6]} /></mesh>
         {[[-1.38, 0, 0.08, 1.75], [1.38, 0, 0.08, 1.75], [0, 0.84, 2.84, 0.08], [0, -0.84, 2.84, 0.1], [0, 0, 0.05, 1.6], [0, 0.1, 2.7, 0.04]].map(([x, y, w, h], i) => (
           <mesh key={i} material={M.frame} position={[x!, y!, 0.03]}><boxGeometry args={[w!, h!, 0.06]} /></mesh>
@@ -106,11 +106,11 @@ export const Room = memo(function Room() {
         <mesh material={M.shelf} position={[0, -0.9, 0.1]}><boxGeometry args={[3.0, 0.05, 0.22]} /></mesh>
         <Pumpkin3D p={[-1.1, -0.875, 0.1]} s={1.3} /><Pumpkin3D p={[-0.82, -0.875, 0.12]} s={0.85} tone="#f09a3e" /><Pumpkin3D p={[1.15, -0.875, 0.1]} s={1.1} />
       </group>
-      <Bunting from={[-2.5, 2.2, -3.12]} to={[2.5, 2.2, -3.12]} sag={0.28} n={13} />
+      <Bunting from={[-2.5, 2.2, -2.52]} to={[2.5, 2.2, -2.52]} sag={0.28} n={13} />
 
       {/* shelves with pumpkins (left and right of the window) */}
       {[-1, 1].map((sd) => (
-        <group key={sd} position={[sd * 2.45, 0, -3.05]}>
+        <group key={sd} position={[sd * 2.45, 0, -2.45]}>
           {[0.35, 0.95, 1.55].map((y, i) => <mesh key={i} material={M.shelf} position={[0, y, 0]}><boxGeometry args={[1.1, 0.04, 0.26]} /></mesh>)}
           <Pumpkin3D p={[-0.25, 0.37, 0]} s={1.4} /><Pumpkin3D p={[0.2, 0.37, 0.02]} s={0.9} tone="#f09a3e" />
           <Pumpkin3D p={[0.28, 0.97, 0]} s={1.1} tone="#d97a2a" />
@@ -119,13 +119,13 @@ export const Room = memo(function Room() {
         </group>
       ))}
       {/* badminton on the wall */}
-      <group position={[-1.75, 1.25, -3.15]}><Racket3D p={[-0.06, 0, 0]} rot={0.35} /><Racket3D p={[0.06, 0, 0.01]} rot={-0.35} /><Shuttle3D p={[0, 0.56, 0.02]} rot={0.4} /></group>
-      <group position={[1.8, 1.3, -3.15]}><Shuttle3D p={[0, 0, 0]} rot={-0.3} /><Shuttle3D p={[0.12, -0.05, 0]} rot={0.5} /></group>
+      <group position={[-1.75, 1.25, -2.55]}><Racket3D p={[-0.06, 0, 0]} rot={0.35} /><Racket3D p={[0.06, 0, 0.01]} rot={-0.35} /><Shuttle3D p={[0, 0.56, 0.02]} rot={0.4} /></group>
+      <group position={[1.8, 1.3, -2.55]}><Shuttle3D p={[0, 0, 0]} rot={-0.3} /><Shuttle3D p={[0.12, -0.05, 0]} rot={0.5} /></group>
 
       {/* pendant lamp */}
-      <mesh material={M.cord} position={[0, 2.05, 0]}><cylinderGeometry args={[0.006, 0.006, 1.1, 4]} /></mesh>
-      <mesh material={M.shade} position={[0, 1.45, 0]}><coneGeometry args={[0.32, 0.22, 20, 1, true]} /></mesh>
-      <mesh material={M.bulb} position={[0, 1.36, 0]}><sphereGeometry args={[0.07, 12, 8]} /></mesh>
+      <mesh material={M.cord} position={[0, 2.35, 0]}><cylinderGeometry args={[0.006, 0.006, 0.7, 4]} /></mesh>
+      <mesh material={M.shade} position={[0, 1.95, 0]}><coneGeometry args={[0.26, 0.2, 20, 1, true]} /></mesh>
+      <mesh material={M.bulb} position={[0, 1.87, 0]}><sphereGeometry args={[0.07, 12, 8]} /></mesh>
 
       {/* the table: wooden top with a rim, green felt, pedestal */}
       <mesh material={M.tableTop} position={[0, -0.04, 0]}><cylinderGeometry args={[R + 0.12, R + 0.1, 0.08, 48]} /></mesh>
@@ -135,18 +135,18 @@ export const Room = memo(function Room() {
       <mesh material={M.leg} position={[0, -0.74, 0]}><cylinderGeometry args={[0.55, 0.6, 0.03, 16]} /></mesh>
 
       {/* my corner: tea glass and a bowl of chocolates (Liv's favourites) */}
-      <group position={[-0.86, 0, 0.76]}>
+      <group position={[-0.66, 0, 0.6]}>
         <mesh material={M.shadow} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.002, 0]}><planeGeometry args={[0.16, 0.16]} /></mesh>
         <mesh material={M.glass} position={[0, 0.055, 0]}><cylinderGeometry args={[0.04, 0.03, 0.11, 12]} /></mesh>
         <mesh material={M.bowl} position={[0, 0.003, 0]}><cylinderGeometry args={[0.06, 0.06, 0.006, 16]} /></mesh>
       </group>
-      <group position={[0.86, 0, 0.74]}>
+      <group position={[0.66, 0, 0.6]}>
         <mesh material={M.shadow} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.002, 0]}><planeGeometry args={[0.32, 0.32]} /></mesh>
         <mesh material={M.bowl} position={[0, 0.03, 0]} scale={[1, 0.55, 1]}><sphereGeometry args={[0.11, 16, 10, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2]} /></mesh>
         {candies.map((c, i) => <mesh key={i} position={[c.x, c.y, c.z]} rotation={[0, c.r, 0]}><boxGeometry args={[0.035, 0.018, 0.024]} /><meshLambertMaterial color={c.c} /></mesh>)}
       </group>
       {/* a few loose chocolates on the felt edge */}
-      {[[1.0, 0.52, 0.4, '#c0392b'], [-0.7, 0.98, -0.3, '#e2b23c'], [0.68, 1.0, 1.2, '#7a4a2a'], [-1.02, 0.5, 2.2, '#3b6fb0']].map(([x, z, r, c], i) => (
+      {[[0.8, 0.42, 0.4, '#c0392b'], [-0.52, 0.78, -0.3, '#e2b23c'], [0.5, 0.8, 1.2, '#7a4a2a'], [-0.82, 0.4, 2.2, '#3b6fb0']].map(([x, z, r, c], i) => (
         <mesh key={i} position={[x as number, 0.009, z as number]} rotation={[0, r as number, 0]}><boxGeometry args={[0.035, 0.016, 0.024]} /><meshLambertMaterial color={c as string} /></mesh>
       ))}
     </group>

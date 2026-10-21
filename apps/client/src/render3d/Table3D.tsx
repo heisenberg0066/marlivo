@@ -40,26 +40,36 @@ function CameraRig({ L, me, mode, portrait }: { L: Layout3; me: number | null; m
   const seatsKey = Object.entries(L.seats).map(([s, x]) => s + x.pos).join(',');
   useLayoutEffect(() => {
     const cam = camera as THREE.PerspectiveCamera;
-    cam.fov = portrait ? 52 : 40; cam.aspect = size.width / size.height;
-    const el = mode === 'top' ? 1.2 : portrait ? 0.98 : 0.74;
-    const target = new THREE.Vector3(0, 0, portrait ? 0.14 : 0.2);
+    cam.fov = portrait ? 56 : 44; cam.aspect = size.width / size.height;
+    const el = mode === 'top' ? 1.15 : portrait ? 0.82 : 0.6;
     // key points: the full box of every area (as big as it can grow), deck, pile, heads of the opponents
     const pts: THREE.Vector3[] = [];
     for (const [seatS, a] of Object.entries(L.areas)) {
       const yaw = a.yaw; const hw = Math.max(a.w, 0.3) / 2 + 0.03, hh = Math.max(a.h, 0.2) / 2 + 0.03;
       for (const [x, z] of [[-hw, -hh], [hw, -hh], [hw, hh], [-hw, hh]]) pts.push(new THREE.Vector3(a.p[0] + x! * Math.cos(yaw) + z! * Math.sin(yaw), 0, a.p[2] - x! * Math.sin(yaw) + z! * Math.cos(yaw)));
       const seat = Number(seatS);
-      if (seat !== me && L.chars[seat]) { const c = L.chars[seat]!.p; pts.push(new THREE.Vector3(c[0], mode === 'top' ? 0.2 : 0.78, c[2])); }
+      if (seat !== me && L.chars[seat]) { const c = L.chars[seat]!.p; const y = mode === 'top' ? 0.2 : 0.66; const sx = Math.cos(L.seats[seat]!.a) * 0.2, sz = -Math.sin(L.seats[seat]!.a) * 0.2; pts.push(new THREE.Vector3(c[0], y, c[2]), new THREE.Vector3(c[0] + sx, 0.3, c[2] + sz), new THREE.Vector3(c[0] - sx, 0.3, c[2] - sz)); }
     }
-    pts.push(new THREE.Vector3(-0.4, 0, 0), new THREE.Vector3(0.45, 0, 0));
+    pts.push(new THREE.Vector3(-0.3, 0, 0), new THREE.Vector3(0.32, 0, 0));
     const dir = new THREE.Vector3(0, Math.sin(el), Math.cos(el));
-    const fits = (d: number) => {
-      cam.position.copy(target).addScaledVector(dir, d); cam.lookAt(target); cam.updateProjectionMatrix(); cam.updateMatrixWorld();
-      return pts.every((p) => { const q = p.clone().project(cam); return q.z < 1 && Math.abs(q.x) < 0.96 && q.y > -0.97 && q.y < 0.9; });
+    const target = new THREE.Vector3();
+    const range = () => {
+      let minY = 9, maxY = -9, maxX = 0, behind = false;
+      for (const p of pts) { const q = p.clone().project(cam); if (q.z >= 1) behind = true; minY = Math.min(minY, q.y); maxY = Math.max(maxY, q.y); maxX = Math.max(maxX, Math.abs(q.x)); }
+      return { minY, maxY, maxX, behind };
     };
-    let lo = 1.2, hi = 9;
-    for (let i = 0; i < 24; i++) { const mid = (lo + hi) / 2; if (fits(mid)) hi = mid; else lo = mid; }
-    fits(hi);
+    const place = (d: number) => { cam.clearViewOffset(); cam.position.copy(target).addScaledVector(dir, d); cam.lookAt(target); cam.updateProjectionMatrix(); cam.updateMatrixWorld(); };
+    // fits when the points' width fits and their height fits once centred (a lens shift centres them later)
+    const fits = (d: number) => { place(d); const r = range(); return !r.behind && r.maxX < 0.95 && r.maxY - r.minY < 1.8; };
+    const solve = () => { let lo = 0.8, hi = 9; for (let i = 0; i < 22; i++) { const mid = (lo + hi) / 2; if (fits(mid)) hi = mid; else lo = mid; } return hi; };
+    // pick the look-at point that lets the camera sit closest (biggest cards)
+    let best = { z: 0, d: 99 };
+    for (let z = -0.4; z <= 0.41; z += 0.1) { target.set(0, 0, z); const d = solve(); if (d < best.d - 1e-3) best = { z, d }; }
+    target.set(0, 0, best.z); place(best.d);
+    const r = range();
+    const shift = ((r.maxY + r.minY) / 2 + 0.03) * (size.height / 2); // centre the content vertically (lens shift)
+    cam.setViewOffset(size.width, size.height, 0, -shift, size.width, size.height);
+    cam.updateProjectionMatrix();
   }, [camera, size.width, size.height, seatsKey, mode, portrait, me]);
   return null;
 }
@@ -178,7 +188,7 @@ const Scene = memo(function Scene({ p, L, stage, points, els, portrait }: { p: T
               );
             })}
             {!isMe && si && L.chars[seat] && (
-              <group position={L.chars[seat]!.p} rotation={[0, L.chars[seat]!.yaw, 0]} onClick={(e) => { if (pick) { e.stopPropagation(); p.onSeat(seat); } }}>
+              <group position={L.chars[seat]!.p} rotation={[0, L.chars[seat]!.yaw, 0]} scale={0.85} onClick={(e) => { if (pick) { e.stopPropagation(); p.onSeat(seat); } }}>
                 <Chair p={[0, 0, -0.12]} yaw={0} />
                 <Suspense fallback={null}><Figure id={si.characterId} mood={moodOf(v, ov, seat)} seed={seat} /></Suspense>
               </group>
@@ -207,6 +217,15 @@ export const Table3D = memo(function Table3D(p: TableProps & { onFail?(why: stri
   const L = useMemo(() => layout3(v, prefs.largeCards), [v, prefs.largeCards]);
   useEffect(() => { setFlyBackend(backend3d); return () => { backend3d.clear(); setFlyBackend(null); setCtx3(null); }; }, []);
   const seatsShown = r ? r.participants : v.players.length ? v.players : v.seats.map((s, i) => (s ? i : -1)).filter((i) => i >= 0);
+  // Hooks for the headless end-to-end check: where to click (real canvas clicks, ray-cast like a finger).
+  useEffect(() => {
+    const w = window as unknown as { __ml3dHook?: object };
+    const xy = (k: string) => { const b = backend3d.rect(k); return b ? { x: b.x, y: b.y } : null; };
+    w.__ml3dHook = {
+      selectable: [...p.selectable], seatSelectable: [...p.seatSelectable],
+      slot: (id: string) => xy('slot:' + id), deck: () => xy('deck'), area: (s: number) => xy('area-' + s),
+    };
+  });
 
   // DOM overlays that follow 3D points: name plates + chat bubbles + "+2" badges above heads, the Match badge, deck count
   const reg = (k: string, f: () => V3 | null) => (el: HTMLElement | null) => { if (el) { els.current.set(k, el); points.current.set(k, f); } else { els.current.delete(k); points.current.delete(k); } };
@@ -226,7 +245,7 @@ export const Table3D = memo(function Table3D(p: TableProps & { onFail?(why: stri
           const si = v.seats[seat]; if (!si || seat === me || !L.chars[seat]) return null;
           const c = L.chars[seat]!.p;
           return (
-            <div key={seat} className="ov3d-item plate3d" ref={reg('plate' + seat, () => [c[0], 0.86, c[2]])}>
+            <div key={seat} className="ov3d-item plate3d" ref={reg('plate' + seat, () => [c[0], 0.74, c[2]])}>
               {p.bubbles[seat] && Date.now() - p.bubbles[seat]!.at < 5000 && <div className="bubble">{p.bubbles[seat]!.text}</div>}
               {p.ov.badges[seat] && <div className="plus-badge in3d">{p.ov.badges[seat]}</div>}
               <div className={p.ov.pulse[seat] ?? ''}><NamePlate view={v} seat={seat} /></div>

@@ -1,0 +1,24 @@
+// Quick look at the 3D table: node scripts/shot-3d.mjs phone|laptop <bots 1-3>
+import { chromium } from 'playwright-core';
+import { mkdirSync } from 'node:fs';
+const base = process.env.BASE ?? 'http://localhost:4173/marlivo/';
+const which = process.argv[2] ?? 'laptop'; const bots = Number(process.argv[3] ?? 1);
+const out = process.env.OUT ?? '/tmp/s3d'; mkdirSync(out, { recursive: true });
+export const GL_ARGS = ['--no-sandbox', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'];
+const sizes = { phone: { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true }, laptop: { viewport: { width: 1366, height: 768 } } };
+const b = await chromium.launch({ executablePath: '/usr/bin/google-chrome', args: GL_ARGS });
+const ctx = await b.newContext(sizes[which]);
+await ctx.addInitScript(() => { localStorage.setItem('marlivo.prefs', JSON.stringify({ name: 'Ammar', speed: 'fast', sound: false, renderer: '3d' })); localStorage.setItem('marlivo.lang', 'en'); });
+const p = await ctx.newPage();
+p.on('pageerror', (e) => console.log('pageerror', e.message));
+p.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') console.log('console', m.type(), m.text().slice(0, 300)); });
+await p.goto(base + '#/practice'); await p.waitForTimeout(500);
+await p.locator('.seg').nth(0).locator('button').nth(bots - 1).click();
+await p.locator('button.act.primary').last().click();
+await p.waitForTimeout(6000);
+await p.screenshot({ path: `${out}/${which}-${bots}-a.png` });
+const roll = p.locator('.actions button.act', { hasText: /Roll|Lancer/ }); if (await roll.count()) await roll.first().click();
+await p.waitForTimeout(700); await p.screenshot({ path: `${out}/${which}-${bots}-b.png` });
+await p.waitForTimeout(5000); await p.screenshot({ path: `${out}/${which}-${bots}-c.png` });
+console.log(JSON.stringify(await p.evaluate(() => window.__ml3d)));
+await b.close();
