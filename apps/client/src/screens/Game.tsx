@@ -17,7 +17,7 @@ import { TestPanel } from './TestPanel';
 
 /** UI tap guards (not game timers): a button that just appeared ignores taps for a moment, so a finger still
  *  tapping "Match" or "Draw" cannot hit the "Stop" or "Throw" button that replaces it. */
-export const BUTTON_ARM_MS = 450;
+export const BUTTON_ARM_MS = 350;
 export const TAP_BOUNCE_MS = 280;
 export function armed(mountedAt: number, now: number) { return now - mountedAt >= BUTTON_ARM_MS; }
 function ActButton({ b }: { b: { label: string; on(): void; kind?: string; disabled?: boolean } }) {
