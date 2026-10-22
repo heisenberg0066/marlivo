@@ -1,6 +1,6 @@
 // Characters (§14.6): Biscuit (bear), Mint (cat), Pepper (owl), Orange guy (id 'tango', Ammar's orange creature)
 // and Ammar (a chibi from his own cartoon avatar). 2D busts with a few expressions; the 3D models live in render3d.
-import { memo, useId } from 'react';
+import { memo, useId, useState } from 'react';
 
 export type Mood = 'idle' | 'happy' | 'sad' | 'away' | 'think' | 'surprised';
 export const CHARACTER_IDS = ['biscuit', 'mint', 'pepper', 'tango', 'ammar'] as const;
@@ -177,7 +177,24 @@ function Ammar({ mood }: { mood: Mood }) {
   );
 }
 
+/** Portraits rendered from the 3D models (Blender, see tools/character-pipeline); the SVG busts stay as fallback art. */
+const PORTRAITS: Record<string, string> = { tango: 'tango.webp', ammar: 'ammar.webp' };
+const portraitUrl = (id: string) => (import.meta.env?.BASE_URL ?? '/') + 'assets/characters/portraits/' + PORTRAITS[id];
+function Portrait({ id, mood }: { id: string; mood: Mood }) {
+  const [ok, setOk] = useState(true);
+  const Svg = id === 'ammar' ? Ammar : Tango;
+  if (!ok) return <Svg mood={mood} />;
+  return <image href={portraitUrl(id)} x="0" y="0" width="120" height="140" preserveAspectRatio="xMidYMax meet" onError={() => setOk(false)} />;
+}
+
 export const CharacterBust = memo(function CharacterBust({ id, mood = 'idle', color, size = 90, className = '' }: { id: string; mood?: Mood; color?: string; size?: number; className?: string }) {
+  if (PORTRAITS[id]) return (
+    <svg viewBox="0 0 120 140" width={size} height={size * 140 / 120} className={`char-bust mood-${mood} ${className}`} aria-hidden>
+      {color && <ellipse cx="60" cy="136" rx="52" ry="8" fill={color} opacity=".55" />}
+      <g className="char-body"><Portrait id={id} mood={mood} /></g>
+      {mood === 'away' && <text x="96" y="22" fontSize="18" fill="#f6ebd9" fontFamily="Fredoka, system-ui" className="zzz">z<tspan dy="-8" fontSize="13">z</tspan></text>}
+    </svg>
+  );
   const Comp = id === 'mint' ? Mint : id === 'pepper' ? Pepper : id === 'tango' ? Tango : id === 'ammar' ? Ammar : Biscuit;
   return (
     <svg viewBox="0 0 120 140" width={size} height={size * 140 / 120} className={`char-bust mood-${mood} ${className}`} aria-hidden>
