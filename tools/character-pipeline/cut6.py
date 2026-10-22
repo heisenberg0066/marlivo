@@ -2,7 +2,7 @@
 import sys, os, subprocess, numpy as np
 from PIL import Image
 from rembg import remove, new_session
-S = new_session('isnet-general-use'); G = '/workspace/sb/gen6'
+S = new_session('isnet-general-use'); G = os.environ.get('GDIR', '/workspace/sb/gen6')
 for n in sys.argv[1:]:
     for v in ['sideL', 'sideR', 'back', 'front']:
         src = f'{G}/{n}_{v}.jpg'; up = f'{G}/cut/{n}_{v}_x4.png'; dst = f'{G}/cut/{n}_{v}.png'
