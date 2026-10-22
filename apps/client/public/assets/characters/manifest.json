@@ -40,7 +40,8 @@
       "modelLow": "orange-guy-low.glb",
       "height": 0.9,
       "baseY": -0.32,
-      "motion": "creature"
+      "motion": "creature",
+      "glow": 0.35
     },
     "ammar": {
       "name": {
@@ -54,7 +55,8 @@
       "height": 1.5,
       "baseY": -0.88,
       "chair": false,
-      "motion": "person"
+      "motion": "person",
+      "glow": 0.45
     },
     "guest": {
       "name": {

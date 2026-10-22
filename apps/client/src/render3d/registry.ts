@@ -21,6 +21,9 @@ export interface CharacterEntry {
   height?: number;
   /** Where the model's feet go (default -0.62: on the chair, below the table edge). */
   baseY?: number;
+  /** 0..1: how much of the texture shows as-is regardless of lights. Textures projected from painted reference
+   *  art already carry their own shading, so a little self-light keeps the colours true to the reference. */
+  glow?: number;
   /** Extra turn in degrees if the model does not face +Z. */
   rotationY?: number;
   /** Animation clip names in the GLB for each mood. Missing clips fall back to a gentle procedural motion. */
@@ -90,6 +93,10 @@ export function normalise(obj: THREE.Object3D, e: CharacterEntry) {
   const c = box.getCenter(new THREE.Vector3());
   obj.position.set(-c.x * s, (e.baseY ?? -0.62) - box.min.y * s, -c.z * s);
   obj.rotation.y = ((e.rotationY ?? 0) * Math.PI) / 180;
+  if (e.glow) obj.traverse((o) => {
+    const m = (o as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined;
+    if (m && 'emissive' in m && m.map) { m.emissiveMap = m.map; m.emissive.setScalar(e.glow!); m.roughness = Math.max(m.roughness, 0.85); m.metalness = 0; m.needsUpdate = true; }
+  });
 }
 
 export function clipFor(names: string[], e: CharacterEntry, mood: Mood): string | null {
