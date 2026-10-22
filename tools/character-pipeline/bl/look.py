@@ -19,7 +19,8 @@ import os
 base, ext = os.path.splitext(out)
 for a in angs:
     r = math.radians(a); ctr = mathutils.Vector((cx, 0, cz))
-    co.location = ctr + mathutils.Vector((math.sin(r) * 3, -math.cos(r) * 3, 0))
+    el = math.radians(float(os.environ.get('ELEV', 0)))  # camera elevation (seat views look down)
+    co.location = ctr + mathutils.Vector((math.sin(r) * 3 * math.cos(el), -math.cos(r) * 3 * math.cos(el), 3 * math.sin(el)))
     co.rotation_euler = (ctr - co.location).to_track_quat('-Z', 'Y').to_euler()
     lo.rotation_euler = (math.radians(55), 0, r + math.radians(-25))
     sc.render.filepath = f'{base}_{int(a)}{ext}'; bpy.ops.render.render(write_still=True)

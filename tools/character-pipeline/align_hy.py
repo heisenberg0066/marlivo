@@ -57,12 +57,20 @@ for k, deg in views.items():
     fac = np.clip(rn @ -d, 0, 1)
     ix = np.clip(X.astype(int), 0, W - 1); iy = np.clip(Y.astype(int), 0, H - 1)
     w = fac ** 4 * vis * im[iy, ix, 3] * (2.0 if k == 'front' else 1.0)
+    ef = f'{GEN}/{name}_{k}_edge.png'
+    if os.path.exists(ef):  # keep the cut-out's dark fringe out: weight ramps up over 2..10 px (1280-tall units) from the silhouette
+        ed = np.asarray(Image.open(ef).convert('L').resize((W, H))).astype(float) / 255 * 64; w = w * np.clip((ed[iy, ix] - 2) / 8, 0, 1)
     acc += w[:, None] * im[iy, ix, :3]; wsum += w
 col = acc / np.maximum(wsum, 1e-6)[:, None]
-miss = wsum < 1e-4
+miss = wsum < max(1e-4, 0.03 * np.median(wsum[wsum > 1e-4]))  # barely seen (tops, grazing): take colour from well-seen neighbours instead
 if miss.any():  # fill from nearest coloured vertex
     from scipy.spatial import cKDTree
     t = cKDTree(v[~miss]); _, j = t.query(v[miss]); col[miss] = col[~miss][j]
+    import scipy.sparse as sp
+    E = m.edges_unique if hasattr(m, 'edges_unique') else trimesh.Trimesh(v, m.faces, process=False).edges_unique
+    A = sp.coo_matrix((np.ones(len(E) * 2), (np.r_[E[:, 0], E[:, 1]], np.r_[E[:, 1], E[:, 0]])), shape=(len(v), len(v))).tocsr()
+    deg = np.asarray(A.sum(1)).ravel() + 1e-9
+    for _ in range(30): col = np.where(miss[:, None], (A @ col) / deg[:, None], col)  # blend the filled patches into their surroundings
 print('VC missing', int(miss.sum()), 'of', len(v))
 out = trimesh.Trimesh(v, m.faces, vertex_colors=(np.clip(col, 0, 1) * 255).astype(np.uint8), process=False)
 out.export(dst); print('wrote', dst, len(v), len(m.faces))

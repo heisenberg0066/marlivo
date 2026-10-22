@@ -2,7 +2,7 @@
 # build_hy.sh <name> <src.obj> <settings.json> <spec.json|-> <outdir> [hi] [lo]
 # Full build on a (Hunyuan) base mesh: LODs + projection + normal map, rig, accessories, GLBs, meshopt copies, previews.
 set -e
-N=$1; SRC=$2; SET=$3; SPEC=$4; OUT=$5; HI=${6:-50000}; LO=${7:-12000}
+N=$1; SRC=$2; SET=$3; SPEC=$4; [ "$SPEC" = "-" ] && [ -f /workspace/tools/spec_${N}_hy.json ] && SPEC=/workspace/tools/spec_${N}_hy.json; OUT=$5; HI=${6:-50000}; LO=${7:-12000}
 B=/workspace/tools/blender-4.2.3-linux-x64/blender; T=/workspace/tools
 mkdir -p $OUT; cd $T
 $B -b -P bl/build.py -- $N $SRC in/${N}_proj.png vc 1 0 0 $HI $LO $OUT "$(cat $SET)" 2>&1 | grep -E "PARTS|SRC|SKINSMOOTH|LOD|FRONT|FLAT|MV|A faces|NORMAL|rror|Trace|line [0-9]"

@@ -3,6 +3,10 @@
 // it only ever sees the filtered PlayerView, exactly like 2D.
 import { memo, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
+import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import * as THREE from 'three';
 import type { PlayerView } from '@marlivo/engine';
 import type { TableProps } from '../render/Table';
@@ -95,6 +99,37 @@ function OverlaySync({ points, els, stage }: { points: React.MutableRefObject<Ov
   return null;
 }
 
+// High graphics: light contrast-adaptive sharpen after an MSAA render (crisper character textures/edges at the table)
+const SHARPEN = {
+  uniforms: { tDiffuse: { value: null }, texel: { value: new THREE.Vector2(1 / 1024, 1 / 1024) }, amount: { value: 0.4 } },
+  vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+  fragmentShader: `uniform sampler2D tDiffuse; uniform vec2 texel; uniform float amount; varying vec2 vUv;
+    void main() {
+      vec4 c = texture2D(tDiffuse, vUv);
+      vec3 a = texture2D(tDiffuse, vUv + vec2(texel.x, 0.0)).rgb, b = texture2D(tDiffuse, vUv - vec2(texel.x, 0.0)).rgb;
+      vec3 d = texture2D(tDiffuse, vUv + vec2(0.0, texel.y)).rgb, e = texture2D(tDiffuse, vUv - vec2(0.0, texel.y)).rgb;
+      vec3 mn = min(c.rgb, min(min(a, b), min(d, e))), mx = max(c.rgb, max(max(a, b), max(d, e)));
+      vec3 w = sqrt(clamp(min(mn, 1.0 - mx) / max(mx, 1e-4), 0.0, 1.0)) * amount; // CAS-style: less sharpening where contrast is already high
+      vec3 s = c.rgb + w * (4.0 * c.rgb - a - b - d - e) * 0.25;
+      gl_FragColor = vec4(clamp(s, mn, mx), c.a);
+    }`,
+};
+function Sharpen() {
+  const { gl, scene, camera, size } = useThree();
+  const comp = useMemo(() => {
+    const rt = new THREE.WebGLRenderTarget(2, 2, { type: THREE.HalfFloatType, samples: 4 });
+    const c = new EffectComposer(gl, rt); c.addPass(new RenderPass(scene, camera)); c.addPass(new ShaderPass(SHARPEN)); c.addPass(new OutputPass());
+    return c;
+  }, [gl, scene, camera]);
+  useEffect(() => {
+    const pr = gl.getPixelRatio(); comp.setPixelRatio(pr); comp.setSize(size.width, size.height);
+    ((comp.passes[1] as ShaderPass).uniforms.texel.value as THREE.Vector2).set(1 / (size.width * pr), 1 / (size.height * pr));
+  }, [comp, gl, size]);
+  useEffect(() => () => comp.dispose(), [comp]);
+  useFrame(() => comp.render(), 1);
+  return null;
+}
+
 function Stats() {
   const acc = useRef({ n: 0, t: 0, fps: 0 });
   useFrame((st, dt) => {
@@ -152,6 +187,7 @@ const Scene = memo(function Scene({ p, L, stage, points, els, portrait }: { p: T
       <CameraRig L={L} me={me} mode={prefs.camera} portrait={portrait} />
       <OverlaySync points={points} els={els} stage={stage} />
       <Stats />
+      {hi && <Sharpen />}
       <Room />
       {/* High: a soft back light from behind the far seats puts a rim on the characters */}
       {hi && <directionalLight position={[0.4, 1.0, -2.6]} intensity={0.75} color="#ffe9cf" />}
