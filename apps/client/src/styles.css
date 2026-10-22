@@ -265,7 +265,11 @@ label.row { flex-direction: row; align-items: center; gap: 10px; font-size: 15px
 .seat { display: flex; align-items: center; gap: 10px; padding: 6px 10px; border-radius: 14px; border-left: 5px solid; background: #00000030; min-height: 62px; }
 .seat.free { opacity: .6; } .seat-info { flex: 1; display: flex; flex-direction: column; } .seat-info small { color: var(--muted); }
 .me-setup { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
-.chars { display: flex; gap: 6px; justify-content: center; }
+.chars { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+.chars.mini .char { padding: 3px 4px; }
+.chars.mini small { font-size: 10px; }
+.opp-row { display: flex; align-items: center; gap: 6px; }
+.opp-row > b { min-width: 22px; opacity: .7; }
 .char { display: flex; flex-direction: column; align-items: center; padding: 4px 8px; background: #00000030; }
 .char small { font-size: 11px; }
 .host-box { margin-top: 12px; border-top: 1px solid #ffffff1a; padding-top: 8px; }

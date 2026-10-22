@@ -15,7 +15,14 @@ export const DEFAULT_SETTINGS: Settings = {
   botSpeed: 'normal', locked: false, test: false,
 };
 export const BOT_NAMES = ['Lina', 'Max', 'Chloé', 'Noah', 'Inès', 'Sami'];
-export const CHARACTERS = ['biscuit', 'mint', 'pepper', 'tango'];
+export const CHARACTERS = ['biscuit', 'mint', 'pepper', 'tango', 'ammar'];
+/** A bot gets the character it was asked for, else the first one nobody at the table uses yet (rotating by seat). */
+function botCharacter(s: { seats: ({ characterId: string } | null)[] }, seat: number, want?: string): string {
+  if (want && CHARACTERS.includes(want)) return want;
+  const used = new Set(s.seats.filter(Boolean).map((x) => x!.characterId));
+  for (let k = 1; k <= CHARACTERS.length; k++) { const c = CHARACTERS[(seat + k) % CHARACTERS.length]!; if (!used.has(c)) return c; }
+  return CHARACTERS[(seat + 1) % CHARACTERS.length]!;
+}
 export const PENALTY_PER_WRONG = 2;
 
 class Reject extends Error { constructor(public reason: string) { super(reason); } }
@@ -520,7 +527,7 @@ function apply(c: Ctx, actor: Actor, it: Intent) {
       check(free !== undefined && seatedIds(s).length < s.settings.maxPlayers, 'ROOM_FULL');
       const used = new Set(s.seats.filter(Boolean).map((x) => x!.name));
       const name = it.name ? cleanName(it.name) : BOT_NAMES.find((n) => !used.has(n)) ?? 'Bot';
-      s.seats[free!] = { name, characterId: it.characterId ?? CHARACTERS[(free! + 1) % CHARACTERS.length]!, lang: 'en', isBot: true, botLevel: it.level as BotLevel, ready: true, connected: true };
+      s.seats[free!] = { name, characterId: botCharacter(s, free!, it.characterId), lang: 'en', isBot: true, botLevel: it.level as BotLevel, ready: true, connected: true };
       emit(c, 'BOT_ADDED', { seat: free, level: it.level });
       return;
     }

@@ -8,6 +8,12 @@ import { BackRoom } from '../render/BackRoom';
 import { Logo } from './Home';
 import { LayoutPicker } from './LayoutPicker';
 import { usePrefs, setPrefs } from '../prefs';
+import { CharacterBust, CHARACTER_IDS } from '../render/characters';
+
+/** Default opponents: Orange guy and Ammar first (Ammar's own figures), never the player's own character. */
+export function defaultOpponents(mine: string): string[] {
+  return ['tango', 'ammar', 'mint', 'pepper', 'biscuit'].filter((c) => c !== mine);
+}
 
 export function Practice({ test }: { test: boolean }) {
   const [bots, setBots] = useState(test ? 1 : 2);
@@ -18,8 +24,10 @@ export function Practice({ test }: { test: boolean }) {
   const [helper, setHelper] = useState<Settings['memoryHelper']>('off');
   const [tools, setTools] = useState(test);
   const prefs = usePrefs();
+  const [opp, setOpp] = useState<string[]>(() => defaultOpponents(prefs.characterId).slice(0, 3));
+  const pickOpp = (i: number, c: string) => setOpp((o) => o.map((x, k) => (k === i ? c : x)));
   const start = () => {
-    const code = createLocalRoom({ cardsPerPlayer: cards, targetPoints: target, botSpeed: speed, memoryHelper: helper, test: tools, maxPlayers: Math.max(2, bots + 1 + (tools ? 1 : 0)) }, Array(bots).fill(level));
+    const code = createLocalRoom({ cardsPerPlayer: cards, targetPoints: target, botSpeed: speed, memoryHelper: helper, test: tools, maxPlayers: Math.max(2, bots + 1 + (tools ? 1 : 0)) }, opp.slice(0, bots).map((c) => ({ level, characterId: c, name: t('char.' + c) })));
     go('/play/' + code);
   };
   return (
@@ -30,6 +38,13 @@ export function Practice({ test }: { test: boolean }) {
         <h2>{tools ? t('home.test') : t('practice.title')}</h2>
         <p className="muted">{t('practice.offline')}</p>
         <label>{t('practice.bots')}<div className="seg">{[1, 2, 3].map((n) => <button key={n} className={bots === n ? 'on' : ''} onClick={() => setBots(n)}>{n}</button>)}</div></label>
+        <label>{t('practice.youAre')}<div className="chars mini">{CHARACTER_IDS.map((c) => (
+          <button key={c} className={`char ${prefs.characterId === c ? 'on' : ''}`} onClick={() => setPrefs({ characterId: c })} aria-label={t('char.' + c)}>
+            <CharacterBust id={c} size={34} mood={prefs.characterId === c ? 'happy' : 'idle'} /><small>{t('char.' + c)}</small></button>))}</div></label>
+        <label>{t('practice.opponents')}{opp.slice(0, bots).map((sel, i) => (
+          <div key={i} className="opp-row" data-opp={i}><b>{i + 1}</b><div className="chars mini">{CHARACTER_IDS.map((c) => (
+            <button key={c} className={`char ${sel === c ? 'on' : ''}`} onClick={() => pickOpp(i, c)} aria-label={t('char.' + c)} data-char={c}>
+              <CharacterBust id={c} size={28} mood={sel === c ? 'happy' : 'idle'} /><small>{t('char.' + c)}</small></button>))}</div></div>))}</label>
         <label>{t('practice.level')}<div className="seg">{(['easy', 'normal', 'hard'] as const).map((l) => <button key={l} className={level === l ? 'on' : ''} onClick={() => setLevel(l)}>{t('practice.' + l)}</button>)}</div></label>
         <label>{t('practice.cards')}<div className="seg">{[4, 5, 6, 7, 8].map((n) => <button key={n} className={cards === n ? 'on' : ''} onClick={() => setCards(n)}>{n}</button>)}</div></label>
         <LayoutPicker n={cards} value={prefs.layout} onPick={(id) => setPrefs({ layout: id })} />

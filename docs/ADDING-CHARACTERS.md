@@ -1,8 +1,15 @@
 # Adding real 3D characters to MarLivo
 
-The 3D table (Settings → Table → 3D) shows a low-poly placeholder for every player: Biscuit (bear),
-Mint (cat), Pepper (owl), Tango (the orange creature) and a plain "Guest" pawn. You can swap any of them
-for a real figure **without touching code**: you add a `.glb` file and change one line of JSON.
+The 3D table (Settings → Table → 3D) shows a figure for every player: Biscuit (bear), Mint (cat), Pepper (owl),
+**Orange guy** (internal id `tango`, Ammar's orange creature), **Ammar** (a stylised chibi of Ammar's own cartoon
+avatar) and a plain "Guest" pawn. Orange guy and Ammar are full procedural models in
+`apps/client/src/render3d/Hero.tsx` (with idle / think / celebrate / sad motion from `rig.ts`); the others are simpler
+built-in figures. You can swap any of them for a real figure **without touching code**: you add a `.glb` file and
+change one line of JSON. Preview any figure on its own at `#/lab?id=ammar&pose=stand&mood=happy`.
+
+A brand-new character id also needs: an entry in `CHARACTERS` (`packages/engine/src/engine.ts`), in `CHARACTER_IDS`
+plus a 2D bust in `apps/client/src/render/characters.tsx`, and `char.<id>` names in `i18n/en.json` and `fr.json`.
+In Practice the player picks who sits at the table; lobby bots get the first character nobody uses yet.
 
 ## 1. Make or get the figure
 
@@ -36,12 +43,12 @@ no clips at all the figure gets a gentle built-in sway.
 2. Open `apps/client/public/assets/characters/manifest.json` and set `"model"` for that character:
 
 ```json
-"tango": { "name": { "en": "Tango", "fr": "Tango" }, "model": "tango.glb", "placeholder": "orange", "pickable": true,
+"tango": { "name": { "en": "Orange guy", "fr": "Le gars orange" }, "model": "tango.glb", "placeholder": "orange", "pickable": true,
            "height": 1.05, "baseY": -0.62, "rotationY": 0,
            "clips": { "happy": "Dance" } }
 ```
 
-3. Commit and push. GitHub Actions redeploys the site; the figure appears for everyone who picked Tango.
+3. Commit and push. GitHub Actions redeploys the site; the figure appears for everyone who picked Orange guy.
 
 Fields: `model` (file next to the manifest, or a full URL; `null` = placeholder), `height` (default 1.05),
 `baseY` (feet height, default -0.62 = on the chair), `rotationY` (degrees), `clips` (mood → clip name).

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { act, rej, lobby, play, sid, count, total, ofType, type Run } from './helpers';
-import { initialGrid, layoutOptions, placeCard, SeededRng, createGame, reduce, projectView, sha256Hex, parseFace, type RoundState } from '../src';
+import { initialGrid, layoutOptions, placeCard, SeededRng, createGame, reduce, projectView, sha256Hex, parseFace, CHARACTERS, type RoundState } from '../src';
 
 /** Seat 0 draws the forced top card and throws it, opening a window. Resolves a Q/J power by skipping/peeking. */
 function drawThrow(run: Run, seat = 0) { act(run, seat, { t: 'DRAW' }); act(run, seat, { t: 'THROW' }); }
@@ -669,6 +669,21 @@ describe('lobby, characters and test-room gating', () => {
     act(run, 0, { t: 'HOST_LOCK', locked: true });
     expect(run.s.settings.locked).toBe(true);
     expect(createGame().settings.targetPoints).toBe(5);
+  });
+});
+
+describe('characters', () => {
+  it('bots get the asked character (Orange guy, Ammar), else an unused one', () => {
+    const run = lobby(1);
+    act(run, 0, { t: 'HOST_ADD_BOT', level: 'easy', characterId: 'ammar', name: 'Ammar' });
+    act(run, 0, { t: 'HOST_ADD_BOT', level: 'easy', characterId: 'tango' });
+    expect(run.s.seats[1]).toMatchObject({ characterId: 'ammar', name: 'Ammar' });
+    expect(run.s.seats[2]!.characterId).toBe('tango');
+    act(run, 0, { t: 'HOST_ADD_BOT', level: 'easy', characterId: 'nobody' });
+    const used = run.s.seats.slice(0, 3).map((x) => x!.characterId);
+    expect(CHARACTERS).toContain(run.s.seats[3]!.characterId);
+    expect(used).not.toContain(run.s.seats[3]!.characterId);
+    expect(CHARACTERS).toEqual(expect.arrayContaining(['tango', 'ammar']));
   });
 });
 

@@ -260,5 +260,5 @@ export class RoomHost {
   }
 
   /** Host-only convenience for solo practice (local host): seat bots directly. */
-  addBot(level: BotLevel) { const host = this.state.host; if (host !== null) this.act(host, { t: 'HOST_ADD_BOT', level }); }
+  addBot(level: BotLevel, characterId?: string, name?: string) { const host = this.state.host; if (host !== null) this.act(host, { t: 'HOST_ADD_BOT', level, ...(characterId ? { characterId } : {}), ...(name ? { name } : {}) }); }
 }

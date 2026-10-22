@@ -1,9 +1,9 @@
-// Original placeholder characters (§14.6): Biscuit (bear), Mint (cat), Pepper (owl) and Tango (a round orange
-// critter). 2D busts with a few expressions. A separate layer, so rigged 3D characters can replace them later.
-import { memo } from 'react';
+// Characters (§14.6): Biscuit (bear), Mint (cat), Pepper (owl), Orange guy (id 'tango', Ammar's orange creature)
+// and Ammar (a chibi from his own cartoon avatar). 2D busts with a few expressions; the 3D models live in render3d.
+import { memo, useId } from 'react';
 
 export type Mood = 'idle' | 'happy' | 'sad' | 'away' | 'think' | 'surprised';
-export const CHARACTER_IDS = ['biscuit', 'mint', 'pepper', 'tango'] as const;
+export const CHARACTER_IDS = ['biscuit', 'mint', 'pepper', 'tango', 'ammar'] as const;
 export const SEAT_COLORS = ['#e8892f', '#5da9e9', '#7bd389', '#e2b23c'];
 
 function Eyes({ mood, x1, x2, y, r = 4, color = '#2b1d14' }: { mood: Mood; x1: number; x2: number; y: number; r?: number; color?: string }) {
@@ -80,24 +80,105 @@ function Pepper({ mood }: { mood: Mood }) {
     </g>
   );
 }
+/** Orange guy — Ammar's orange-peel creature: one big round orange body, bulging blue eyes, a bulbous nose,
+ *  a wide flat open mouth, thin skin-coloured arms with three fingers and stubby legs. */
 function Tango({ mood }: { mood: Mood }) {
+  const id = useId().replace(/:/g, '');
+  const wide = mood === 'happy' || mood === 'surprised';
+  const closed = mood === 'away' || mood === 'happy';
+  const look = mood === 'think' ? [3, -2.5] : mood === 'sad' ? [0, 2] : [-0.5, 0.5];
+  const eye = (cx: number) => (
+    <g>
+      <ellipse cx={cx} cy="52" rx="10.5" ry="10.5" fill="#c56a2c" />
+      <circle cx={cx} cy="52" r="9.2" fill="#f7f5f2" />
+      {closed ? <path d={mood === 'happy' ? `M${cx - 8} 54 q8 -8 16 0` : `M${cx - 8} 52 h16`} stroke="#7a3b14" strokeWidth="2.6" fill="none" strokeLinecap="round" />
+        : <g><circle cx={cx + look[0]} cy={52 + look[1]} r={mood === 'surprised' ? 4.2 : 5.2} fill="#4f74bd" /><circle cx={cx + look[0]} cy={52 + look[1]} r={mood === 'surprised' ? 1.8 : 2.6} fill="#141414" /><circle cx={cx + look[0] - 1.8} cy={50 + look[1]} r="1.3" fill="#fff" /></g>}
+      {mood === 'away' && <path d={`M${cx - 9.5} 50 q9.5 -9 19 0 v2 h-19 z`} fill="#e38c49" />}
+      {mood === 'sad' && <path d={`M${cx - 10} 44 q10 -4 20 2`} stroke="#b7612a" strokeWidth="2.4" fill="none" strokeLinecap="round" />}
+    </g>
+  );
   return (
     <g>
-      <path d="M18 140 Q18 100 60 98 Q102 100 102 140 Z" fill="#7a4a2a" />
-      <path d="M30 104 Q60 120 90 104 L90 140 L30 140 Z" fill="#5b3420" />
-      <circle cx="60" cy="64" r="40" fill="#f39a2e" />
-      <g fill="#e8892f" opacity=".7">{[0, 1, 2, 3, 4, 5].map((i) => <circle key={i} cx={34 + i * 10} cy={44 + (i % 2) * 6} r="2" />)}</g>
-      <path d="M60 24 q-2 -12 6 -18" stroke="#4f7a32" strokeWidth="4" fill="none" strokeLinecap="round" />
-      <path d="M64 12 q14 -10 22 2 q-12 6 -22 -2 z" fill="#6aa13f" />
-      <Eyes mood={mood} x1={46} x2={74} y={60} r={4.6} />
-      <Mouth mood={mood} x={60} y={80} />
-      <g fill="#f6b35e"><circle cx="38" cy="74" r="5" /><circle cx="82" cy="74" r="5" /></g>
+      <defs>
+        <radialGradient id={'og' + id} cx="42%" cy="36%" r="70%"><stop offset="0" stopColor="#f6b071" /><stop offset=".6" stopColor="#e8914b" /><stop offset="1" stopColor="#c4672b" /></radialGradient>
+        <linearGradient id={'ol' + id} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#f2bd93" /><stop offset="1" stopColor="#e7a676" /></linearGradient>
+      </defs>
+      {/* arms reaching out and down, three long fingers each */}
+      <g fill="none" stroke={`url(#ol${id})`} strokeLinecap="round">
+        <path d="M24 84 Q10 82 6 96 Q4 104 3 112" strokeWidth="7" /><path d="M96 84 Q110 82 114 96 Q116 104 117 112" strokeWidth="7" />
+        <path d="M3 112 l-3 8 M3 112 l1 9 M3 112 l5 7" strokeWidth="2.6" /><path d="M117 112 l3 8 M117 112 l-1 9 M117 112 l-5 7" strokeWidth="2.6" />
+      </g>
+      {/* stubby legs */}
+      <path d="M38 112 Q34 128 36 140 L52 140 Q54 124 54 112 Z" fill={`url(#ol${id})`} /><path d="M82 112 Q86 128 84 140 L68 140 Q66 124 66 112 Z" fill={`url(#ol${id})`} />
+      {/* the orange itself */}
+      <path d="M60 10 C86 10 104 34 104 66 C104 98 86 120 60 120 C34 120 16 98 16 66 C16 34 34 10 60 10 Z" fill={`url(#og${id})`} />
+      <g fill="#c8702f" opacity=".35">{[[38, 30], [52, 22], [70, 24], [84, 34], [30, 74], [90, 78], [44, 104], [76, 106], [60, 112], [26, 56], [94, 54]].map(([x, y], i) => <circle key={i} cx={x} cy={y} r="1.3" />)}</g>
+      <ellipse cx="46" cy="30" rx="13" ry="7" fill="#fff" opacity=".16" transform="rotate(-20 46 30)" />
+      {eye(46)}{eye(74)}
+      {/* bulbous nose */}
+      <path d="M57 60 Q55 70 52 74 Q50 80 56 81 Q60 83 64 81 Q70 80 68 74 Q65 70 63 60 Z" fill="#df8645" />
+      <ellipse cx="57" cy="72" rx="3" ry="4" fill="#f2a464" opacity=".7" />
+      <g fill="#8e461a" opacity=".7"><ellipse cx="56" cy="80" rx="1.6" ry="1" /><ellipse cx="64" cy="80" rx="1.6" ry="1" /></g>
+      {/* wide flat mouth with a soft lip */}
+      {mood === 'sad'
+        ? <path d="M44 98 Q60 88 76 98" stroke="#7d3814" strokeWidth="3.2" fill="none" strokeLinecap="round" />
+        : <g><ellipse cx="60" cy="92" rx={wide ? 20 : 18} ry={wide ? 7 : 3.8} fill="#d47c3d" /><ellipse cx="60" cy="92" rx={wide ? 17.5 : 15.5} ry={wide ? 5.4 : 2.2} fill="#5a1f0c" />
+          {wide && <ellipse cx="60" cy="95" rx="7" ry="2" fill="#b4473a" />}</g>}
+    </g>
+  );
+}
+
+/** Ammar — a stylised chibi drawn from Ammar's own cartoon avatar (not a photo): dark curly hair with a short fade,
+ *  round gold glasses, moustache and short beard, silver chain, black t-shirt with backpack straps. */
+function Ammar({ mood }: { mood: Mood }) {
+  const id = useId().replace(/:/g, '');
+  const skin = '#ebb48f', skinD = '#d29874', hair = '#2a1a10', hairHi = '#4b301d';
+  const look = mood === 'think' ? [2.4, -1.6] : mood === 'sad' ? [0, 1.5] : [0, 0];
+  const eye = (cx: number) => mood === 'happy'
+    ? <path d={`M${cx - 6} 66 q6 -7 12 0`} stroke="#2b1a10" strokeWidth="2.6" fill="none" strokeLinecap="round" />
+    : mood === 'away' ? <path d={`M${cx - 6} 65 q6 4 12 0`} stroke="#2b1a10" strokeWidth="2.4" fill="none" strokeLinecap="round" />
+    : <g><ellipse cx={cx} cy="65" rx="6.4" ry={mood === 'surprised' ? 7 : 6} fill="#fff" />
+        <circle cx={cx + look[0]} cy={65 + look[1]} r="4.6" fill="#4a2a16" /><circle cx={cx + look[0]} cy={65 + look[1]} r="2.2" fill="#140a05" />
+        <circle cx={cx + look[0] + 1.6} cy={63 + look[1]} r="1.4" fill="#fff" /><path d={`M${cx - 7} 61 q7 -4 14 0`} stroke="#2b1a10" strokeWidth="1.6" fill="none" /></g>;
+  const curls: [number, number, number][] = [[30, 40, 8], [38, 30, 9], [48, 24, 9], [60, 21, 10], [72, 23, 9], [82, 29, 9], [90, 38, 8], [42, 38, 8], [55, 33, 8], [67, 33, 8], [79, 38, 7], [34, 48, 6], [86, 46, 6], [50, 16, 7], [64, 13, 7], [77, 17, 6], [44, 46, 5], [58, 43, 6], [71, 44, 5]];
+  return (
+    <g>
+      <defs>
+        <radialGradient id={'af' + id} cx="45%" cy="40%" r="65%"><stop offset="0" stopColor="#f4c4a2" /><stop offset="1" stopColor={skin} /></radialGradient>
+      </defs>
+      {/* black tee, backpack straps, neck, silver chain */}
+      <path d="M12 140 Q14 112 34 106 L50 102 L70 102 L86 106 Q106 112 108 140 Z" fill="#1b1b1e" />
+      <path d="M50 102 Q60 110 70 102" fill="#121214" stroke="#2a2a2e" strokeWidth="1.5" />
+      <path d="M30 108 Q26 124 28 140" stroke="#2c2c31" strokeWidth="6" fill="none" /><path d="M90 108 Q94 124 92 140" stroke="#2c2c31" strokeWidth="6" fill="none" />
+      <rect x="53" y="92" width="14" height="13" rx="5" fill={skinD} />
+      <path d="M50 104 Q60 120 70 104" stroke="#dfe3e8" strokeWidth="1.6" fill="none" strokeDasharray="2.2 1.2" />
+      {/* ears + head with a narrow chin */}
+      <ellipse cx="29" cy="68" rx="5" ry="7.5" fill={skinD} /><ellipse cx="91" cy="68" rx="5" ry="7.5" fill={skinD} />
+      <path d="M60 30 C80 30 92 44 92 64 C92 82 80 98 60 100 C40 98 28 82 28 64 C28 44 40 30 60 30 Z" fill={`url(#af${id})`} />
+      {/* short fade on the sides */}
+      <path d="M29 62 Q28 44 40 36 L42 48 Q33 52 32 64 Z" fill="#6a4a38" opacity=".75" /><path d="M91 62 Q92 44 80 36 L78 48 Q87 52 88 64 Z" fill="#6a4a38" opacity=".75" />
+      {/* short beard along the jaw + chin */}
+      <path d="M31 72 Q34 92 60 100 Q86 92 89 72 Q86 90 60 95 Q34 90 31 72 Z" fill="#7a5644" opacity=".55" />
+      <path d="M56 94 Q60 99 64 94 L63 92 Q60 94 57 92 Z" fill="#3b261a" />
+      {/* curly hair */}
+      <g>{curls.map(([x, y, r], i) => <g key={i}><circle cx={x} cy={y} r={r} fill={hair} /><circle cx={x - r * 0.3} cy={y - r * 0.3} r={r * 0.45} fill={hairHi} opacity=".8" /></g>)}</g>
+      {/* thick brows */}
+      <path d={mood === 'sad' ? 'M38 55 Q44 51 52 54' : mood === 'think' ? 'M38 54 Q45 49 52 53' : 'M38 54 Q45 51 52 54'} stroke={hair} strokeWidth="4" fill="none" strokeLinecap="round" />
+      <path d={mood === 'sad' ? 'M68 54 Q76 51 82 55' : mood === 'think' ? 'M68 51 Q75 46 82 50' : 'M68 54 Q75 51 82 54'} stroke={hair} strokeWidth="4" fill="none" strokeLinecap="round" />
+      {eye(45)}{eye(75)}
+      {/* round gold glasses */}
+      <g fill="#fff" fillOpacity=".12" stroke="#c9ad74" strokeWidth="1.8"><circle cx="45" cy="65" r="12" /><circle cx="75" cy="65" r="12" /></g>
+      <path d="M57 63 Q60 60 63 63 M33 63 L29 62 M87 63 L91 62" stroke="#c9ad74" strokeWidth="1.8" fill="none" />
+      {/* nose, moustache, mouth */}
+      <path d="M58 72 Q57 79 60 81 Q63 79 62 72" fill={skinD} opacity=".8" />
+      <path d="M50 86 Q55 82 60 84 Q65 82 70 86 Q65 85 60 86.5 Q55 85 50 86 Z" fill="#2e1c12" />
+      <Mouth mood={mood} x={60} y={89.5} color="#7a3a2a" />
     </g>
   );
 }
 
 export const CharacterBust = memo(function CharacterBust({ id, mood = 'idle', color, size = 90, className = '' }: { id: string; mood?: Mood; color?: string; size?: number; className?: string }) {
-  const Comp = id === 'mint' ? Mint : id === 'pepper' ? Pepper : id === 'tango' ? Tango : Biscuit;
+  const Comp = id === 'mint' ? Mint : id === 'pepper' ? Pepper : id === 'tango' ? Tango : id === 'ammar' ? Ammar : Biscuit;
   return (
     <svg viewBox="0 0 120 140" width={size} height={size * 140 / 120} className={`char-bust mood-${mood} ${className}`} aria-hidden>
       {color && <ellipse cx="60" cy="136" rx="52" ry="8" fill={color} opacity=".55" />}

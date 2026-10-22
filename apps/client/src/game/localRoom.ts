@@ -15,7 +15,8 @@ export function hasLocalRoom(code: string) { return !!localStorage.getItem(LS(co
 export function lastLocalRoom(): string | null { return localStorage.getItem('marlivo.local.last'); }
 export function forgetLocalRoom(code: string) { localStorage.removeItem(LS(code)); localStorage.removeItem('marlivo.seat.L-' + code); if (localStorage.getItem('marlivo.local.last') === code) localStorage.removeItem('marlivo.local.last'); }
 
-export function createLocalRoom(settings: Partial<Settings>, bots: BotLevel[]): string {
+export type LocalBot = BotLevel | { level: BotLevel; characterId?: string; name?: string };
+export function createLocalRoom(settings: Partial<Settings>, bots: LocalBot[]): string {
   const code = newCode();
   localStorage.setItem('marlivo.local.pending.' + code, JSON.stringify({ settings, bots }));
   return code;
