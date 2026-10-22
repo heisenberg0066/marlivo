@@ -105,3 +105,14 @@ Short log of the problems hit while building the Ammar and Orange guy models, wh
 - Frame trace in the lenses: unframe.py on the 4k front (ammar_front4k_ng4_fill.png): skin in the lens/rim area replaced by a broad normalized-convolution blur, eyes/lashes/brows/whites kept (dilated mask).
 - Live check of e7fbe9c: ears read pale/whitish next to the face at the table (ear/fade skin 214,146,114 vs face ~190,120,84 in the texture). Ear, concha, pink and fade-skin tones re-matched to the measured cheek skin (ears_ammar.json).
 - dd21a58 live (md5 verified), 24-seat live check in /workspace/sb/seat/live6/seatcheck_ears2_live/: ears and fade visible side-on and 3/4, no ghost/doubled geometry, face unchanged; shirt shoulders black, hair specks gone. Pepper: mesh decoded at 512 with hy_decode_bf16.py once RAM was free (aligned IoU 0.959) and built (hyb_pepper), not deployed yet.
+
+## Part B live (Oct 22, ~17:40 CEST) — Biscuit 0d39129, Mint dd8425a, Pepper 46c85a7
+- Deployed: Biscuit rebuilt GLBs (smear fix); Mint and Pepper manifest entries (motion 'animal', height 0.95, baseY -0.32,
+  rotationY = -align yaw: mint 9.8, pepper 0). Live GLB md5 == repo md5 for all three after run 88ddcfe.
+- 24-seat live check per character (2/3/4 players x high/low x laptop/phone): /workspace/sb/seat/live6/seatcheck_<name>_live/.
+  seat.mjs now takes ME=<id> for the player's own character (passed into page.evaluate as an argument; process.env is not
+  visible inside the browser context).
+- Seen in every phone 3p shot (all characters, pre-existing): a flat orange ellipse at the top of the screen (ceiling lamp
+  shade seen from below at the phone camera). On phone 4p the side seats are off-screen (only name tags show) — layout, not model.
+- Part C: cut6.py needs GDIR=/workspace/sb/gen7; Hunyuan must run with /workspace/tools/venv_hy/bin/python (system python
+  has no diffusers). "Sparkle cube" id is `sugar`.
