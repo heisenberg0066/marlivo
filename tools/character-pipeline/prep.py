@@ -10,7 +10,7 @@ from PIL import Image, ImageFilter
 from scipy import ndimage
 from rembg import remove, new_session
 ap = argparse.ArgumentParser(); ap.add_argument('name'); ap.add_argument('ref'); ap.add_argument('--crop-bottom', type=float, default=1.0)
-ap.add_argument('--esrgan'); ap.add_argument('--dark-gap', action='store_true'); a = ap.parse_args()
+ap.add_argument('--esrgan'); ap.add_argument('--dark-gap', action='store_true'); ap.add_argument('--erode', type=int, default=2); a = ap.parse_args()
 os.makedirs('in', exist_ok=True)
 ref = Image.open(a.ref).convert('RGB'); w, h = ref.size; ref = ref.crop((0, 0, w, int(h * a.crop_bottom)))
 up = 3 if max(ref.size) < 800 else 1
@@ -32,7 +32,7 @@ if a.esrgan:  # sharper projection texture from a 4x Real-ESRGAN upscale of the 
     x4.putalpha(cut.split()[3].resize(x4.size, Image.BILINEAR)); col = np.array(resize_foreground(x4, 0.85)).astype(np.float32)
     m2 = col[..., 3] > 128
 else: m2 = m
-core = ndimage.binary_erosion(m2, iterations=2)
+core = ndimage.binary_erosion(m2, iterations=a.erode)  # drop the cut-out's dark rim before edge-filling
 idx = ndimage.distance_transform_edt(~core, return_distances=False, return_indices=True)
 fill = Image.fromarray(col[..., :3][idx[0], idx[1]].astype(np.uint8)); fill.save(f'in/{a.name}_proj.png')
 fill.filter(ImageFilter.GaussianBlur(28)).save(f'in/{a.name}_projblur.png')

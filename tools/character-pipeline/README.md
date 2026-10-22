@@ -29,4 +29,4 @@ with a grey stripe; `normal` bakes a tangent-space normal map (High only) from t
 bump (curls, orange-peel dimples).
 
 Run: `./build_all.sh ammar vc "$(cat settings_ammar.json)"`, `./build_all.sh orange vc "$(cat settings_orange.json)"`
-(TripoSR carve at 512³ for Ammar, 384³ for Orange guy). Colours in the settings are linear.
+(TripoSR carve at 512³ for Ammar, 384³ for Orange guy; Orange guy prep with `--erode 10` to drop the dark cut-out rim). Colours in the settings are linear.

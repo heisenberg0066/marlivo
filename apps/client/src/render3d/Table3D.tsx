@@ -154,7 +154,7 @@ const Scene = memo(function Scene({ p, L, stage, points, els, portrait }: { p: T
       <Stats />
       <Room />
       {/* High: a soft back light from behind the far seats puts a rim on the characters */}
-      {hi && <directionalLight position={[0.4, 1.9, -2.6]} intensity={1.1} color="#ffe9cf" />}
+      {hi && <directionalLight position={[0.4, 1.0, -2.6]} intensity={0.75} color="#ffe9cf" />}
       <group ref={group} />
       <Deck L={L} onDeck={p.onDeck} clickable={myTurnDraw} />
       {/* the discard pile, scattered inside the centre circle */}
