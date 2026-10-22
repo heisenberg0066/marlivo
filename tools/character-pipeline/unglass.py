@@ -4,8 +4,8 @@
 import sys, json, numpy as np, cv2
 src, dst, spec = sys.argv[1], sys.argv[2], json.load(open(sys.argv[3]))
 spec = spec.get('unglass', spec['glasses'])
-im = cv2.imread(src); H, W = im.shape[:2]; g = cv2.cvtColor(im, cv2.COLOR_BGR2GRAY).astype(np.float32)
-k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9, 9))
+im = cv2.imread(src); H, W = im.shape[:2]; F = W / 1152; g = cv2.cvtColor(im, cv2.COLOR_BGR2GRAY).astype(np.float32)
+k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (int(9 * F) | 1, int(9 * F) | 1))
 resp = cv2.morphologyEx(g, cv2.MORPH_BLACKHAT, k) + 0.7 * cv2.morphologyEx(g, cv2.MORPH_TOPHAT, k)
 resp = cv2.GaussianBlur(resp, (3, 3), 0)
 mask = np.zeros((H, W), np.uint8)
@@ -20,12 +20,12 @@ for rm in spec['rims']:
     best = np.array(best); n = len(best)
     sm = np.array([np.median(np.take(best, range(i - 9, i + 10), mode='wrap')) for i in range(n)])
     pts = np.stack([cx + (1 + sm) * rr * rx * ca, cy + (1 + sm) * rr * ry * sa], 1).astype(np.int32)
-    cv2.polylines(mask, [pts], True, 255, 11)
-b = spec['bridge']; cv2.polylines(mask, [np.array([[p[0] * W, p[1] * H] for p in b], np.int32)], False, 255, 13)
+    cv2.polylines(mask, [pts], True, 255, int(11 * F))
+b = spec['bridge']; cv2.polylines(mask, [np.array([[p[0] * W, p[1] * H] for p in b], np.int32)], False, 255, int(13 * F))
 for t, rm in zip(spec['temples'], spec['rims']):  # short piece from the rim to the temple end
     c = rm['c']; dx = 0.03 if t[0] < c[0] else -0.03
-    cv2.line(mask, (int(t[0] * W), int(t[1] * H)), (int((t[0] + dx) * W), int(t[1] * H)), 255, 13)
-out = cv2.inpaint(im, mask, 5, cv2.INPAINT_TELEA)
+    cv2.line(mask, (int(t[0] * W), int(t[1] * H)), (int((t[0] + dx) * W), int(t[1] * H)), 255, int(13 * F))
+out = cv2.inpaint(im, mask, int(5 * F), cv2.INPAINT_TELEA)
 cv2.imwrite(dst, out)
 if len(sys.argv) > 4:
     x0, x1, y0, y1 = int(0.32 * W), int(0.68 * W), int(0.17 * H), int(0.27 * H)

@@ -16,7 +16,12 @@ if 'turbo' in sub:
     p.enable_flashvdm(mc_algo='mc')
 p.vae.float(); p.model.float(); p.conditioner.float()
 print('loaded', time.time() - t, flush=True)
-with torch.autocast('cpu', dtype=torch.float32):
-    mesh = p(image=img, num_inference_steps=steps, octree_resolution=octree, num_chunks=20000,
-             generator=torch.manual_seed(12345), output_type='trimesh')[0]
+import gc
+with torch.no_grad():
+    lat = p(image=img, num_inference_steps=steps, octree_resolution=octree, num_chunks=20000,
+            generator=torch.manual_seed(12345), output_type='latent')
+    torch.save(lat, out + '.latent.pt')
+    p.model = None; p.conditioner = None; gc.collect()  # free the DiT + image encoder before the volume decode
+    print('sampled', time.time() - t, flush=True)
+    mesh = p._export(lat, 'trimesh', 1.01, 0.0, int(sys.argv[6]) if len(sys.argv) > 6 else 8000, octree, 'mc')[0]
 mesh.export(out); print('done', time.time() - t, len(mesh.faces), flush=True)

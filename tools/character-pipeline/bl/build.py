@@ -115,6 +115,16 @@ if extra.get('hair'):
     ha = me.color_attributes.new('hairw', 'FLOAT_COLOR', 'POINT')
     hv = np.repeat(hw, 4, axis=1); hv[:, 3] = 1; ha.data.foreach_set('color', hv.ravel())
     print('HAIR verts', int((hw > 0.5).sum()))
+if extra.get('skin_smooth'):  # Taubin smoothing only where the (view-projected) vertex colour is skin: smooth face, crisp hair/clothes
+    ss = extra['skin_smooth']; co, lap = vlap_setup(me); vc = vcol_np(me)
+    r, g, b_ = vc[:, 0], vc[:, 1], vc[:, 2]
+    skin = (r > ss.get('r_min', 0.3)) & (r - b_ > ss.get('rb_min', 0.1)) if not ss.get('all') else np.ones(len(co), bool)
+    zf = (co[:, 2] - co[:, 2].min()) / (co[:, 2].max() - co[:, 2].min()); skin &= (zf > ss.get('z', [0, 1])[0]) & (zf < ss.get('z', [0, 1])[1])
+    wgt = skin.astype(float)[:, None]
+    for _ in range(ss.get('grow', 3)): wgt = np.clip(wgt + lap(wgt) * 0.8, 0, 1)
+    for _ in range(ss.get('iters', 40)):
+        co = co + wgt * 0.5 * lap(co); co = co + wgt * -0.53 * lap(co)
+    me.vertices.foreach_set('co', co.ravel()); me.update(); print('SKINSMOOTH', int(skin.sum()), 'of', len(co))
 # --- normalise: feet (min z) at 0, centred in x/y, height 1
 bb = [mathutils.Vector(c) for c in src_o.bound_box]
 mn = mathutils.Vector([min(c[i] for c in bb) for i in range(3)]); mx = mathutils.Vector([max(c[i] for c in bb) for i in range(3)])
@@ -200,6 +210,10 @@ def project(ob, inv):
             w = min(1, max(0, (facing - a0) / (a1 - a0))); w = w * w * (3 - 2 * w)
             if w > 0 and bvh.ray_cast(v.co - mathutils.Vector(fd) * 0.003, mathutils.Vector(-fd), 10.0)[0] is not None: w = 0
             vw[v.index] = w
+        if extra['front'].get('edge'):  # fade out near the picture's silhouette (grazing, fringe): side views take over
+            ep, EW, EH = load_px(extra['front']['alpha'].replace('.png', '_edge.png'))
+            ix = np.clip((vuv[:, 0] * EW).astype(int), 0, EW - 1); iy = np.clip(((1 - vuv[:, 1]) * EH).astype(int), 0, EH - 1)
+            vw[:] = vw * smoothstep(ep[iy, ix, 0] * 64, *extra['front']['edge'])
         mo_ = extra.get('mv', {})
         if mo_.get('head_split') is not None and mo_.get('split_front'):  # behind the split plane the side views own the head
             hz = (co[:, 2] > extra.get('head_z', 0.7)) & (co[:, 2] < mo_.get('split_ztop', 9)); dep = co @ fd; ymid = np.median(dep[hz]) + mo_['head_split']
@@ -348,6 +362,8 @@ def multiview(ob, me, bvh, nrm, adj, vw, vuv):
             hz = (co[:, 2] > extra.get('head_z', 0.7)) & (co[:, 2] < mo.get('split_ztop', 9)); dep = co @ FRONT['d']; ymid = np.median(dep[hz]) + mo['head_split']
             w = np.where(hz, w * smoothstep(dep, ymid - 0.015, ymid + 0.015), w)
         w = w * samp(px, W, H, uvk)[:, 3]
+        if mo.get('edge'):
+            ep, EW, EH = load_px(f"{mo['dir']}/{name}_{k}_edge.png"); w = w * smoothstep(samp(ep, EW, EH, uvk)[:, 0] * 64, *mo['edge'])
         for i in np.where(w > 0)[0]:
             p = mathutils.Vector(co[i]); hit = bvh.ray_cast(p - mathutils.Vector(d) * 0.003, mathutils.Vector(-d), 10.0)
             if hit[0] is not None: w[i] = 0

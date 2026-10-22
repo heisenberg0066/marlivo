@@ -28,7 +28,7 @@ def mat(nm, col, metal=0.0, rough=0.5, alpha=1.0):
     b.inputs['Base Color'].default_value = (*col, 1); b.inputs['Metallic'].default_value = metal; b.inputs['Roughness'].default_value = rough
     if alpha < 1:
         b.inputs['Alpha'].default_value = alpha; m.blend_method = 'BLEND'; m.surface_render_method = 'BLENDED'
-        b.inputs['Specular IOR Level'].default_value = 1.0
+        b.inputs['Specular IOR Level'].default_value = spec.get('glasses', {}).get('lens_spec', 1.0)
     return m
 
 def curve_obj(nm, pts, radius, material, closed=False, radii=None, res=4, tag=''):
