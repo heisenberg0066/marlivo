@@ -466,6 +466,60 @@ def bake_normal(lo, nopt, res, bsdf, n2):
     n2.links.new(tn.outputs[0], nm.inputs['Color']); n2.links.new(nm.outputs[0], bsdf.inputs['Normal'])
     print('NORMAL', lo.name, res)
 sc_ = bpy.context.scene; sc_.render.engine = 'CYCLES'; sc_.cycles.device = 'CPU'; sc_.cycles.samples = 4
+def skin_even(lo, vw, bimg, texres, se):
+    """Even out the skin tone where the side views and the front picture meet (head sides): per-vertex colour read back from the
+    first bake, a smooth harmonic tone field pinned to the front-picture skin, blended in with a wide feathered mask, re-baked."""
+    me = lo.data; nv = len(me.vertices)
+    px = np.array(bimg.pixels[:]).reshape(texres, texres, 4)
+    uvs = np.zeros(len(me.loops) * 2); me.uv_layers['UVMap'].data.foreach_get('uv', uvs); uvs = uvs.reshape(-1, 2)
+    lv = np.zeros(len(me.loops), dtype=np.int64); me.loops.foreach_get('vertex_index', lv)
+    ix = np.clip((uvs[:, 0] * texres).astype(int), 0, texres - 1); iy = np.clip((uvs[:, 1] * texres).astype(int), 0, texres - 1)
+    lc = px[iy, ix, :3]; est = np.zeros((nv, 3)); cnt = np.zeros(nv)
+    np.add.at(est, lv, lc); np.add.at(cnt, lv, 1); est /= np.maximum(cnt, 1)[:, None]
+    co = np.zeros(nv * 3); me.vertices.foreach_get('co', co); co = co.reshape(-1, 3)
+    E = np.zeros(len(me.edges) * 2, dtype=np.int64); me.edges.foreach_get('vertices', E); E = E.reshape(-1, 2)
+    lum = est @ np.array([0.299, 0.587, 0.114]); rb = est[:, 0] - est[:, 2]
+    skin = smoothstep(lum, *se.get('lum', [0.33, 0.42])) * smoothstep(rb, *se.get('rb', [0.10, 0.18]))
+    head = smoothstep(co[:, 2], se['z'] - 0.01, se['z'] + 0.01)
+    if 'zmax' in se: head = head * (1 - smoothstep(co[:, 2], se['zmax'] - 0.01, se['zmax'] + 0.01))
+    side = 1 - smoothstep(vw, *se.get('vw', [0.8, 0.97]))
+    zone = skin * head
+    def diffuse(x, fixed, it):
+        deg = np.bincount(E.ravel(), minlength=nv).astype(float)
+        for _ in range(it):
+            acc = np.zeros_like(x); np.add.at(acc, E[:, 0], x[E[:, 1]]); np.add.at(acc, E[:, 1], x[E[:, 0]])
+            x = np.where(fixed, x, acc / np.maximum(deg, 1)[:, None] if x.ndim == 2 else acc / np.maximum(deg, 1))
+        return x
+    # tone field: free on side skin, pinned to the rendered colour on front-owned skin (vw high); non-skin vertices are pinned too
+    # but excluded from the averaging by pre-filling them with the nearest skin tone (diffused), so hair/fade does not darken it
+    issk = zone > 0.5; base = est.copy(); base[~issk] = np.nan
+    fill = np.where(np.isnan(base), 0, base); w = (~np.isnan(base[:, 0])).astype(float)
+    for _ in range(40):  # push skin colour outwards into non-skin verts (only as a boundary value)
+        acc = np.zeros_like(fill); accw = np.zeros(nv)
+        np.add.at(acc, E[:, 0], fill[E[:, 1]] * w[E[:, 1], None]); np.add.at(acc, E[:, 1], fill[E[:, 0]] * w[E[:, 0], None])
+        np.add.at(accw, E[:, 0], w[E[:, 1]]); np.add.at(accw, E[:, 1], w[E[:, 0]])
+        nw = (w == 0) & (accw > 0); fill[nw] = acc[nw] / accw[nw, None]; w[nw] = 1
+    pinned = (vw > se.get('vw', [0.8, 0.97])[1]) | ~issk
+    field = diffuse(fill, pinned[:, None], se.get('iters', 600))
+    m = zone * side
+    for _ in range(se.get('feather', 6)): m = diffuse(m[:, None], np.zeros((nv, 1), bool), 1)[:, 0]
+    m = np.clip(m * zone * se.get('strength', 1.0), 0, 1)  # never onto hair/brows/beard
+    a1 = me.color_attributes.new('skev', 'FLOAT_COLOR', 'POINT'); a1.data.foreach_set('color', np.repeat(m[:, None], 4, 1).ravel())
+    lin = np.clip(field, 0, 1) ** 2.2
+    a2 = me.color_attributes.new('skcol', 'FLOAT_COLOR', 'POINT'); a2.data.foreach_set('color', np.concatenate([lin, np.ones((nv, 1))], 1).ravel())
+    mt = bpy.data.materials.new('skin_even'); mt.use_nodes = True; nt = mt.node_tree; nt.nodes.clear(); N = nt.nodes.new; L = nt.links.new
+    o = N('ShaderNodeOutputMaterial'); em = N('ShaderNodeEmission'); uvn = N('ShaderNodeUVMap'); uvn.uv_map = 'UVMap'
+    src = bpy.data.images.new(bimg.name + '_src', texres, texres); src.pixels.foreach_set(px.ravel().astype(np.float32))
+    ti = N('ShaderNodeTexImage'); ti.image = src; ti.interpolation = 'Closest'; L(uvn.outputs[0], ti.inputs[0])
+    mk = N('ShaderNodeVertexColor'); mk.layer_name = 'skev'; sk = N('ShaderNodeVertexColor'); sk.layer_name = 'skcol'
+    mx = N('ShaderNodeMix'); mx.data_type = 'RGBA'; L(mk.outputs[0], mx.inputs['Factor']); L(ti.outputs[0], mx.inputs[6]); L(sk.outputs[0], mx.inputs[7])
+    L(mx.outputs[2], em.inputs[0]); L(em.outputs[0], o.inputs[0])
+    tgt = N('ShaderNodeTexImage'); tgt.image = bimg; nt.nodes.active = tgt
+    old = list(me.materials); me.materials.clear(); me.materials.append(mt)
+    bpy.ops.object.bake(type='EMIT')
+    me.materials.clear()
+    for x in old: me.materials.append(x)
+    print('SKIN_EVEN', int((m > 0.05).sum()), 'verts, max', round(float(m.max()), 2))
 def make_lod(tag, tris, texres):
     bpy.ops.object.select_all(action='DESELECT')
     lo = src_o.copy(); lo.data = src_o.data.copy(); lo.name = f'{name}_{tag}'; sc_.collection.objects.link(lo)
@@ -506,6 +560,7 @@ def make_lod(tag, tris, texres):
     bpy.ops.object.select_all(action='DESELECT'); lo.select_set(True); bpy.context.view_layer.objects.active = lo
     sc_.render.bake.use_selected_to_active = False; sc_.render.bake.margin = 8
     bpy.ops.object.bake(type='EMIT')
+    if extra.get('skin_even'): skin_even(lo, vw, bimg, texres, extra['skin_even'])
     bm_ = bpy.data.materials.new(f'{name}_{tag}_mat'); bm_.use_nodes = True; n2 = bm_.node_tree
     tn_ = n2.nodes.new('ShaderNodeTexImage'); tn_.image = bimg
     bsdf = n2.nodes['Principled BSDF']; n2.links.new(tn_.outputs[0], bsdf.inputs['Base Color'])
