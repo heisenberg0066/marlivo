@@ -16,4 +16,4 @@ and glTF export, gltfpack (MIT) for meshopt compression. The Ammar model is buil
    (body/armL/armR or hips/spine/head), GLB export (WebP textures) and `gltfpack -cc`.
 4. `bl/bust.py` + `bust_crop.py` — portraits for the 2D picker/seats.
 
-Settings used: orange `blur`, ammar `vc '{"smooth": 10, "face": {"z": [0.58, 0.9], "iters": 120, "lap": 40}}'`.
+Settings used: orange `blur`, ammar `vc '{"smooth": 10, "face": {"z": [0.58, 0.9], "iters": 120, "lap": 40}, "keep_frac": 0.05, "facing": [0.2, 0.5]}'` (TripoSR at 512³).
