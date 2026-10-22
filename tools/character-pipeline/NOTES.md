@@ -133,6 +133,6 @@ Short log of the problems hit while building the Ammar and Orange guy models, wh
   2) his right glasses temple runs ~1.5 cm further back and crossed the new ear.
 - Fix (ears.py, ears_ammar2.json): `smooth_extra_neg` 160 more Laplacian passes on his right only, over a wider radius
   (`smooth_r_neg` 1.9 ear radii); `temple_s_min` 0.03 clamps the temple tips to end at the ear front (his left temple already
-  ended there: 0 verts moved). His left ear, the face and the front view are byte-identical in the texture/mesh outside that side.
+  ended there: 0 verts moved). His left ear, the face and the front view are unchanged: only 0.23% of hi texels differ from dd21a58, all round his right ear (re-baked after the re-sculpt).
 - Still visible up close on his right: two small speckled slivers at the lower front of the ear (also in dd21a58); not readable at seat distance.
 - A `ghost` normalized-convolution fill option is in ears.py (unused: the "ghost" was geometry, not paint).
