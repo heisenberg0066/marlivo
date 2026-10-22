@@ -37,9 +37,15 @@
         "en": "Pepper",
         "fr": "Pepper"
       },
+      "model": "pepper.glb",
       "placeholder": "owl",
       "pickable": true,
-      "model": null
+      "modelLow": "pepper-low.glb",
+      "height": 0.95,
+      "baseY": -0.32,
+      "motion": "animal",
+      "glow": 0.2,
+      "rotationY": 0.0
     },
     "tango": {
       "name": {
