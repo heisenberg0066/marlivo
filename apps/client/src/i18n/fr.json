@@ -56,6 +56,8 @@
  "profile.character": "Personnage",
  "char.biscuit": "Biscuit",
  "char.mint": "Mint",
+ "char.choco": "Barre choco",
+ "char.sugar": "Cube scintillant",
  "char.pepper": "Pepper",
  "err.ROOM_NOT_FOUND": "Salon introuvable",
  "err.ROOM_FULL": "Salon complet",

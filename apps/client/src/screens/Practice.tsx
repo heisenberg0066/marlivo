@@ -12,7 +12,7 @@ import { CharacterBust, CHARACTER_IDS } from '../render/characters';
 
 /** Default opponents: Orange guy and Ammar first (Ammar's own figures), never the player's own character. */
 export function defaultOpponents(mine: string): string[] {
-  return ['tango', 'ammar', 'mint', 'pepper', 'biscuit'].filter((c) => c !== mine);
+  return ['tango', 'ammar', 'mint', 'pepper', 'biscuit', 'choco', 'sugar'].filter((c) => c !== mine);
 }
 
 export function Practice({ test }: { test: boolean }) {

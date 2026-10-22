@@ -3,7 +3,7 @@
 import { memo, useId, useState } from 'react';
 
 export type Mood = 'idle' | 'happy' | 'sad' | 'away' | 'think' | 'surprised';
-export const CHARACTER_IDS = ['biscuit', 'mint', 'pepper', 'tango', 'ammar'] as const;
+export const CHARACTER_IDS = ['biscuit', 'mint', 'pepper', 'tango', 'ammar', 'choco', 'sugar'] as const;
 export const SEAT_COLORS = ['#e8892f', '#5da9e9', '#7bd389', '#e2b23c'];
 
 function Eyes({ mood, x1, x2, y, r = 4, color = '#2b1d14' }: { mood: Mood; x1: number; x2: number; y: number; r?: number; color?: string }) {
@@ -178,7 +178,7 @@ function Ammar({ mood }: { mood: Mood }) {
 }
 
 /** Portraits rendered from the 3D models (Blender, see tools/character-pipeline); the SVG busts stay as fallback art. */
-const PORTRAITS: Record<string, string> = { tango: 'tango.webp', ammar: 'ammar.webp', biscuit: 'biscuit.webp', mint: 'mint.webp', pepper: 'pepper.webp' };
+const PORTRAITS: Record<string, string> = { tango: 'tango.webp', ammar: 'ammar.webp', biscuit: 'biscuit.webp', mint: 'mint.webp', pepper: 'pepper.webp', choco: 'choco.webp', sugar: 'sugar.webp' };
 const portraitUrl = (id: string) => (import.meta.env?.BASE_URL ?? '/') + 'assets/characters/portraits/' + PORTRAITS[id];
 function Portrait({ id, mood }: { id: string; mood: Mood }) {
   const [ok, setOk] = useState(true);

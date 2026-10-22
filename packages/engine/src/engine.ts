@@ -15,7 +15,7 @@ export const DEFAULT_SETTINGS: Settings = {
   botSpeed: 'normal', locked: false, test: false,
 };
 export const BOT_NAMES = ['Lina', 'Max', 'Chloé', 'Noah', 'Inès', 'Sami'];
-export const CHARACTERS = ['biscuit', 'mint', 'pepper', 'tango', 'ammar'];
+export const CHARACTERS = ['biscuit', 'mint', 'pepper', 'tango', 'ammar', 'choco', 'sugar'];
 /** A bot gets the character it was asked for, else the first one nobody at the table uses yet (rotating by seat). */
 function botCharacter(s: { seats: ({ characterId: string } | null)[] }, seat: number, want?: string): string {
   if (want && CHARACTERS.includes(want)) return want;

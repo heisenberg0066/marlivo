@@ -78,6 +78,36 @@
       "glow": 0.45,
       "rotationY": -15
     },
+    "choco": {
+      "name": {
+        "en": "Choco bar",
+        "fr": "Barre choco"
+      },
+      "model": "choco.glb",
+      "placeholder": "generic",
+      "pickable": true,
+      "modelLow": "choco-low.glb",
+      "height": 0.95,
+      "baseY": -0.32,
+      "motion": "animal",
+      "glow": 0.2,
+      "rotationY": 2.0
+    },
+    "sugar": {
+      "name": {
+        "en": "Sparkle cube",
+        "fr": "Cube scintillant"
+      },
+      "model": "sugar.glb",
+      "placeholder": "generic",
+      "pickable": true,
+      "modelLow": "sugar-low.glb",
+      "height": 0.95,
+      "baseY": -0.32,
+      "motion": "animal",
+      "glow": 0.2,
+      "rotationY": -2.4
+    },
     "guest": {
       "name": {
         "en": "Guest",

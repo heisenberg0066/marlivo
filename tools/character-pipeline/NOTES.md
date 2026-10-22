@@ -116,3 +116,10 @@ Short log of the problems hit while building the Ammar and Orange guy models, wh
   shade seen from below at the phone camera). On phone 4p the side seats are off-screen (only name tags show) — layout, not model.
 - Part C: cut6.py needs GDIR=/workspace/sb/gen7; Hunyuan must run with /workspace/tools/venv_hy/bin/python (system python
   has no diffusers). "Sparkle cube" id is `sugar`.
+
+## Part C — Choco bar (`choco`) + Sparkle cube (`sugar`)
+- Views: gen7 (choco front/sideL/sideR/back from the 02 turnaround, sugar front/side/back with ivory limbs), cut with cut6.py (GDIR=/workspace/sb/gen7), prep6.py.
+- Hunyuan3D-2mv turbo, bf16 sampling (hy_mv_bf16.py, 8 steps, octree 384, latent saved), then the SAME latent re-decoded: choco at 512 (1.06M faces, align IoU 0.943, yaw -2.0); sugar's 512 decode was OOM-killed twice (other Blender jobs), so the 384 decode of the same sample is used (870k faces, align IoU 0.908, yaw 2.4) - a flat cube does not need more.
+- Sparkle cube doubled eyes: Hunyuan modelled eye bulges + socket rings and a mouth crease larger/higher than the painted eyes -> crescent "second eye outline". flatface_sugar.py presses the eye/mouth box onto a quadratic fit of the front face (+ masked Laplacian relax) before build_hy.sh; the painted features from the 4k front then read clean.
+- Builds: build_hy.sh with settings_<n>_hy1.json (front yaw = align yaw), rig_<n>.json, motion 'animal'. Portraits: bust_crop.py on the 4k front cuts. partc_manifest.py inserts only the two manifest entries (rotationY = -align yaw).
+- Compare sheets: compare_partc.py (look.py renders at view yaw + align yaw).
