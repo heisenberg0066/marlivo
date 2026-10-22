@@ -16,7 +16,7 @@ await ctx.addInitScript(([r]) => {
 }, [r3d]);
 const p = await ctx.newPage();
 const errs = [];
-const dbg = async (tag) => { const f = `/tmp/monkey-${tag}.png`; await p.screenshot({ path: f }); console.error(tag, JSON.stringify(await state()), JSON.stringify(await p.evaluate(() => (window.__ml.view.log ?? []).slice(-6).map((e) => e.t + ' ' + JSON.stringify(e.p).slice(0, 90)))), await p.evaluate(() => [...document.querySelectorAll('.actions button, .overlay button')].map((b) => b.textContent + (b.disabled ? '(off)' : '')).join(' | ')), f); };
+const dbg = async (tag) => { const f = `/tmp/monkey-${tag}.png`; await p.screenshot({ path: f }); console.error(tag, JSON.stringify(await state()), JSON.stringify(await p.evaluate(() => (window.__ml.view.log ?? []).slice(-14).map((e) => e.t + ' ' + JSON.stringify(e.p).slice(0, 90)))), await p.evaluate(() => [...document.querySelectorAll('.actions button, .overlay button')].map((b) => b.textContent + (b.disabled ? '(off)' : '')).join(' | ')), f); };
 let lastTrace = 0;
 p.on('pageerror', (e) => errs.push('pageerror ' + e.message));
 const tap = async (x, y) => { if (sizes[which].hasTouch) await p.touchscreen.tap(x, y); else await p.mouse.click(x, y); };
@@ -96,7 +96,7 @@ while (Date.now() - t0 < 360000 && (draws < rounds || attempts < rounds)) {
         // stray taps everywhere except my own cards (a tap there is a real choice: select for swap)
         const mine = await p.evaluate(([x, y]) => { const el = document.elementFromPoint(x, y); const sl = el?.closest('[data-slot]'); return !!sl && sl.getAttribute('data-slot').startsWith('S' + (window.__ml.view.you + 1) + '-'); }, [q.x, q.y]);
         if (mine) continue;
-        if (r3d) { const near = await p.evaluate(([x, y]) => { const v = window.__ml.view; const h = window.__ml3dHook; return v.round.areas[v.you].some((sl) => { const c = h.slot(sl.id); return c && Math.hypot(c.x - x, c.y - y) < 60; }); }, [q.x, q.y]); if (near) continue; }
+        if (r3d) { const near = await p.evaluate(([x, y]) => { const v = window.__ml.view; const h = window.__ml3dHook; return v.round.areas[v.you].some((sl) => { const c = h.slot(sl.id); return c && Math.hypot(c.x - x, c.y - y) < 95; }); }, [q.x, q.y]); if (near) continue; }
         await tap(q.x, q.y); taps++; await p.waitForTimeout(40 + Math.random() * 100);
       }
       const s2 = await state();

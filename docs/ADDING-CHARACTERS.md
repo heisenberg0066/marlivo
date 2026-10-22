@@ -1,6 +1,6 @@
 # Adding real 3D characters to MarLivo
 
-The 3D table (Settings → Table style → 3D) shows a low-poly placeholder for every player: Biscuit (bear),
+The 3D table (Settings → Table → 3D) shows a low-poly placeholder for every player: Biscuit (bear),
 Mint (cat), Pepper (owl), Tango (the orange creature) and a plain "Guest" pawn. You can swap any of them
 for a real figure **without touching code**: you add a `.glb` file and change one line of JSON.
 
@@ -57,5 +57,5 @@ existing ids.
 
 ## 5. Check it
 
-`pnpm dev`, open Settings → Table style → 3D, start a practice game and pick that character for a bot or
+`pnpm dev`, open Settings → Table → 3D, start a practice game and pick that character for a bot or
 yourself. Frame rate is shown to tests as `window.__ml3d.fps`.

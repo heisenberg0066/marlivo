@@ -15,13 +15,13 @@ import { usePrefs, setPrefs } from '../prefs';
 import { Lobby } from './Lobby';
 import { TestPanel } from './TestPanel';
 
-import { armed } from './tapGuard';
+import { armed, nextStreak } from './tapGuard';
 import { TAP_BOUNCE_MS } from './tapGuard';
-let prevBarTap = -1e9;
+let prevBarTap = -1e9, streak = -1e9;
 function ActButton({ b }: { b: { label: string; on(): void; kind?: string; disabled?: boolean } }) {
   const born = useRef(performance.now());
   return <button className={`act ${b.kind ?? ''}`} disabled={b.disabled}
-    onClick={() => { const now = performance.now(); const ok = armed(born.current, prevBarTap, now); prevBarTap = now; if (ok) b.on(); }}>{b.label}</button>;
+    onClick={() => { const now = performance.now(); streak = nextStreak(streak, prevBarTap, now); prevBarTap = now; if (armed(born.current, streak, now)) b.on(); }}>{b.label}</button>;
 }
 
 const SUIT_CH: Record<string, string> = { S: '♠', H: '♥', D: '♦', C: '♣' };

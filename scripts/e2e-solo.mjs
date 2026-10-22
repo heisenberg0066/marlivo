@@ -45,7 +45,7 @@ const t0 = Date.now();
 let lastLogLen = 0, rounds = 0, stuck = 0, lastSig = '';
 const rand = (n) => Math.floor(Math.random() * n);
 while (Date.now() - t0 < maxMs) {
-  await p.waitForTimeout(250);
+  await p.waitForTimeout(380); // > the tap-guard streak gap, like a human between decisions
   const st = await p.evaluate(() => {
     const s = window.__ml; const v = s?.view;
     const r = v?.round;
