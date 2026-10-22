@@ -379,6 +379,7 @@ def multiview(ob, me, bvh, nrm, adj, vw, vuv):
                 acc = np.zeros_like(gsm); np.add.at(acc, E_[:, 0], gsm[E_[:, 1]]); np.add.at(acc, E_[:, 1], gsm[E_[:, 0]])
                 gsm = np.where(fixed[:, None], (gsm + acc) / (1 + deg_[:, None]), gsm)
             g = gsm; base = np.median(g[okc], 0) if okc.any() else np.ones(3); g[~fixed] = base
+            if k in lv_.get('global', []): g[:] = base; fixed[:] = True  # this view: one gain (a local field leaves a stripe where its sources disagree)
             for _ in range(lv_.get('iters', 300)):
                 acc = np.zeros_like(g); np.add.at(acc, E_[:, 0], g[E_[:, 1]]); np.add.at(acc, E_[:, 1], g[E_[:, 0]])
                 g = np.where(fixed[:, None], g, acc / np.maximum(deg_[:, None], 1))

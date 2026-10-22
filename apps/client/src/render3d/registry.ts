@@ -14,7 +14,7 @@ export interface CharacterEntry {
   /** false = the figure stands (no chair drawn behind it). */
   chair?: boolean;
   /** Bone-driven motion style for rigged models (bones: body/armL/armR or hips/spine/head). */
-  motion?: 'creature' | 'person';
+  motion?: 'creature' | 'person' | 'animal';
   placeholder?: Placeholder;
   pickable?: boolean;
   /** Model height in table units after normalising (default 1.05: a seated figure whose head clears the table). */

@@ -171,6 +171,10 @@ function ModelFigure({ e, id, mood, seed, pose: stance, fallback, onFail }: { e:
     } else if (e.motion === 'person') {
       pose(b.spine, s.nod * 0.3, s.twist, s.tilt * 0.35);
       pose(b.head, s.nod, s.twist * 0.6, s.tilt);
+    } else if (e.motion === 'animal') { // bear / cat / owl: body sway + head + waving arms (wings)
+      pose(b.spine, s.nod * 0.3, s.twist * 0.6, s.tilt * 0.35);
+      pose(b.head, s.nod, s.twist * 0.6, s.tilt);
+      pose(b.armL, 0, 0, -s.arm * 0.8); pose(b.armR, 0, 0, s.arm * (think ? 0.2 : 0.8));
     }
   });
   return obj ? <primitive object={obj.root} /> : <>{fallback}</>;

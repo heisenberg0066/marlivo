@@ -56,3 +56,12 @@ Short log of the problems hit while building the Ammar and Orange guy models, wh
   stripe down the back (where the side and back views blend); Ammar has a faint painted ear in front of the real ear
   at the right profile; mesh face slightly noisy (octree 256). Next: level the views against each other, not just
   against the front; erode the Ammar fills like Orange; try a finer Hunyuan decode with the DiT unloaded first.
+
+## live6 (2026-10-22) — smoother/sharper Ammar + Orange guy
+- Meshes: 384-octree sampling (8 steps, latent saved) then a 512 re-decode from the latent after dropping the DiT (Ammar 659k faces, Orange 1.21M). Fits in 16 GB without swap when nothing else runs.
+- Ammar (settings_ammar_hy9): skin-only Taubin (40 it) on the face, 4096 texture from the 4x ESRGAN unglassed front, front/mv edge falloff. Result: smoother face, painted-ear ghost gone, lenses clear (lens_alpha 0.05, spec 0.3). Still open: small peach specks on the hair crown, faint painted temple-arm line from the side views.
+- Orange (settings_orange_hy4): root causes found for the three artefacts:
+  - grey band behind the eyes = front picture's baked rim shading projected at grazing angles; front facing ramp raised [0,.25] -> [.3,.7] so the side views take over earlier.
+  - back stripe = local gain field for the back view interpolating between disagreeing side overlaps; new `mv.level.global: ["back"]` uses one gain for that view.
+  - dark marks near the feet = vertex colours of occluded inner-foot vertices; dark low (z<25%) vertex colours reset to the body median before the build (hy_orange512_alf.obj).
+- Animals (Biscuit/Mint/Pepper): cut6.py (rembg, 4k ESRGAN front, 2x sides/back), prep6.py (front cut acts as the reference: mask/proj/bbox), align_hy.py falls back to a unit-height frame when there is no TripoSR carve, GEN env selects the view folder; rig.py reads rig_<name>.json (hips/spine/head + armL/armR); client motion 'animal'.

@@ -8,7 +8,9 @@ sub = sys.argv[3] if len(sys.argv) > 3 else 'hunyuan3d-dit-v2-mv-turbo'
 steps = int(sys.argv[4]) if len(sys.argv) > 4 else 5
 octree = int(sys.argv[5]) if len(sys.argv) > 5 else 256
 views = {'front': 'front', 'left': 'sideL', 'back': 'back', 'right': 'sideR'}
-img = {k: Image.open(f'/workspace/sb/gen5/cut/{name}_{v}.png').convert('RGBA') for k, v in views.items()}
+import os
+GEN = os.environ.get('GEN', '/workspace/sb/gen5/cut')
+img = {k: Image.open(f'{GEN}/{name}_{v}.png').convert('RGBA') for k, v in views.items()}
 t = time.time()
 p = Hunyuan3DDiTFlowMatchingPipeline.from_pretrained('tencent/Hunyuan3D-2mv', subfolder=sub,
         use_safetensors=True, device='cpu', dtype=torch.float32)

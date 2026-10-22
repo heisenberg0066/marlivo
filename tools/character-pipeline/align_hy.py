@@ -7,7 +7,10 @@ from scipy import ndimage
 name, src, dst = sys.argv[1:4]
 m = trimesh.load(src, force='mesh', process=False)
 v = m.vertices.copy(); v = np.stack([v[:, 2], v[:, 0], v[:, 1]], 1)  # hy (x, y up, z front) -> file (x front, y, z up)
-car = trimesh.load(f'/workspace/tools/carve_{name}.obj', force='mesh', process=False).vertices
+import os
+GEN = os.environ.get('GEN', '/workspace/sb/gen5/cut')
+cf = f'/workspace/tools/carve_{name}.obj'
+car = trimesh.load(cf, force='mesh', process=False).vertices if os.path.exists(cf) else np.array([[0, 0, -0.5], [0, 0, 0.5]])  # no TripoSR carve: unit height, centred
 s0 = (car[:, 2].max() - car[:, 2].min()) / (v[:, 2].max() - v[:, 2].min())
 v = (v - v.mean(0)) * s0; v += np.array([car[:, 0].mean(), car[:, 1].mean(), car[:, 2].min() - v[:, 2].min()])
 mask = np.array(Image.open(f'/workspace/tools/in/{name}_mask.png').convert('L').resize((512, 512))) > 128
@@ -40,7 +43,8 @@ raw = np.stack([v0[:, 1], -v0[:, 0], v0[:, 2]], 1); rn = np.stack([nr[:, 1], -nr
 views = {'front': 0, 'q34L': 45, 'q34R': -45, 'sideL': 90, 'sideR': -90, 'back': 180}
 acc = np.zeros((len(v), 3)); wsum = np.zeros(len(v))
 for k, deg in views.items():
-    im = np.asarray(Image.open(f'/workspace/sb/gen5/cut/{name}_{k}.png').convert('RGBA')).astype(float) / 255
+    if not os.path.exists(f'{GEN}/{name}_{k}.png'): continue
+    im = np.asarray(Image.open(f'{GEN}/{name}_{k}.png').convert('RGBA')).astype(float) / 255
     H, W = im.shape[:2]; al = im[:, :, 3] > 0.5; ys, xs = np.where(al)
     th = math.radians(deg); d = np.array([-math.sin(th), math.cos(th), 0]); r = np.array([math.cos(th), math.sin(th), 0])
     u = raw @ r; z = raw[:, 2]; dep = raw @ d

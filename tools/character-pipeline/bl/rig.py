@@ -2,7 +2,19 @@
 import bpy, sys, numpy as np, mathutils
 argv = sys.argv[sys.argv.index('--') + 1:]
 name = argv[0]
+import json, os
+RC = f'/workspace/tools/rig_{name}.json'
 def bones_for(co):
+    if os.path.exists(RC):  # animals: hips/spine/head + two arms (wings). rig_<name>.json: hip, neck, top z; arm_z [z0, z1]; arm_x lateral |x| beyond which a vertex is arm
+        c = json.load(open(RC)); z = co[:, 2]
+        tor = co[(z > c['hip']) & (z < c['neck'])]; cx = float(np.median(tor[:, 0])); cy = float(np.median(tor[:, 1]))
+        out = {'hips': ((cx, cy, 0.03), (cx, cy, c['hip']), None), 'spine': ((cx, cy, c['hip']), (cx, cy, c['neck']), 'hips'),
+               'head': ((cx, cy, c['neck']), (cx, cy, c.get('top', 1.0)), 'spine')}
+        for side, sg in (('armL', -1), ('armR', 1)):
+            a = co[(sg * (co[:, 0] - cx) > c['arm_x']) & (z > c['arm_z'][0]) & (z < c['arm_z'][1])]
+            tip = a[np.argmin(a[:, 2])]
+            out[side] = ((cx + sg * c['arm_x'] * 0.8, float(np.median(a[:, 1])), c['arm_z'][1]), tuple(float(x) for x in tip), 'spine')
+        return out
     if name == 'ammar':
         cx = 0.0; cy = float(np.median(co[(co[:, 2] > 0.75) & (co[:, 2] < 0.95)][:, 1]))
         return {'hips': ((cx, cy, 0.05), (cx, cy, 0.42), None), 'spine': ((cx, cy, 0.42), (cx, cy, 0.69), 'hips'), 'head': ((cx, cy, 0.69), (cx, cy, 1.0), 'spine')}

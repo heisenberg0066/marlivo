@@ -42,7 +42,7 @@
       "baseY": -0.32,
       "motion": "creature",
       "glow": 0.15,
-      "rotationY": -6.4
+      "rotationY": -3.0
     },
     "ammar": {
       "name": {
@@ -58,7 +58,7 @@
       "chair": false,
       "motion": "person",
       "glow": 0.45,
-      "rotationY": -15
+      "rotationY": -17
     },
     "guest": {
       "name": {
