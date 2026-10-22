@@ -22,18 +22,24 @@
         "en": "Mint",
         "fr": "Mint"
       },
-      "model": null,
+      "model": "mint.glb",
       "placeholder": "cat",
-      "pickable": true
+      "pickable": true,
+      "modelLow": "mint-low.glb",
+      "height": 0.95,
+      "baseY": -0.32,
+      "motion": "animal",
+      "glow": 0.2,
+      "rotationY": 9.8
     },
     "pepper": {
       "name": {
         "en": "Pepper",
         "fr": "Pepper"
       },
-      "model": null,
       "placeholder": "owl",
-      "pickable": true
+      "pickable": true,
+      "model": null
     },
     "tango": {
       "name": {
