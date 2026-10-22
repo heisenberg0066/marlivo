@@ -102,7 +102,7 @@
       "placeholder": "generic",
       "pickable": true,
       "modelLow": "sugar-low.glb",
-      "height": 0.95,
+      "height": 0.78,
       "baseY": -0.32,
       "motion": "animal",
       "glow": 0.2,
