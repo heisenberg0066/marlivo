@@ -1,0 +1,189 @@
+{
+ "keep_frac": 0.02,
+ "facing": [
+  0.15,
+  0.5
+ ],
+ "facing_head": [
+  0.0,
+  0.25
+ ],
+ "head_z": 0.7,
+ "paint": {
+  "split_z": 0.69,
+  "dark_lo": [
+   0.022,
+   0.022,
+   0.025
+  ],
+  "dark_hi": [
+   0.033,
+   0.016,
+   0.01
+  ],
+  "skin": [
+   0.8,
+   0.26,
+   0.11
+  ],
+  "lum": [
+   0.22,
+   0.35
+  ],
+  "fade": [
+   0.735,
+   0.81,
+   [
+    0.1,
+    0.06,
+    0.045
+   ]
+  ]
+ },
+ "shoes": {
+  "z": 0.042,
+  "stripe_z": 0.015,
+  "stripe_w": 0.007,
+  "sole": 0.008,
+  "slope": -0.15
+ },
+ "normal": {
+  "layers": [],
+  "strength": 0.6,
+  "dist": 0.004
+ },
+ "mv": {
+  "dir": "/workspace/sb/gen5/cut",
+  "views": {
+   "sideL": 90,
+   "sideR": -90,
+   "back": 180
+  },
+  "facing": [
+   0.15,
+   0.6
+  ],
+  "power": 3,
+  "mix": 1.0,
+  "yaw0": 15.0,
+  "fill": 1,
+  "gain_clip": [
+   1.0,
+   1.0
+  ],
+  "order": [
+   "sideL",
+   "sideR",
+   "back"
+  ],
+  "level": {
+   "clip": [
+    0.6,
+    1.6
+   ],
+   "iters": 300,
+   "pre": 8
+  },
+  "facing_head": [
+   0.45,
+   0.8
+  ],
+  "head_split": 0.0,
+  "split_ztop": 0.875,
+  "edge": [
+   1,
+   8
+  ],
+  "fill_tag": {
+   "sideL": "_nf_fill",
+   "sideR": "_nf_fill"
+  }
+ },
+ "smooth": 3,
+ "front": {
+  "image": "/workspace/sb/gen5/cut/ammar_front4k_ng4_fill.png",
+  "alpha": "/workspace/sb/gen5/cut/ammar_front4k.png",
+  "yaw": 15.0,
+  "flat": {
+   "uv": [
+    0.335,
+    0.655,
+    0.195,
+    0.245
+   ],
+   "iters": 80
+  },
+  "edge": [
+   2,
+   14
+  ],
+  "exclude": [
+   [
+    0.28,
+    0.38,
+    0.11,
+    0.19
+   ],
+   [
+    0.28,
+    0.373,
+    0.19,
+    0.29
+   ],
+   [
+    0.615,
+    0.73,
+    0.11,
+    0.19
+   ],
+   [
+    0.617,
+    0.73,
+    0.19,
+    0.29
+   ]
+  ],
+  "exclude_soft": 0.008
+ },
+ "facing_hair": [
+  0.875,
+  0.4,
+  0.7
+ ],
+ "skin_smooth": {
+  "r_min": 0.3,
+  "rb_min": 0.1,
+  "z": [
+   0.55,
+   0.93
+  ],
+  "iters": 15,
+  "grow": 3,
+  "protect": {
+   "z": [
+    0.7,
+    0.885
+   ],
+   "depth": 0.07,
+   "soft": 8
+  }
+ },
+ "tex_hi": 4096,
+ "skin_even": {
+  "z": 0.72,
+  "lum": [
+   0.36,
+   0.46
+  ],
+  "rb": [
+   0.1,
+   0.18
+  ],
+  "vw": [
+   0.8,
+   0.97
+  ],
+  "iters": 600,
+  "feather": 8
+ }
+}
