@@ -144,3 +144,16 @@ Short log of the problems hit while building the Ammar and Orange guy models, wh
   swiftshader). Retake with WAIT=30000 shows Pepper correctly. Not a model fault; the check needs >=20 s on phone for 3 new GLBs.
 - Mint/Pepper glasses temples run straight back on top of the side of the head and are visible across the cheek/face disc at the
   4p side seats (no ears to tuck behind). Reads as glasses; could be shortened later.
+
+## Polish pass (Oct 22, 19:07-19:45 CEST)
+- Sparkle cube height 0.95 -> 0.78 (d3d1b22): the cube's whole body is "head", so at 0.95 it towered over Orange guy/Choco.
+- Mint (b7b94e3) via bl/polish.py on hyb_mint/mint.blend: temples run 4 cm back then dive 3 cm into the head over 1.5 cm
+  (hidden in the fur, no blunt cut end); body texels (greenish, not pink/dark) chroma x2.0, lum x0.96. Texture median
+  already matched the reference (134,140,122 vs 137,143,126) — it read cream in game because of the warm table lights,
+  so the boost is for the in-game look.
+- Pepper NOT deployed: the long dark arm seen from the side seats is mostly PAINTED into the side-view texture islands
+  (clay render shows only the short modelled temple). polish.py unpaint_arm (mask = texels near the old temple path, dark +
+  unsaturated, normalized-convolution fill) only removes the front part; the painted bar sits on the head surface well
+  outside the temple path in x and further back. Needs a proper repaint of the side views (as unglass did for Ammar's front).
+- Ammar Low hair specks NOT deployed: looser `hair_lo` speck params (ears_ammar3.json, hyb30) made the top of the Low hair
+  show MORE light patches (the replacement highlight colour is painted onto more texels). Kept 594c8fe.

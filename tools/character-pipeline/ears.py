@@ -150,7 +150,7 @@ def paint(ob, tag):
         print('EARS shirt', tag, int(m.sum()), 'texels, shirt colour', (shirt_c * 255).round())
     # ---- hair specks -> dark brown highlight
     if 'hair' in C:
-        hc = C['hair']; lum2 = rgb2 @ np.array([0.299, 0.587, 0.114])
+        hc = dict(C['hair'], **C.get('hair_' + tag, {})); lum2 = rgb2 @ np.array([0.299, 0.587, 0.114])
         darkm = (lum2 < hc.get('dark_lum', 0.2)).astype(np.float32); sig = hc.get('sig', 10) * res / 4096
         dfrac = gaussian_filter(darkm * ok, sig) / np.maximum(gaussian_filter(ok.astype(np.float32), sig), 1e-3)
         speck = ok & (z > hc['z_min']) & ((nz > hc.get('nz', 0.3)) | ((Pp.reshape(-1, 3) @ F).reshape(res, res) < hc.get('fw_max', 0.03))) & (rgb2[:, :, 0] - rgb2[:, :, 2] > hc.get('rb', 0.10)) & (lum2 > hc.get('speck_lum', 0.3)) & (dfrac > hc.get('dfrac', 0.5))
