@@ -44,3 +44,11 @@ Short log of the problems hit while building the Ammar and Orange guy models, wh
   - Painted glasses smeared/ghosted at grazing angles → `unglass.py`: trace the rims (superellipse + thin-line
     response), inpaint them out (OpenCV Telea); the 3D wire glasses (detail.py, now superellipse rims) replace them.
     Thick Hunyuan glasses geometry flattened with `front.flat`.
+- Face-side ghosts (side view features landing on the cheek) → `mv.head_split`: the front half of the head
+  (below the hairline, `split_ztop`) is painted from the front picture only, the back half from the side/back views.
+  Hair keeps a narrower front ramp (`facing_hair`) so the front picture is not stretched over the hair sides.
+  Moving the split forward (`head_split` -0.03 + `split_front`) put beard smudges on the cheeks → reverted.
+- Orange side band: the positional `tint` (tuned for the old mesh's arm x) painted the new body sides → removed.
+- In-game the new meshes keep the reference's turn → manifest `rotationY` (-15° Ammar, -6.4° Orange guy).
+- Hunyuan octree 384 run also OOM-killed (11 GB) → octree 256 kept.
+- 2D portraits re-cut from the 2k generated fronts (`bust_crop.py`): crisper than the old ones.

@@ -194,11 +194,16 @@ def project(ob, inv):
         a0, a1 = f0, f1
         for v in me.vertices:
             facing = float(nrm[v.index] @ -fd)
-            if 'facing_head' in extra and v.co.z > extra.get('head_z', 0.7): a0, a1 = extra['facing_head']
+            if 'facing_hair' in extra and v.co.z > extra['facing_hair'][0]: a0, a1 = extra['facing_hair'][1:]
+            elif 'facing_head' in extra and v.co.z > extra.get('head_z', 0.7): a0, a1 = extra['facing_head']
             else: a0, a1 = f0, f1
             w = min(1, max(0, (facing - a0) / (a1 - a0))); w = w * w * (3 - 2 * w)
             if w > 0 and bvh.ray_cast(v.co - mathutils.Vector(fd) * 0.003, mathutils.Vector(-fd), 10.0)[0] is not None: w = 0
             vw[v.index] = w
+        mo_ = extra.get('mv', {})
+        if mo_.get('head_split') is not None and mo_.get('split_front'):  # behind the split plane the side views own the head
+            hz = (co[:, 2] > extra.get('head_z', 0.7)) & (co[:, 2] < mo_.get('split_ztop', 9)); dep = co @ fd; ymid = np.median(dep[hz]) + mo_['head_split']
+            vw[:] = np.where(hz, vw * (1 - smoothstep(dep, ymid - 0.015 + mo_['split_front'], ymid + 0.015 + mo_['split_front'])), vw)
     for v in (me.vertices if FRONT is None else []):
         p = inv @ v.co; d = p.y + 1.9
         px = (p.x / (d * tn) + 1) / 2 * 512; py = (1 - (p.z / (d * tn) + 1) / 2) * 512
@@ -337,7 +342,12 @@ def multiview(ob, me, bvh, nrm, adj, vw, vuv):
         s, cx, cy, bi = Fv['s'], Fv['cx'], Fv['cy'], Fv['iou']; best = (s, cx, cy)
         if mo.get('fill'): path = path.replace('.png', '_fill.png')
         uvk = np.stack([(cx + u * s) / W, 1 - (cy - v * s) / H], 1)
-        facing = nrm @ -d; w = smoothstep(facing, f0, f1) * samp(px, W, H, uvk)[:, 3]
+        facing = nrm @ -d; w = smoothstep(facing, f0, f1)
+        if 'facing_head' in mo: w = np.where(co[:, 2] > extra.get('head_z', 0.7), smoothstep(facing, *mo['facing_head']), w)
+        if mo.get('head_split') and FRONT is not None:  # face (front half of the head) only from the front picture
+            hz = (co[:, 2] > extra.get('head_z', 0.7)) & (co[:, 2] < mo.get('split_ztop', 9)); dep = co @ FRONT['d']; ymid = np.median(dep[hz]) + mo['head_split']
+            w = np.where(hz, w * smoothstep(dep, ymid - 0.015, ymid + 0.015), w)
+        w = w * samp(px, W, H, uvk)[:, 3]
         for i in np.where(w > 0)[0]:
             p = mathutils.Vector(co[i]); hit = bvh.ray_cast(p - mathutils.Vector(d) * 0.003, mathutils.Vector(-d), 10.0)
             if hit[0] is not None: w[i] = 0
