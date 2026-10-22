@@ -41,7 +41,7 @@
       "height": 0.9,
       "baseY": -0.32,
       "motion": "creature",
-      "glow": 0.35
+      "glow": 0.15
     },
     "ammar": {
       "name": {
