@@ -157,3 +157,11 @@ Short log of the problems hit while building the Ammar and Orange guy models, wh
   outside the temple path in x and further back. Needs a proper repaint of the side views (as unglass did for Ammar's front).
 - Ammar Low hair specks NOT deployed: looser `hair_lo` speck params (ears_ammar3.json, hyb30) made the top of the Low hair
   show MORE light patches (the replacement highlight colour is painted onto more texels). Kept 594c8fe.
+
+## Polish 2 (Oct 22, ~20:00 CEST) — 860791c
+- Mint: chroma 1.6, lum x1.02 (texture body median 140,148,123 vs reference 137,143,126). x2.0 read olive/dark in a neutral render.
+- Pepper: `unpaint_shift` in polish.py. Mask = texels on the temple's side of the head, within 5 cm of the temple height,
+  from 1.5 cm behind the hinge to 30 cm back, dark (lum < 0.30) and unsaturated (sat < 0.15) -> grown. Each masked run in a
+  texture column is replaced by the fur just above (or below) it, mirrored, then feathered: keeps the feather pattern and the
+  face-disc / brown boundary instead of a grey blur. The modelled temple is 3 cm then dives into the head.
+  Left: faint light streak where the bar was, and small grey wedges on the painted pale lens-edge patch next to the hinge.
