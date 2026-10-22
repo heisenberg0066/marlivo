@@ -87,7 +87,7 @@ function EyeBall({ p, r, iris, lid, lidAt = 0.38, look = [0, 0] }: { p: V3; r: n
 export function OrangeGuy({ mood, seed, pose = 'sit' }: { mood: Mood; seed: number; pose?: 'sit' | 'stand' }) {
   const rig = useRef<Rig>({ root: null, head: null, armL: null, armR: null, eyes: null });
   const sit = pose === 'sit';
-  useRigMotion(rig, mood, seed, { armScale: 0.4, baseY: sit ? -0.06 : 0.18 });
+  useRigMotion(rig, mood, seed, { armScale: 0.4, baseY: sit ? 0.2 : 0.18 });
   const set = (k: keyof Rig) => (g: THREE.Group | null) => { rig.current[k] = g; };
   const m = useMemo(() => {
     const peelMat = new THREE.MeshStandardMaterial({ color: '#e8954f', roughness: 0.58, bumpMap: peelBump(), bumpScale: 0.5, emissive: '#5a2a0c', emissiveIntensity: 0.35 });
