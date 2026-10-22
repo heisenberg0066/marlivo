@@ -23,6 +23,7 @@ export function SettingsScreen() {
         {tog('reduced', 'settings.reduced')}
         <label>{t('settings.renderer')}<div className="seg">{(['2d', '3d'] as const).map((s) => <button key={s} className={p.renderer === s ? 'on' : ''} onClick={() => setPrefs({ renderer: s })}>{t('settings.r' + s)}</button>)}</div>
           {p.renderer === '3d' && !webglAvailable() && <small className="muted">{t('settings.no3d')}</small>}</label>
+        {p.renderer === '3d' && <label>{t('settings.graphics')}<div className="seg">{(['auto', 'high', 'low'] as const).map((s) => <button key={s} className={p.graphics === s ? 'on' : ''} onClick={() => setPrefs({ graphics: s })}>{t('settings.g' + s)}</button>)}</div></label>}
         <label>{t('settings.camera')}<div className="seg">{(['seat', 'top'] as const).map((s) => <button key={s} className={p.camera === s ? 'on' : ''} onClick={() => setPrefs({ camera: s })}>{t('settings.' + s)}</button>)}</div></label>
         {tog('confirmSwap', 'settings.confirmSwap')}
         {tog('slotNumbers', 'settings.slotNumbers')}

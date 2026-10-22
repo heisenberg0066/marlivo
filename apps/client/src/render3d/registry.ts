@@ -9,6 +9,12 @@ export interface CharacterEntry {
   name?: { en?: string; fr?: string };
   /** GLB file name next to manifest.json (or an absolute URL). null = use the built-in placeholder. */
   model: string | null;
+  /** Optional lighter GLB used when Settings → Graphics is Low (phones by default). */
+  modelLow?: string;
+  /** false = the figure stands (no chair drawn behind it). */
+  chair?: boolean;
+  /** Bone-driven motion style for rigged models (bones: body/armL/armR or hips/spine/head). */
+  motion?: 'creature' | 'person';
   placeholder?: Placeholder;
   pickable?: boolean;
   /** Model height in table units after normalising (default 1.05: a seated figure whose head clears the table). */
@@ -53,13 +59,18 @@ export function entryFor(m: Manifest, id: string): CharacterEntry {
 
 const glbCache = new Map<string, Promise<GLTF | null>>();
 /** Loads (once) and returns the GLB for an entry, or null when there is none or it fails to load. */
-export function loadModel(e: CharacterEntry): Promise<GLTF | null> {
-  if (!e.model) return Promise.resolve(null);
-  const url = /^(https?:)?\/\//.test(e.model) || e.model.startsWith('/') ? e.model : base() + e.model;
+export function modelUrl(e: CharacterEntry, level: 'high' | 'low' = 'high'): string | null {
+  const f = level === 'low' && e.modelLow ? e.modelLow : e.model;
+  if (!f) return null;
+  return /^(https?:)?\/\//.test(f) || f.startsWith('/') ? f : base() + f;
+}
+export function loadModel(e: CharacterEntry, level: 'high' | 'low' = 'high'): Promise<GLTF | null> {
+  const url = modelUrl(e, level);
+  if (!url) return Promise.resolve(null);
   let p = glbCache.get(url);
   if (!p) {
-    p = import('three/examples/jsm/loaders/GLTFLoader.js')
-      .then(({ GLTFLoader }) => new GLTFLoader().loadAsync(url))
+    p = Promise.all([import('three/examples/jsm/loaders/GLTFLoader.js'), import('three/examples/jsm/libs/meshopt_decoder.module.js')])
+      .then(([{ GLTFLoader }, { MeshoptDecoder }]) => new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).loadAsync(url))
       .catch((err) => { console.warn('character model failed, using placeholder', url, err); return null; });
     glbCache.set(url, p);
   }
@@ -68,7 +79,10 @@ export function loadModel(e: CharacterEntry): Promise<GLTF | null> {
 
 /** Scales and lifts a loaded model so it is `height` tall with its feet at `baseY`, centred on x/z. */
 export function normalise(obj: THREE.Object3D, e: CharacterEntry) {
-  const box = new THREE.Box3().setFromObject(obj);
+  obj.updateMatrixWorld(true);
+  let skinned = false;
+  obj.traverse((o) => { const m = o as THREE.SkinnedMesh; if (m.isSkinnedMesh) { skinned = true; m.skeleton.update(); } });
+  const box = new THREE.Box3().setFromObject(obj, skinned); // skinned (and quantised) meshes need the bone-transformed vertices
   const size = box.getSize(new THREE.Vector3());
   const h = e.height ?? 1.05;
   const s = size.y > 0 ? h / size.y : 1;

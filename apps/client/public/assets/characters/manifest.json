@@ -34,18 +34,27 @@
         "en": "Orange guy",
         "fr": "Le gars orange"
       },
-      "model": null,
+      "model": "orange-guy.glb",
       "placeholder": "orange",
-      "pickable": true
+      "pickable": true,
+      "modelLow": "orange-guy-low.glb",
+      "height": 0.9,
+      "baseY": -0.32,
+      "motion": "creature"
     },
     "ammar": {
       "name": {
         "en": "Ammar",
         "fr": "Ammar"
       },
-      "model": null,
+      "model": "ammar.glb",
       "placeholder": "ammar",
-      "pickable": true
+      "pickable": true,
+      "modelLow": "ammar-low.glb",
+      "height": 1.5,
+      "baseY": -0.88,
+      "chair": false,
+      "motion": "person"
     },
     "guest": {
       "name": {

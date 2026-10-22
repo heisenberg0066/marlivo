@@ -7,6 +7,7 @@ import * as THREE from 'three';
 import type { Mood } from '../render/characters';
 import { useRigMotion, type Rig } from './rig';
 import { OrangeGuy, AmmarFigure } from './Hero';
+import { usePrefs, graphicsLevel } from '../prefs';
 import { loadManifest, entryFor, loadModel, normalise, clipFor, type CharacterEntry, type Placeholder } from './registry';
 
 const G = {
@@ -84,22 +85,49 @@ function PlaceholderFigure({ kind, mood, seed }: { kind: Placeholder; mood: Mood
   );
 }
 
-/** A GLB figure from the manifest: normalised to the seat, with its clips mapped to moods. */
-function ModelFigure({ e, mood, onFail }: { e: CharacterEntry; mood: Mood; onFail(): void }) {
-  const [obj, setObj] = useState<{ root: THREE.Object3D; mixer: THREE.AnimationMixer; clips: THREE.AnimationClip[] } | null>(null);
+/** Bone motion for rigged GLB figures. Rotations are given about model-space axes (x = nod, y = turn,
+ *  z = side tilt; the model faces +z) and converted once into each bone's local frame. */
+interface BoneRig { bone: THREE.Bone; rest: THREE.Quaternion; ax: THREE.Vector3[] }
+function rigBones(root: THREE.Object3D, names: string[]): Record<string, BoneRig> {
+  const out: Record<string, BoneRig> = {};
+  root.updateMatrixWorld(true);
+  const rootQ = root.getWorldQuaternion(new THREE.Quaternion()).invert();
+  for (const n of names) {
+    const b = root.getObjectByName(n) as THREE.Bone | undefined;
+    if (!b) continue;
+    const wq = rootQ.clone().multiply(b.getWorldQuaternion(new THREE.Quaternion())).invert(); // model -> bone local
+    out[n] = { bone: b, rest: b.quaternion.clone(), ax: [new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 0, 1)].map((v) => v.applyQuaternion(wq).normalize()) };
+  }
+  return out;
+}
+const tq = new THREE.Quaternion(), tq2 = new THREE.Quaternion();
+function pose(r: BoneRig | undefined, x: number, y: number, z: number) {
+  if (!r) return;
+  r.bone.quaternion.copy(r.rest);
+  if (x) r.bone.quaternion.multiply(tq.setFromAxisAngle(r.ax[0], x));
+  if (y) r.bone.quaternion.multiply(tq2.setFromAxisAngle(r.ax[1], y));
+  if (z) r.bone.quaternion.multiply(tq.setFromAxisAngle(r.ax[2], z));
+}
+
+/** A GLB figure from the manifest: normalised to the seat, animated by its clips or, for rigged figures, by bones.
+ *  While the file loads the built-in procedural figure stands in. */
+function ModelFigure({ e, id, mood, seed, pose: stance, fallback, onFail }: { e: CharacterEntry; id: string; mood: Mood; seed: number; pose: 'sit' | 'stand'; fallback: ReactNode; onFail(): void }) {
+  const level = usePrefs().graphics && graphicsLevel();
+  const [obj, setObj] = useState<{ root: THREE.Object3D; mixer: THREE.AnimationMixer; clips: THREE.AnimationClip[]; bones: Record<string, BoneRig>; y0: number } | null>(null);
   const action = useRef<THREE.AnimationAction | null>(null);
   useEffect(() => {
     let alive = true;
-    loadModel(e).then(async (gltf) => {
+    loadModel(e, level).then(async (gltf) => {
       if (!alive) return;
       if (!gltf) { onFail(); return; }
       const { clone } = await import('three/examples/jsm/utils/SkeletonUtils.js');
       const root = clone(gltf.scene);
-      normalise(root, e);
-      setObj({ root, mixer: new THREE.AnimationMixer(root), clips: gltf.animations });
+      root.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh) { m.castShadow = true; m.frustumCulled = false; const mt = m.material as THREE.MeshStandardMaterial; if (mt?.isMeshStandardMaterial) { mt.roughness = Math.max(mt.roughness, 0.62); mt.metalness = 0; } } });
+      normalise(root, stance === 'stand' && e.chair !== false ? { ...e, baseY: -0.12 } : e);
+      setObj({ root, mixer: new THREE.AnimationMixer(root), clips: gltf.animations, bones: rigBones(root, ['body', 'armL', 'armR', 'root', 'hips', 'spine', 'head']), y0: root.position.y });
     });
     return () => { alive = false; };
-  }, [e]);
+  }, [e, level, stance]);
   useEffect(() => {
     if (!obj) return;
     const name = clipFor(obj.clips.map((c) => c.name), e, mood);
@@ -110,21 +138,46 @@ function ModelFigure({ e, mood, onFail }: { e: CharacterEntry; mood: Mood; onFai
     action.current?.fadeOut(0.3);
     action.current = next;
   }, [obj, mood]);
+  const sm = useRef({ hop: 0, tilt: 0, nod: 0, arm: 0, twist: 0 });
   useFrame((st, dt) => {
     if (!obj) return;
     obj.mixer.update(dt);
-    if (!obj.clips.length) obj.root.position.y = (e.baseY ?? -0.62) + Math.sin(st.clock.elapsedTime * 1.6) * 0.006; // still models breathe a little
+    if (obj.clips.length) return;
+    const t = st.clock.elapsedTime + seed * 1.7, b = obj.bones, k = Math.min(1, dt * 5), s = sm.current;
+    // targets per mood, eased so mood changes blend
+    const happy = mood === 'happy', think = mood === 'think', sad = mood === 'sad', away = mood === 'away', surp = mood === 'surprised';
+    const T = {
+      hop: happy ? Math.abs(Math.sin(t * 6)) * 0.07 : surp ? 0.03 : 0,
+      tilt: think ? 0.16 + Math.sin(t * 0.9) * 0.04 : happy ? Math.sin(t * 6) * 0.12 : Math.sin(t * 0.7) * 0.03,
+      nod: sad ? 0.22 : away ? 0.38 : think ? -0.06 + Math.sin(t * 1.3) * 0.03 : surp ? -0.12 : Math.sin(t * 1.1) * 0.015,
+      arm: happy ? 1.15 + Math.sin(t * 6) * 0.25 : think ? 0.35 : sad ? -0.08 : surp ? 0.5 : Math.sin(t * 1.4) * 0.05,
+      twist: happy ? Math.sin(t * 3) * 0.18 : think ? Math.sin(t * 0.5) * 0.08 : 0,
+    };
+    for (const key of Object.keys(T) as (keyof typeof T)[]) s[key] += (T[key] - s[key]) * (key === 'hop' || key === 'tilt' || key === 'arm' ? Math.min(1, dt * 12) : k);
+    obj.root.position.y = obj.y0 + s.hop + Math.sin(t * 1.6) * 0.006;
+    if (e.motion === 'creature') {
+      pose(b.body, s.nod * 0.6, s.twist, s.tilt * 0.8);
+      pose(b.armL, 0, 0, -s.arm); pose(b.armR, 0, 0, s.arm * (think ? 0.2 : 1));
+    } else if (e.motion === 'person') {
+      pose(b.spine, s.nod * 0.3, s.twist, s.tilt * 0.35);
+      pose(b.head, s.nod, s.twist * 0.6, s.tilt);
+    }
   });
-  return obj ? <primitive object={obj.root} /> : null;
+  return obj ? <primitive object={obj.root} /> : <>{fallback}</>;
+}
+
+/** The manifest entry for a character id (null until the manifest has loaded). */
+export function useCharacterEntry(id: string): CharacterEntry | null {
+  const [entry, setEntry] = useState<CharacterEntry | null>(null);
+  useEffect(() => { let a = true; loadManifest().then((m) => a && setEntry(entryFor(m, id))); return () => { a = false; }; }, [id]);
+  return entry;
 }
 
 export function Figure({ id, mood, seed = 0, pose = 'sit' }: { id: string; mood: Mood; seed?: number; pose?: 'sit' | 'stand' }) {
-  const [entry, setEntry] = useState<CharacterEntry | null>(null);
+  const entry = useCharacterEntry(id);
   const [failed, setFailed] = useState(false);
-  useEffect(() => { let a = true; loadManifest().then((m) => a && setEntry(entryFor(m, id))); return () => { a = false; }; }, [id]);
   const kind: Placeholder = useMemo(() => entry?.placeholder ?? ({ biscuit: 'bear', mint: 'cat', pepper: 'owl', tango: 'orange', ammar: 'ammar' } as Record<string, Placeholder>)[id] ?? 'generic', [entry, id]);
-  if (entry?.model && !failed) return <ModelFigure e={entry} mood={mood} onFail={() => setFailed(true)} />;
-  if (kind === 'orange') return <OrangeGuy mood={mood} seed={seed} pose={pose} />;
-  if (kind === 'ammar') return <AmmarFigure mood={mood} seed={seed} pose={pose} />;
-  return <PlaceholderFigure kind={kind} mood={mood} seed={seed} />;
+  const builtin = kind === 'orange' ? <OrangeGuy mood={mood} seed={seed} pose={pose} /> : kind === 'ammar' ? <AmmarFigure mood={mood} seed={seed} pose={pose} /> : <PlaceholderFigure kind={kind} mood={mood} seed={seed} />;
+  if (entry?.model && !failed) return <ModelFigure e={entry} id={id} mood={mood} seed={seed} pose={pose} fallback={builtin} onFail={() => setFailed(true)} />;
+  return builtin;
 }

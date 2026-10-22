@@ -14,7 +14,7 @@ import { t } from '../i18n';
 import { layout3, TABLE_R, CARD_T, type Layout3, type V3 } from './layout3d';
 import { Room, Chair } from './Room';
 import { Card3D, PLANE, type Glow } from './Card3D';
-import { Figure } from './Figures';
+import { Figure, useCharacterEntry } from './Figures';
 import { Die3D } from './Die3D';
 import { backend3d, setCtx3, project } from './backend3d';
 import { setMaxAnisotropy, glowTexture } from './textures';
@@ -195,7 +195,7 @@ const Scene = memo(function Scene({ p, L, stage, points, els, portrait }: { p: T
             })}
             {!isMe && si && L.chars[seat] && (
               <group position={L.chars[seat]!.p} rotation={[0, L.chars[seat]!.yaw, 0]} scale={0.85} onClick={(e) => { if (pick) { e.stopPropagation(); p.onSeat(seat); } }}>
-                <Chair p={[0, 0, -0.12]} yaw={0} />
+                <SeatChair id={si.characterId} />
                 <Suspense fallback={null}><Figure id={si.characterId} mood={moodOf(v, ov, seat)} seed={seat} /></Suspense>
               </group>
             )}
@@ -267,3 +267,10 @@ export const Table3D = memo(function Table3D(p: TableProps & { onFail?(why: stri
 });
 export default Table3D;
 export { TABLE_R };
+
+/** The chair behind a seated figure; figures that stand (manifest "chair": false) get none. */
+function SeatChair({ id }: { id: string }) {
+  const e = useCharacterEntry(id);
+  if (e && e.chair === false && e.model) return null;
+  return <Chair p={[0, 0, -0.12]} yaw={0} />;
+}
