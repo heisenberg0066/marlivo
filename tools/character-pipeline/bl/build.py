@@ -129,6 +129,55 @@ for fl in extra.get('flatten', []):  # push a lump back onto a wall: {"z": [a, b
     co[:, 1] = np.where(m, np.minimum(co[:, 1], fl['ymax']), co[:, 1]); me.vertices.foreach_set('co', co.ravel()); me.update()
     print('FLATTENED', int((m & (co[:, 1] >= fl['ymax'] - 1e-6)).sum()))
 print('SRC tris', sum(len(p.vertices) - 2 for p in me.polygons), 'height', h)
+def load_px(path):
+    im = bpy.data.images.load(path, check_existing=True); W, H = im.size
+    px = np.empty(W * H * 4, dtype=np.float32); im.pixels.foreach_get(px); return px.reshape(H, W, 4)[::-1], W, H
+def fit_view(co, path, deg):
+    """Orthographic camera at yaw deg (0 = front, +90 = character faces image-left); fit scale/offset by silhouette IoU."""
+    th = math.radians(deg); d = np.array([-math.sin(th), math.cos(th), 0.0]); r = np.array([math.cos(th), math.sin(th), 0.0])
+    px, W, H = load_px(path); al = px[:, :, 3] > 0.5; ys, xs = np.where(al)
+    u = co @ r; v = co[:, 2]
+    top, bot = ys.min(), ys.max(); s = (bot - top) / (v.max() - v.min()); cy = bot + v.min() * s; cx = xs.mean() - u.mean() * s
+    G = 4; mh, mw = H // G, W // G; m = al[:mh * G, :mw * G].reshape(mh, G, mw, G).any(axis=(1, 3))
+    def sil(s_, cx_, cy_):
+        gx = ((cx_ + u * s_) / G).astype(int); gy = ((cy_ - v * s_) / G).astype(int); ok = (gx >= 0) & (gx < mw) & (gy >= 0) & (gy < mh)
+        g = np.zeros((mh, mw), bool); g[gy[ok], gx[ok]] = True
+        g = g | np.roll(g, 1, 0) | np.roll(g, -1, 0); g = g | np.roll(g, 1, 1) | np.roll(g, -1, 1); return g
+    def iou(p): g = sil(*p); return (g & m).sum() / max(1, (g | m).sum())
+    best = (s, cx, cy); bi = iou(best)
+    for step in (0.04, 0.02, 0.01, 0.005):
+        for _ in range(8):
+            imp = False
+            for dd in [(1 + step, 0, 0), (1 - step, 0, 0), (1, step, 0), (1, -step, 0), (1, 0, step), (1, 0, -step)]:
+                cand = (best[0] * dd[0], best[1] + dd[1] * W, best[2] + dd[2] * H); ci = iou(cand)
+                if ci > bi: best, bi, imp = cand, ci, True
+            if not imp: break
+    s, cx, cy = best
+    return dict(d=d, r=r, s=s, cx=cx, cy=cy, W=W, H=H, px=px, iou=bi)
+def view_uv(F, co):
+    return np.stack([(F['cx'] + (co @ F['r']) * F['s']) / F['W'], 1 - (F['cy'] - co[:, 2] * F['s']) / F['H']], 1)
+FRONT = None
+if 'front' in extra:  # front projection from a frontal (generated) view with an orthographic camera instead of the reference camera
+    fo = extra['front']; co_ = np.zeros(len(me.vertices) * 3); me.vertices.foreach_get('co', co_); co_ = co_.reshape(-1, 3)
+    FRONT = fit_view(co_, fo['alpha'], fo.get('yaw', 0.0)); proj = fo['image']
+    print('FRONT iou', round(FRONT['iou'], 3), 'fit', round(FRONT['s'], 1), round(FRONT['cx'], 1), round(FRONT['cy'], 1))
+    bpy.context.scene['ORTHO'] = [fo.get('yaw', 0.0), FRONT['s'], FRONT['cx'], FRONT['cy'], FRONT['W'], FRONT['H']]
+    al = FRONT['px'][:, :, 3] > 0.5; ys, xs = np.where(al)
+    BBOX = [xs.min() / FRONT['W'], (xs.max() + 1) / FRONT['W'], ys.min() / FRONT['H'], (ys.max() + 1) / FRONT['H']]; LAYOUT = 'col'
+    ASPECT = FRONT['W'] / FRONT['H']
+    if fo.get('flat'):  # flatten modelled bumps (e.g. thick glasses) in a front box: strong local smoothing of front-facing verts
+        fl = fo['flat']; co, lap = vlap_setup(me)
+        nr = np.zeros(len(me.vertices) * 3); me.vertices.foreach_get('normal', nr); nr = nr.reshape(-1, 3)
+        uvf = view_uv(FRONT, co); u0, u1, v0, v1 = fl['uv']; vv = 1 - uvf[:, 1]
+        dep = co @ FRONT['d']; inb = (uvf[:, 0] > u0) & (uvf[:, 0] < u1) & (vv > v0) & (vv < v1)
+        front_most = dep < np.percentile(dep[inb], 50) if inb.any() else inb
+        box = inb & (nr @ -FRONT['d'] > 0.0) & front_most
+        wgt = box.astype(float)[:, None]
+        for _ in range(6): wgt = np.clip(wgt + lap(wgt) * 0.8, 0, 1)
+        for _ in range(fl.get('iters', 60)): co = co + wgt * 0.5 * lap(co)
+        me.vertices.foreach_set('co', co.ravel()); me.update(); print('FLATFRONT', int(box.sum()))
+else:
+    ASPECT = 1.0
 def project(ob, inv):
     me = ob.data
     bvh = BVHTree.FromObject(ob, bpy.context.evaluated_depsgraph_get())
@@ -140,7 +189,17 @@ def project(ob, inv):
     nrm = np.array([v.normal[:] for v in me.vertices])
     for _ in range(extra.get('nsmooth', 6)): nrm = np.array([nrm[i] + nrm[adj[i]].sum(0) if adj[i] else nrm[i] for i in range(len(nrm))]); nrm /= np.linalg.norm(nrm, axis=1, keepdims=True) + 1e-9
     f0, f1 = extra.get('facing', [0.05, 0.35])
-    for v in me.vertices:
+    if FRONT is not None:
+        co = np.array([v.co[:] for v in me.vertices]); vuv[:] = view_uv(FRONT, co); fd = FRONT['d']
+        a0, a1 = f0, f1
+        for v in me.vertices:
+            facing = float(nrm[v.index] @ -fd)
+            if 'facing_head' in extra and v.co.z > extra.get('head_z', 0.7): a0, a1 = extra['facing_head']
+            else: a0, a1 = f0, f1
+            w = min(1, max(0, (facing - a0) / (a1 - a0))); w = w * w * (3 - 2 * w)
+            if w > 0 and bvh.ray_cast(v.co - mathutils.Vector(fd) * 0.003, mathutils.Vector(-fd), 10.0)[0] is not None: w = 0
+            vw[v.index] = w
+    for v in (me.vertices if FRONT is None else []):
         p = inv @ v.co; d = p.y + 1.9
         px = (p.x / (d * tn) + 1) / 2 * 512; py = (1 - (p.z / (d * tn) + 1) / 2) * 512
         qx = 256 + sc * (px - 256) + tx; qy = 256 + sc * (py - 256) + ty
@@ -158,7 +217,8 @@ def project(ob, inv):
     for l in me.loops: uvl.data[l.index].uv = vuv[l.vertex_index]
     wa = me.color_attributes.new('frontw', 'FLOAT_COLOR', 'POINT')
     for i, w in enumerate(vw): wa.data[i].color = (w, w, w, 1)
-    vc_name = [c.name for c in me.color_attributes if c.name not in ('frontw', 'hairw')][0]
+    vc_name = [c.name for c in me.color_attributes if c.name not in ('frontw', 'hairw') and not c.name.startswith('mvw')][0]
+    mvinfo = multiview(ob, me, bvh, nrm, adj, vw, vuv) if 'mv' in extra else []
 
     # --- material: mix(back, projected image, w) -> emission (for baking)
     mat = bpy.data.materials.new('projmix'); mat.use_nodes = True; nt = mat.node_tree; nt.nodes.clear()
@@ -221,6 +281,21 @@ def project(ob, inv):
         if ti.get('shade'):
             sh = N('ShaderNodeMix'); sh.data_type = 'RGBA'; sh.blend_type = 'MULTIPLY'; sh.inputs['Factor'].default_value = 1.0; L(tcol, sh.inputs[6]); L(mth('ADD', 1 - ti['shade'] * 0.5, mth('MULTIPLY', lum, ti['shade'])), sh.inputs[7]); tcol = sh.outputs[2]
         bcol = mixc(ti['mix'], bcol, tcol)
+    if mvinfo:  # multi-view: blend the generated side/back views by facing angle on top of the painted fallback
+        mo = extra['mv']; acc = None; cov = None
+        for k, path, gain in mvinfo:
+            u = N('ShaderNodeUVMap'); u.uv_map = 'mv_' + k
+            t = N('ShaderNodeTexImage'); t.image = bpy.data.images.load(path); t.extension = 'EXTEND'; t.interpolation = 'Cubic'; L(u.outputs[0], t.inputs[0])
+            g = N('ShaderNodeMix'); g.data_type = 'RGBA'; g.blend_type = 'MULTIPLY'; g.inputs['Factor'].default_value = 1.0; L(t.outputs[0], g.inputs[6]); g.inputs[7].default_value = (*gain, 1)
+            if ('mvg_' + k) in me.color_attributes:
+                gv = N('ShaderNodeVertexColor'); gv.layer_name = 'mvg_' + k; L(gv.outputs[0], g.inputs[7])
+            wv = N('ShaderNodeVertexColor'); wv.layer_name = 'mvw_' + k
+            sc2 = N('ShaderNodeVectorMath'); sc2.operation = 'SCALE'; L(g.outputs[2], sc2.inputs[0]); L(wv.outputs[0], sc2.inputs['Scale'])
+            if acc is None: acc = sc2.outputs[0]
+            else:
+                ad = N('ShaderNodeVectorMath'); ad.operation = 'ADD'; L(acc, ad.inputs[0]); L(sc2.outputs[0], ad.inputs[1]); acc = ad.outputs[0]
+        cv = N('ShaderNodeVertexColor'); cv.layer_name = 'mvcov'
+        bcol = mixc(mth('MULTIPLY', cv.outputs[0], mo.get('mix', 1.0), clamp=True), bcol, acc)
     fcol = img.outputs[0]
     if 'front_hsv' in extra: fcol = hsv(fcol, *extra['front_hsv'])
     nt.links.new(wn.outputs[0], mix.inputs['Factor']); nt.links.new(bcol, mix.inputs[6]); nt.links.new(fcol, mix.inputs[7])
@@ -240,6 +315,70 @@ def project(ob, inv):
     me.materials.clear(); me.materials.append(mat)
     return vw, vuv
 
+def smoothstep(x, a, b):
+    t = np.clip((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t)
+def load_px(path):
+    im = bpy.data.images.load(path, check_existing=True); W, H = im.size
+    px = np.empty(W * H * 4, dtype=np.float32); im.pixels.foreach_get(px); return px.reshape(H, W, 4)[::-1], W, H
+def multiview(ob, me, bvh, nrm, adj, vw, vuv):
+    mo = extra['mv']; co = np.array([v.co[:] for v in me.vertices]); nv = len(co)
+    E_ = np.zeros(len(me.edges) * 2, dtype=np.int64); me.edges.foreach_get('vertices', E_); E_ = E_.reshape(-1, 2)
+    deg_ = np.bincount(E_.ravel(), minlength=nv).astype(float)
+    fpx, FW, FH = load_px(proj)
+    def samp(px, W, H, uv):
+        ix = np.clip((uv[:, 0] * W).astype(int), 0, W - 1); iy = np.clip(((1 - uv[:, 1]) * H).astype(int), 0, H - 1); return px[iy, ix]
+    known = np.where((vw > 0.6)[:, None], samp(fpx, FW, FH, vuv)[:, :3], np.nan)
+    order = mo.get('order', ['q34L', 'q34R', 'sideL', 'sideR', 'back'])
+    W_ = {}; out = []; f0, f1 = mo.get('facing', [0.25, 0.7])
+    for k in order:
+        path = f"{mo['dir']}/{name}_{k}.png"
+        Fv = fit_view(co, path, mo['views'][k] + mo.get('yaw0', 0)); d, r, px, W, H = Fv['d'], Fv['r'], Fv['px'], Fv['W'], Fv['H']
+        al = px[:, :, 3] > 0.5; u = co @ r; v = co[:, 2]
+        s, cx, cy, bi = Fv['s'], Fv['cx'], Fv['cy'], Fv['iou']; best = (s, cx, cy)
+        if mo.get('fill'): path = path.replace('.png', '_fill.png')
+        uvk = np.stack([(cx + u * s) / W, 1 - (cy - v * s) / H], 1)
+        facing = nrm @ -d; w = smoothstep(facing, f0, f1) * samp(px, W, H, uvk)[:, 3]
+        for i in np.where(w > 0)[0]:
+            p = mathutils.Vector(co[i]); hit = bvh.ray_cast(p - mathutils.Vector(d) * 0.003, mathutils.Vector(-d), 10.0)
+            if hit[0] is not None: w[i] = 0
+        for _ in range(2): w = np.array([(w[i] * 2 + w[adj[i]].sum()) / (2 + len(adj[i])) for i in range(nv)])
+        col = samp(px, W, H, uvk)[:, :3]
+        ov = (w > 0.3) & ~np.isnan(known[:, 0]); gain = [1.0, 1.0, 1.0]
+        if mo.get('level'):  # local colour levelling: per-vertex gain known/col on the overlap, diffused over the mesh
+            lv_ = mo['level']; okc = ov & (col.mean(1) > lv_.get('min_lum', 0.06)) & (known.mean(1) > lv_.get('min_lum', 0.06))
+            g = np.ones((nv, 3)); fixed = okc.copy()
+            g[okc] = np.clip(known[okc] / (col[okc] + 1e-6), *lv_.get('clip', [0.6, 1.6]))
+            gsm = g.copy()
+            for _ in range(lv_.get('pre', 8)):  # soften the measured ratios (registration noise)
+                acc = np.zeros_like(gsm); np.add.at(acc, E_[:, 0], gsm[E_[:, 1]]); np.add.at(acc, E_[:, 1], gsm[E_[:, 0]])
+                gsm = np.where(fixed[:, None], (gsm + acc) / (1 + deg_[:, None]), gsm)
+            g = gsm; base = np.median(g[okc], 0) if okc.any() else np.ones(3); g[~fixed] = base
+            for _ in range(lv_.get('iters', 300)):
+                acc = np.zeros_like(g); np.add.at(acc, E_[:, 0], g[E_[:, 1]]); np.add.at(acc, E_[:, 1], g[E_[:, 0]])
+                g = np.where(fixed[:, None], g, acc / np.maximum(deg_[:, None], 1))
+            a_ = me.color_attributes.new('mvg_' + k, 'FLOAT_COLOR', 'POINT'); gl = np.concatenate([g ** 2.2, np.ones((nv, 1))], 1)
+            a_.data.foreach_set('color', gl.ravel()); g_v = g
+        else:
+            if ov.sum() > 50:
+                gain = np.clip(known[ov].sum(0) / (col[ov].sum(0) + 1e-6), *mo.get('gain_clip', [0.75, 1.33]))
+                gain = list(gain ** 2.2)  # node colours are linear
+            g_v = np.tile(np.array(gain) ** (1 / 2.2), (nv, 1))
+        fill = (w > 0.5) & np.isnan(known[:, 0]); known[fill] = col[fill] * g_v[fill]
+        print('MV', k, 'iou', round(bi, 3), 'fit', [round(x, 1) for x in best], 'overlap', int(ov.sum()), 'gain med', [round(x, 3) for x in np.median(g_v[w > 0.5], 0)] if (w > 0.5).any() else '-', 'cover', int((w > 0.5).sum()))
+        W_[k] = w; out.append((k, path, gain))
+        if mo.get('debug'):
+            dbg = px.copy(); ii = np.clip(((cy - v * s)).astype(int), 0, H - 1); jj = np.clip((cx + u * s).astype(int), 0, W - 1)
+            dbg[ii, jj] = np.where((w > 0.5)[:, None], [1, 0, 0, 1], [0, 0, 1, 1]); dbg[~al] *= 0.5
+            di = bpy.data.images.new('dbg_' + k, W, H); di.pixels.foreach_set(dbg[::-1].ravel()); di.filepath_raw = f'/tmp/lab/mvdbg_{name}_{k}.png'; di.file_format = 'PNG'; di.save()
+        uvl = me.uv_layers.new(name='mv_' + k)
+        lv = np.zeros(len(me.loops), dtype=np.int64); me.loops.foreach_get('vertex_index', lv); uvl.data.foreach_set('uv', uvk[lv].ravel().astype(np.float32))
+    p_ = mo.get('power', 3.0); stack = np.stack([W_[k] for k in order], 1) ** p_; tot = stack.sum(1) + 1e-9
+    cov = np.clip(np.stack([W_[k] for k in order], 1).max(1) * (1 - vw * mo.get('front_cut', 0.0)), 0, 1)
+    for j, k in enumerate(order):
+        a = me.color_attributes.new('mvw_' + k, 'FLOAT_COLOR', 'POINT'); x = stack[:, j] / tot
+        a.data.foreach_set('color', np.repeat(x[:, None], 4, 1).ravel())
+    a = me.color_attributes.new('mvcov', 'FLOAT_COLOR', 'POINT'); a.data.foreach_set('color', np.repeat(cov[:, None], 4, 1).ravel())
+    return out
 def bump_material(nopt):
     m = bpy.data.materials.new('bumpsrc'); m.use_nodes = True; nt = m.node_tree; N = nt.nodes.new; L = nt.links.new
     bsdf = nt.nodes['Principled BSDF']; tc = N('ShaderNodeTexCoord')
@@ -266,6 +405,7 @@ def bump_material(nopt):
         mul = N('ShaderNodeMath'); mul.operation = 'MULTIPLY'; L(h.outputs[0], mul.inputs[0]); L(mval, mul.inputs[1])
         w = N('ShaderNodeMath'); w.operation = 'MULTIPLY'; L(mul.outputs[0], w.inputs[0]); w.inputs[1].default_value = layer.get('w', 1.0)
         add(w.outputs[0])
+    if hsum is None: return m
     bp = N('ShaderNodeBump'); bp.inputs['Strength'].default_value = nopt.get('strength', 0.5); bp.inputs['Distance'].default_value = nopt.get('dist', 0.004)
     L(hsum, bp.inputs['Height']); L(bp.outputs['Normal'], bsdf.inputs['Normal'])
     return m
@@ -307,12 +447,12 @@ def make_lod(tag, tris, texres):
     # region A (front, straight from the reference) and region B (sides/back, baked)
     bx0, bx1, by0, by1 = BBOX
     sw, sh = bx1 - bx0, by1 - by0
-    aw = min(0.62, sw / sh) if LAYOUT == 'col' else 1.0
-    ah = 1.0 if LAYOUT == 'col' else min(0.62, sh / sw)
+    aw = min(0.62, sw * ASPECT / sh) if LAYOUT == 'col' else 1.0
+    ah = 1.0 if LAYOUT == 'col' else min(0.62, sh / (sw * ASPECT))
     def mapA(u, v):
         x = (u - bx0) / sw; y = ((1 - v) - by0) / sh  # 0..1 inside the subject box, y down
         return (x * aw, 1 - y * ah)
-    uvd = uvb.data
+    uvb = lme.uv_layers['UVMap']; uvd = uvb.data  # re-fetch: edit-mode toggles reallocate the layer data
     for p, a in zip(lme.polygons, isA):
         for li in p.loop_indices:
             if a:
@@ -332,7 +472,8 @@ def make_lod(tag, tris, texres):
     bsdf = n2.nodes['Principled BSDF']; n2.links.new(tn_.outputs[0], bsdf.inputs['Base Color'])
     bsdf.inputs['Roughness'].default_value = extra.get('rough', 0.6)
     lo.data.materials.clear(); lo.data.materials.append(bm_)
-    lo.data.uv_layers.remove(lo.data.uv_layers['proj'])
+    for nm in [x.name for x in lo.data.uv_layers if x.name != 'UVMap']: lo.data.uv_layers.remove(lo.data.uv_layers[nm])
+    lo.data.uv_layers['UVMap'].active_render = True
     for nm in [x.name for x in lo.data.color_attributes]:
         x = lo.data.color_attributes.get(nm)
         if x: lo.data.color_attributes.remove(x)

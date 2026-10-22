@@ -9,7 +9,13 @@ argv = sys.argv[sys.argv.index('--') + 1:]
 name, spec = argv[0], json.load(open(argv[1]))
 S = bpy.context.scene; INV = Matrix(S['INV']); M = INV.inverted(); sc, tx, ty = S['FIT']; TN = math.tan(math.radians(20))
 
+ORTHO = list(S['ORTHO']) if 'ORTHO' in S else None
 def ray(u, v):
+    if ORTHO:  # orthographic front view (u, v = 0..1 on that picture, top-left origin)
+        yaw, s_, cx_, cy_, W_, H_ = ORTHO; th = math.radians(yaw)
+        d = Vector((-math.sin(th), math.cos(th), 0)); r = Vector((math.cos(th), math.sin(th), 0))
+        uu = (u * W_ - cx_) / s_; zz = (cy_ - v * H_) / s_
+        return r * uu + Vector((0, 0, zz)) - d * 3, d
     px = 256 + (u * 512 - 256 - tx) / sc; py = 256 + (v * 512 - 256 - ty) / sc
     nx = px / 512 * 2 - 1; nz = 1 - 2 * py / 512
     o = Vector((0, -1.9, 0)); d = Vector((nx * TN, 1, nz * TN))
@@ -61,12 +67,14 @@ for tag in ('hi', 'lo'):
         rims = []
         for rm in g['rims']:
             (cu_, cv_), (ru, rv) = rm['c'], rm['r']
-            angs = np.linspace(0, 2 * math.pi, 36, endpoint=False)
-            hits = [hit(cu_ + ru * math.cos(a), cv_ + rv * math.sin(a)) for a in angs] + [hit(cu_, cv_)]
+            angs = np.linspace(0, 2 * math.pi, 48 if rm.get('n', 2) > 2 else 36, endpoint=False); ne = rm.get('n', 2.0)
+            rr = [1 / (abs(math.cos(a)) ** ne + abs(math.sin(a)) ** ne) ** (1 / ne) for a in angs]
+            ru_ = [ru * k for k in rr]; rv_ = [rv * k for k in rr]
+            hits = [hit(cu_ + ru_[i] * math.cos(a), cv_ + rv_[i] * math.sin(a)) for i, a in enumerate(angs)] + [hit(cu_, cv_)]
             yp = min(h[0].y for h in hits if h[0] is not None) - g.get('off', 0.006)
             def at_y(u, v):
                 O, D = ray(u, v); t = (yp - O.y) / D.y; return O + D * t
-            pts = [at_y(cu_ + ru * math.cos(a), cv_ + rv * math.sin(a)) for a in angs]
+            pts = [at_y(cu_ + ru_[i] * math.cos(a), cv_ + rv_[i] * math.sin(a)) for i, a in enumerate(angs)]
             rims.append((pts, yp, angs))
             parts.append(curve_obj(f'{name}_{tag}_rim', pts, g.get('wire', 0.0014), gold, closed=True, res=res))
             bm = bmesh.new(); vs = [bm.verts.new(p + Vector((0, 0.0015, 0))) for p in pts]; bm.faces.new(vs)
