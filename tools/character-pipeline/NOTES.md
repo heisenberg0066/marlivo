@@ -52,3 +52,7 @@ Short log of the problems hit while building the Ammar and Orange guy models, wh
 - In-game the new meshes keep the reference's turn → manifest `rotationY` (-15° Ammar, -6.4° Orange guy).
 - Hunyuan octree 384 run also OOM-killed (11 GB) → octree 256 kept.
 - 2D portraits re-cut from the 2k generated fronts (`bust_crop.py`): crisper than the old ones.
+- live5 deployed (83faec8). Open issues: Orange guy has a faint grey band behind the eye on the sides and a darker
+  stripe down the back (where the side and back views blend); Ammar has a faint painted ear in front of the real ear
+  at the right profile; mesh face slightly noisy (octree 256). Next: level the views against each other, not just
+  against the front; erode the Ammar fills like Orange; try a finer Hunyuan decode with the DiT unloaded first.
