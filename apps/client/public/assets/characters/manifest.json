@@ -64,7 +64,7 @@
       "chair": false,
       "motion": "person",
       "glow": 0.45,
-      "rotationY": -17
+      "rotationY": -15
     },
     "guest": {
       "name": {

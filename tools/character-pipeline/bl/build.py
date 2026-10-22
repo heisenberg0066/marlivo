@@ -122,6 +122,14 @@ if extra.get('skin_smooth'):  # Taubin smoothing only where the (view-projected)
     zf = (co[:, 2] - co[:, 2].min()) / (co[:, 2].max() - co[:, 2].min()); skin &= (zf > ss.get('z', [0, 1])[0]) & (zf < ss.get('z', [0, 1])[1])
     wgt = skin.astype(float)[:, None]
     for _ in range(ss.get('grow', 3)): wgt = np.clip(wgt + lap(wgt) * 0.8, 0, 1)
+    if ss.get('protect'):  # keep the face features (eyes, nose, mouth, brows) out of the smoothing: front part of a z band
+        pz = ss['protect']; zf = (co[:, 2] - co[:, 2].min()) / (co[:, 2].max() - co[:, 2].min())
+        band = (zf > pz['z'][0]) & (zf < pz['z'][1]); wh = band & (vc.min(1) > 0.55) & (vc.max(1) - vc.min(1) < 0.15)  # eye whites
+        c0 = co[band, :2].mean(0); df = co[wh, :2].mean(0) - c0; df /= np.linalg.norm(df) + 1e-9
+        fr = (co[:, :2] - c0) @ df; fmax = np.percentile(fr[band], 99.5)
+        prot = (band & (fr > fmax - pz.get('depth', 0.06) * (co[:, 2].max() - co[:, 2].min()))).astype(float)[:, None]
+        for _ in range(pz.get('soft', 6)): prot = np.clip(prot + lap(prot) * 0.8, 0, 1)
+        wgt = wgt * (1 - prot); print('PROTECT', int((prot[:, 0] > 0.5).sum()), 'front dir', np.round(df, 3), 'whites', int(wh.sum()))
     for _ in range(ss.get('iters', 40)):
         co = co + wgt * 0.5 * lap(co); co = co + wgt * -0.53 * lap(co)
     me.vertices.foreach_set('co', co.ravel()); me.update(); print('SKINSMOOTH', int(skin.sum()), 'of', len(co))

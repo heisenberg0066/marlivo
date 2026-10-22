@@ -26,7 +26,11 @@ for t, rm in zip(spec['temples'], spec['rims']):  # short piece from the rim to 
     c = rm['c']; dx = 0.03 if t[0] < c[0] else -0.03
     cv2.line(mask, (int(t[0] * W), int(t[1] * H)), (int((t[0] + dx) * W), int(t[1] * H)), 255, int(13 * F))
 for pd in spec.get('pads', []): cv2.circle(mask, (int(pd[0] * W), int(pd[1] * H)), int(9 * F), 255, -1)
-out = cv2.inpaint(im, mask, int(5 * F), cv2.INPAINT_TELEA)
+if spec.get('tight'):  # only the rim pixels inside the band (a wide band inpaints into pale ghost rims)
+    med = cv2.medianBlur(im, int(15 * F) | 1).astype(np.float32); dif = np.abs(im.astype(np.float32) - med).max(2)
+    line = ((dif > spec['tight']) & (mask > 0)).astype(np.uint8) * 255
+    mask = cv2.dilate(line, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (int(6 * F) | 1, int(6 * F) | 1)))
+out = cv2.inpaint(im, mask, int(5 * F) if not spec.get('tight') else int(3 * F), cv2.INPAINT_TELEA)
 cv2.imwrite(dst, out)
 if len(sys.argv) > 4:
     x0, x1, y0, y1 = int(0.32 * W), int(0.68 * W), int(0.17 * H), int(0.27 * H)

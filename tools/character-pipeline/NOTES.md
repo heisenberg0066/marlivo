@@ -75,3 +75,9 @@ Short log of the problems hit while building the Ammar and Orange guy models, wh
 - Mint/Pepper 3D glasses: rims found with HoughCircles on the generated fronts (spec_<n>_hy.json, dark wire, lens alpha 0.05), painted rims removed with unglass2.py (darkest-radius trace per angle +-18%, band = 1.9x rim thickness, Telea). build_hy.sh picks spec_<name>_hy.json automatically.
 - High renderer: CAS-style sharpen (contrast-adaptive, clamped to the local min/max, amount 0.4) after a 4x MSAA HalfFloat render target, then OutputPass (tone map + sRGB). Only on graphics=high.
 - look.py: ELEV env var for elevated (seat-like) previews.
+
+## Ammar face regression (live6 55b15fa) and fix
+- Versions compared at identical camera/light: /workspace/sb/seat/live6/ammar-face-versions.png (TripoSR 5469e07 decoded from meshopt with gltf-transform, Blender-detail 28ad524 = 3d7ac63, live5 83faec8, live6 55b15fa).
+- What got worse in 55b15fa: not the skin smoothing (only ~8% of vertices, and a face-protect mask changed nothing visible) but the NEW MESH: the 384-octree re-sample is a different Hunyuan sample, with a wider, puffier lower face, a flatter nose and a narrower eye area, so the same texture reads as smaller eyes and a heavier face. Also a painted nose-pad smudge under the right lens.
+- Fix (hyb12): live5 face/body geometry (hy_ammar_al.obj, yaw 15) + the live6 texture work (4k unglassed front, silhouette-edge falloff = no painted-ear smudge, clear lenses), nose-pad remnants inpainted (ammar_front4k_ng3_fill.png), 3D rims rounder (superellipse n 3 -> 2.5, closer to the reference). Skin Taubin reduced to 15 it with a face-protect zone.
+- Lesson: a new Hunyuan sample is a new face; resolution changes must re-decode the SAME latent (hy_decode.py) rather than re-sample.
