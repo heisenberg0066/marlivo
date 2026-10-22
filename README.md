@@ -16,7 +16,7 @@ matching (also with combinations that add up), J/Q/10 powers and penalty cards. 
 | `packages/bots` | Rule-based bots (easy / normal / hard) that only see their own seat's view. |
 | `packages/room` | Transport-agnostic room host: join/reconnect with seat tokens, password, rate limits, bots, chat, test ops. Shared by the server and the offline practice mode. |
 | `apps/server` | Cloudflare Worker + one Durable Object per room (WebSocket hibernation, SQLite storage). |
-| `apps/client` | Vite + React PWA. The back-room 2D table renderer (`src/render`) is separate from game logic so 3D characters can replace it later. |
+| `apps/client` | Vite + React PWA. Two table renderers over the same game flow: the back-room 2D table (`src/render`) and a three.js / react-three-fiber 3D room (`src/render3d`), switchable in Settings → Table (default 2D, falls back to 2D if WebGL fails). 3D figures load from `public/assets/characters/manifest.json`, see [docs/ADDING-CHARACTERS.md](docs/ADDING-CHARACTERS.md). |
 | `scripts` | Server integration test, soak test, headless browser end-to-end test, icon renderer. |
 
 ## Develop
@@ -32,6 +32,13 @@ node scripts/e2e-solo.mjs phone en   # plays a full solo match through the UI (n
 ```
 Test room tools (reveal all, presets, forced deck/dice, step mode, inspector, latency, drop, autoplay ×100,
 replay export) are available in local practice via *Test room* and online only with the owner key.
+
+## Checks
+
+- `pnpm test`: engine rules (incl. v0.7 face-up match attempts and the layout picker), bots, room host, leak and property tests, 3D layout and tap-guard tests.
+- `pnpm test:server`: the Worker + Durable Object end to end over real WebSockets.
+- `node scripts/e2e-solo.mjs phone|laptop en|fr` plays a whole solo match through the UI; `R3D=1 BOTS=3` does it on the 3D table.
+- `node scripts/monkey.mjs phone|laptop` (`R3D=1` for 3D) taps randomly and fast during draws and match attempts and fails if anything closes on its own.
 
 ## Screenshots
 

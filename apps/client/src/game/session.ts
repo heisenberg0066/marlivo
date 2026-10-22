@@ -11,6 +11,10 @@ export interface ChatLine { seat: number; text: string; ts: number; emote?: bool
 
 type Listener = () => void;
 
+const SILENT_REJECTS = new Set(['ALREADY_QUEUED', 'ALREADY_MATCHING', 'ALREADY_DREW', 'ALREADY_ROLLED', 'ALREADY_PICKED', 'ALREADY_PEEKED', 'PEEK_DONE', 'PEEK_LIMIT',
+  'NOT_MATCHING', 'NOT_DECIDING', 'NOT_ROLLING', 'NOT_ROLLER', 'NOT_PEEK', 'NOT_YOUR_CHOICE', 'NOT_ROUND_END', 'NOT_TENTATIVE', 'EMPTY_SLOT', 'NO_CLAIM',
+  'NO_JACK', 'NO_QUEEN', 'NO_TEN', 'SAME_SLOT', 'ATTEMPT_RUNNING', 'NOT_PLAYING', 'RATE_LIMIT']);
+
 export class Session {
   conn: Conn;
   view: PlayerView | null = null;
@@ -72,7 +76,9 @@ export class Session {
         this.view = m.view;
         this.updates.push({ seq: m.seq, events: m.events, view: m.view });
         break;
-      case 'REJECT': this.toast(m.reason, 'reject'); break;
+      // Rejections that only mean "a second tap raced the first" stay silent; only ones that tell the player
+      // something useful become a toast (§12: no scary codes on screen).
+      case 'REJECT': if (!SILENT_REJECTS.has(m.reason)) this.toast(m.reason, 'reject'); break;
       case 'ERROR': this.error = { code: m.code, triesLeft: m.triesLeft }; if (m.code === 'IN_PROGRESS' || m.code === 'ROOM_FULL' || m.code === 'ROOM_LOCKED') this.tokenStore.removeItem(this.tokenKey); break;
       case 'CHAT': this.chat.push({ seat: m.seat, text: m.text, ts: m.ts }); this.bubbles[m.seat] = { text: m.text, at: Date.now() }; break;
       case 'EMOTE': this.chat.push({ seat: m.seat, text: m.id, ts: Date.now(), emote: true }); this.bubbles[m.seat] = { text: m.id, at: Date.now() }; break;

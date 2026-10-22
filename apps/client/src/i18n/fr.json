@@ -274,5 +274,9 @@
  "layout.locked": "Verrouillé pour cette partie",
  "layout.line": "Une ligne de {{n}}",
  "layout.rowsOf": "{{k}} rangées de {{m}}",
- "layout.rows": "{{k}} rangées ({{list}})"
+ "layout.rows": "{{k}} rangées ({{list}})",
+ "reject.ALREADY_QUEUED": "Tu es déjà dans la file",
+ "reject.LAYOUT_LOCKED": "La disposition est verrouillée une fois la partie commencée",
+ "reject.NOT_YOUR_SLOT": "Ce n'est pas ta carte",
+ "reject.NO_MATCH": "Rien à assortir pour l'instant"
 }

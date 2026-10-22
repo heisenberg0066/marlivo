@@ -97,9 +97,9 @@ function OverlaySync({ points, els, stage }: { points: React.MutableRefObject<Ov
 
 function Stats() {
   const acc = useRef({ n: 0, t: 0, fps: 0 });
-  useFrame((_, dt) => {
+  useFrame((st, dt) => {
     const a = acc.current; a.n++; a.t += dt;
-    if (a.t > 1) { a.fps = a.n / a.t; a.n = 0; a.t = 0; (window as unknown as { __ml3d?: object }).__ml3d = { fps: Math.round(a.fps * 10) / 10, at: Date.now() }; }
+    if (a.t > 1) { a.fps = a.n / a.t; a.n = 0; a.t = 0; const i = st.gl.info.render; (window as unknown as { __ml3d?: object }).__ml3d = { fps: Math.round(a.fps * 10) / 10, calls: i.calls, tris: i.triangles, dpr: st.gl.getPixelRatio(), at: Date.now() }; }
   });
   return null;
 }

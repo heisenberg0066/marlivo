@@ -125,7 +125,7 @@ while (Date.now() - t0 < maxMs) {
   }
 }
 await p.waitForTimeout(500);
-const final = await p.evaluate(() => ({ phase: window.__ml?.view?.phase, scores: window.__ml?.view?.scores, winner: window.__ml?.view?.matchWinner, rounds: window.__ml?.view?.roundNo }));
+const final = await p.evaluate(() => ({ fps: window.__ml3d?.fps, phase: window.__ml?.view?.phase, scores: window.__ml?.view?.scores, winner: window.__ml?.view?.matchWinner, rounds: window.__ml?.view?.roundNo }));
 console.log(JSON.stringify({ which, lang, final, ms: Date.now() - t0, seen: [...seen].sort(), shots: [...shotsDone] }, null, 1));
 if (errs.length) console.log('ERRORS:\n' + errs.join('\n'));
 await b.close();

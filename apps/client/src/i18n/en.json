@@ -274,5 +274,9 @@
  "layout.locked": "Locked for this match",
  "layout.line": "Single line of {{n}}",
  "layout.rowsOf": "{{k}} rows of {{m}}",
- "layout.rows": "{{k}} rows ({{list}})"
+ "layout.rows": "{{k}} rows ({{list}})",
+ "reject.ALREADY_QUEUED": "You're already in line",
+ "reject.LAYOUT_LOCKED": "The layout is locked once play starts",
+ "reject.NOT_YOUR_SLOT": "That's not your card",
+ "reject.NO_MATCH": "Nothing to match right now"
 }
