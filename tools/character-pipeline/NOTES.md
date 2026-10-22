@@ -123,3 +123,16 @@ Short log of the problems hit while building the Ammar and Orange guy models, wh
 - Sparkle cube doubled eyes: Hunyuan modelled eye bulges + socket rings and a mouth crease larger/higher than the painted eyes -> crescent "second eye outline". flatface_sugar.py presses the eye/mouth box onto a quadratic fit of the front face (+ masked Laplacian relax) before build_hy.sh; the painted features from the 4k front then read clean.
 - Builds: build_hy.sh with settings_<n>_hy1.json (front yaw = align yaw), rig_<n>.json, motion 'animal'. Portraits: bust_crop.py on the 4k front cuts. partc_manifest.py inserts only the two manifest entries (rotationY = -align yaw).
 - Compare sheets: compare_partc.py (look.py renders at view yaw + align yaw).
+
+## Ammar right ear (his right, picture-right in the side-on seat) regressed in dd21a58 — fixed in hyb29
+- Compared symmetric views (look.py 105 vs mirrored -75 = equal angle from his facing direction, ELEV 0) of d716070 (hyb22),
+  dd21a58 (hyb24) and fixes. Mirror-fit of the head (reflect + nearest-neighbour, yaw/offset grid search): yaw 15 is right, but
+  the head's symmetry plane sits 8 mm toward his right and his right side is ~2 cm wider at ear height, with a bigger old nub
+  (lateral 0.127 vs 0.103). The ear placement in s/t is symmetric, so the bad look came from:
+  1) the old nub not smoothed away on his right -> "ear inside an ear" crescent at the ear front;
+  2) his right glasses temple runs ~1.5 cm further back and crossed the new ear.
+- Fix (ears.py, ears_ammar2.json): `smooth_extra_neg` 160 more Laplacian passes on his right only, over a wider radius
+  (`smooth_r_neg` 1.9 ear radii); `temple_s_min` 0.03 clamps the temple tips to end at the ear front (his left temple already
+  ended there: 0 verts moved). His left ear, the face and the front view are byte-identical in the texture/mesh outside that side.
+- Still visible up close on his right: two small speckled slivers at the lower front of the ear (also in dd21a58); not readable at seat distance.
+- A `ghost` normalized-convolution fill option is in ears.py (unused: the "ghost" was geometry, not paint).
