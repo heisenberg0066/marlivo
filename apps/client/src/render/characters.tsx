@@ -178,11 +178,11 @@ function Ammar({ mood }: { mood: Mood }) {
 }
 
 /** Portraits rendered from the 3D models (Blender, see tools/character-pipeline); the SVG busts stay as fallback art. */
-const PORTRAITS: Record<string, string> = { tango: 'tango.webp', ammar: 'ammar.webp' };
+const PORTRAITS: Record<string, string> = { tango: 'tango.webp', ammar: 'ammar.webp', biscuit: 'biscuit.webp', mint: 'mint.webp', pepper: 'pepper.webp' };
 const portraitUrl = (id: string) => (import.meta.env?.BASE_URL ?? '/') + 'assets/characters/portraits/' + PORTRAITS[id];
 function Portrait({ id, mood }: { id: string; mood: Mood }) {
   const [ok, setOk] = useState(true);
-  const Svg = id === 'ammar' ? Ammar : Tango;
+  const Svg = id === 'ammar' ? Ammar : id === 'tango' ? Tango : id === 'mint' ? Mint : id === 'pepper' ? Pepper : Biscuit;
   if (!ok) return <Svg mood={mood} />;
   return <image href={portraitUrl(id)} x="0" y="0" width="120" height="140" preserveAspectRatio="xMidYMax meet" onError={() => setOk(false)} />;
 }
