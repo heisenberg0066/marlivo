@@ -136,3 +136,11 @@ Short log of the problems hit while building the Ammar and Orange guy models, wh
   ended there: 0 verts moved). His left ear, the face and the front view are unchanged: only 0.23% of hi texels differ from dd21a58, all round his right ear (re-baked after the re-sculpt).
 - Still visible up close on his right: two small speckled slivers at the lower front of the ear (also in dd21a58); not readable at seat distance.
 - A `ghost` normalized-convolution fill option is in ears.py (unused: the "ghost" was geometry, not paint).
+
+## Review pass (Oct 22, ~19:00 CEST) — live 87cd10a
+- Ammar 594c8fe live 24-seat check (seatcheck_ears3_live): his right ear clean, temple ends at the ear front, left ear unchanged.
+  Low LOD still shows a few light hair specks on top (1024 texture; the speck cleanup is weaker at that res).
+- Pepper phone_high_3p_seat2 first shot showed the placeholder figure: the GLB had not finished loading inside WAIT (16 s on
+  swiftshader). Retake with WAIT=30000 shows Pepper correctly. Not a model fault; the check needs >=20 s on phone for 3 new GLBs.
+- Mint/Pepper glasses temples run straight back on top of the side of the head and are visible across the cheek/face disc at the
+  4p side seats (no ears to tuck behind). Reads as glasses; could be shortened later.
