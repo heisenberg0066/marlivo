@@ -103,3 +103,4 @@ Short log of the problems hit while building the Ammar and Orange guy models, wh
   - Shirt: skin-coloured texels on the shirt (below z 0.69 outside the neck, and up-facing shoulder tops) -> median shirt black. Hair: peach specks on up-facing/back hair with a mostly dark neighbourhood -> dark-brown highlight.
   - Pitfalls: no scipy inside Blender (box-blur gaussian); dens*(ss+~lat) overshot >1 on the back of the head = black block (fixed with np.where).
 - Frame trace in the lenses: unframe.py on the 4k front (ammar_front4k_ng4_fill.png): skin in the lens/rim area replaced by a broad normalized-convolution blur, eyes/lashes/brows/whites kept (dilated mask).
+- Live check of e7fbe9c: ears read pale/whitish next to the face at the table (ear/fade skin 214,146,114 vs face ~190,120,84 in the texture). Ear, concha, pink and fade-skin tones re-matched to the measured cheek skin (ears_ammar.json).
