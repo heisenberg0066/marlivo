@@ -5,6 +5,8 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { Mood } from '../render/characters';
+import { useRigMotion, type Rig } from './rig';
+import { OrangeGuy, AmmarFigure } from './Hero';
 import { loadManifest, entryFor, loadModel, normalise, clipFor, type CharacterEntry, type Placeholder } from './registry';
 
 const G = {
@@ -21,37 +23,6 @@ const mat = (c: string) => { let m = mats.get(c); if (!m) { m = new THREE.MeshLa
 function M({ g = 'sphere', c, p = [0, 0, 0], s = [1, 1, 1], r = [0, 0, 0] }: { g?: keyof typeof G; c: string; p?: [number, number, number]; s?: number | [number, number, number]; r?: [number, number, number] }) {
   const sc = typeof s === 'number' ? [s, s, s] as [number, number, number] : s;
   return <mesh geometry={G[g]} material={mat(c)} position={p} scale={sc} rotation={r} />;
-}
-
-interface Rig { root: THREE.Group | null; head: THREE.Group | null; armL: THREE.Group | null; armR: THREE.Group | null; eyes: THREE.Group | null }
-const POSE: Record<Mood, { y: number; headX: number; headZ: number; armLX: number; armLZ: number; armRX: number; armRZ: number; bounce: number; sway: number }> = {
-  idle: { y: 0, headX: 0, headZ: 0, armLX: -0.9, armLZ: 0.15, armRX: -0.9, armRZ: -0.15, bounce: 0, sway: 0.04 },
-  think: { y: 0, headX: 0.12, headZ: 0.2, armLX: -0.9, armLZ: 0.15, armRX: -2.3, armRZ: 0.45, bounce: 0, sway: 0.02 },
-  happy: { y: 0.02, headX: -0.15, headZ: 0, armLX: -0.3, armLZ: 2.5, armRX: -0.3, armRZ: -2.5, bounce: 0.06, sway: 0.08 },
-  sad: { y: -0.04, headX: 0.38, headZ: 0, armLX: -0.2, armLZ: 0.1, armRX: -0.2, armRZ: -0.1, bounce: 0, sway: 0.01 },
-  surprised: { y: 0.03, headX: -0.2, headZ: 0, armLX: -0.6, armLZ: 1.2, armRX: -0.6, armRZ: -1.2, bounce: 0.02, sway: 0 },
-  away: { y: -0.05, headX: 0.55, headZ: 0.1, armLX: -1.2, armLZ: 0.3, armRX: -1.2, armRZ: -0.3, bounce: 0, sway: 0.01 },
-};
-
-function useRigMotion(rig: React.MutableRefObject<Rig>, mood: Mood, seed: number) {
-  const cur = useRef({ ...POSE.idle });
-  useFrame((st, dt) => {
-    const t = st.clock.elapsedTime + seed * 1.7;
-    const want = POSE[mood] ?? POSE.idle;
-    const k = 1 - Math.exp(-dt * 6);
-    const c = cur.current as Record<string, number>;
-    for (const key of Object.keys(want) as (keyof typeof want)[]) c[key] = c[key]! + ((want[key] as number) - c[key]!) * k;
-    const r = rig.current;
-    if (r.root) {
-      r.root.position.y = c.y! + Math.sin(t * 1.6) * 0.006 + Math.abs(Math.sin(t * 7)) * c.bounce!;
-      r.root.rotation.z = Math.sin(t * 0.8) * c.sway! * 0.5;
-    }
-    if (r.head) { r.head.rotation.x = c.headX!; r.head.rotation.z = c.headZ! + Math.sin(t * 0.7) * c.sway!; }
-    const wave = mood === 'happy' ? Math.sin(t * 9) * 0.35 : 0;
-    if (r.armL) { r.armL.rotation.x = c.armLX!; r.armL.rotation.z = c.armLZ! + wave; }
-    if (r.armR) { r.armR.rotation.x = c.armRX! + (mood === 'think' ? Math.sin(t * 2) * 0.05 : 0); r.armR.rotation.z = c.armRZ! - wave; }
-    if (r.eyes) { const blink = (t % 4.3) < 0.12 || mood === 'away' ? 0.15 : mood === 'happy' ? 0.55 : 1; r.eyes.scale.y += (blink - r.eyes.scale.y) * 0.5; }
-  });
 }
 
 function Arm({ side, c, len = 0.22, w = 0.045, set }: { side: 1 | -1; c: string; len?: number; w?: number; set: (g: THREE.Group | null) => void }) {
@@ -147,11 +118,13 @@ function ModelFigure({ e, mood, onFail }: { e: CharacterEntry; mood: Mood; onFai
   return obj ? <primitive object={obj.root} /> : null;
 }
 
-export function Figure({ id, mood, seed = 0 }: { id: string; mood: Mood; seed?: number }) {
+export function Figure({ id, mood, seed = 0, pose = 'sit' }: { id: string; mood: Mood; seed?: number; pose?: 'sit' | 'stand' }) {
   const [entry, setEntry] = useState<CharacterEntry | null>(null);
   const [failed, setFailed] = useState(false);
   useEffect(() => { let a = true; loadManifest().then((m) => a && setEntry(entryFor(m, id))); return () => { a = false; }; }, [id]);
-  const kind: Placeholder = useMemo(() => entry?.placeholder ?? ({ biscuit: 'bear', mint: 'cat', pepper: 'owl', tango: 'orange' } as Record<string, Placeholder>)[id] ?? 'generic', [entry, id]);
+  const kind: Placeholder = useMemo(() => entry?.placeholder ?? ({ biscuit: 'bear', mint: 'cat', pepper: 'owl', tango: 'orange', ammar: 'ammar' } as Record<string, Placeholder>)[id] ?? 'generic', [entry, id]);
   if (entry?.model && !failed) return <ModelFigure e={entry} mood={mood} onFail={() => setFailed(true)} />;
+  if (kind === 'orange') return <OrangeGuy mood={mood} seed={seed} pose={pose} />;
+  if (kind === 'ammar') return <AmmarFigure mood={mood} seed={seed} pose={pose} />;
   return <PlaceholderFigure kind={kind} mood={mood} seed={seed} />;
 }

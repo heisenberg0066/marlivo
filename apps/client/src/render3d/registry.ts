@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import type { GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import type { Mood } from '../render/characters';
 
-export type Placeholder = 'bear' | 'cat' | 'owl' | 'orange' | 'generic';
+export type Placeholder = 'bear' | 'cat' | 'owl' | 'orange' | 'ammar' | 'generic';
 export interface CharacterEntry {
   name?: { en?: string; fr?: string };
   /** GLB file name next to manifest.json (or an absolute URL). null = use the built-in placeholder. */
@@ -29,6 +29,7 @@ export const BUILTIN: Manifest = {
     mint: { model: null, placeholder: 'cat', pickable: true },
     pepper: { model: null, placeholder: 'owl', pickable: true },
     tango: { model: null, placeholder: 'orange', pickable: true },
+    ammar: { model: null, placeholder: 'ammar', pickable: true },
     guest: { model: null, placeholder: 'generic' },
   },
 };

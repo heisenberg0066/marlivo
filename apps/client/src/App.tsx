@@ -1,6 +1,7 @@
 // Hash router + app shell. Routes: #/ · #/practice · #/play/<code> (local room) · #/join-local/<code> (second
 // window of a local room) · #/create · #/join · #/r/<code> (online room) · #/howto · #/settings
-import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+const Lab = lazy(() => import('./screens/Lab'));
 import { useLang, t } from './i18n';
 import { Home } from './screens/Home';
 import { Practice } from './screens/Practice';
@@ -31,6 +32,7 @@ export function App() {
   if ((m = /^\/play\/([A-Z0-9]{5})$/.exec(path))) return <LocalGame key={m[1]} code={m[1]!} />;
   if ((m = /^\/join-local\/([A-Z0-9]{5})$/.exec(path))) return <ChannelGame key={m[1]} code={m[1]!} tag={q.get('tag') ?? undefined} />;
   if ((m = /^\/r\/([A-Z0-9]{5})$/i.exec(path))) return <OnlineGame key={m[1]} code={m[1]!.toUpperCase()} fresh={q.get('seat') === 'new'} tag={q.get('tag') ?? undefined} />;
+  if (path === '/lab') return <Suspense fallback={null}><Lab q={q} /></Suspense>;
   if (path === '/practice') return <Practice test={q.get('test') === '1'} />;
   if (path === '/create') return <CreateRoom />;
   if (path === '/join') return <JoinRoom />;
