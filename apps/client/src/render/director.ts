@@ -155,6 +155,8 @@ async function choreograph(prev: PlayerView, u: Update, apply: (ov: Overrides, b
         break;
       }
       case 'DREW': {
+        const staged = p.seat !== me ? flyBackend().act?.('draw', { seat: p.seat, face: pv?.card ?? null }) : null;
+        if (staged) { await staged; delete ov.hideHand[p.seat]; apply(ov); done(); break; }
         const from = deckBox(); const to = handBox(p.seat, me);
         if (from && to) {
           sfx('slide');
@@ -165,6 +167,7 @@ async function choreograph(prev: PlayerView, u: Update, apply: (ov: Overrides, b
         break;
       }
       case 'THROWN': {
+        flyBackend().release?.(p.seat);
         const from = pre.get(p.seat === me ? 'hand-me' : `hand-${p.seat}`) ?? handBox(p.seat, me);
         const i = nextPileIndex();
         const to = pileBox(i);
@@ -177,6 +180,7 @@ async function choreograph(prev: PlayerView, u: Update, apply: (ov: Overrides, b
         break;
       }
       case 'SWAPPED': {
+        flyBackend().release?.(p.seat);
         const fromHand = pre.get(p.seat === me ? 'hand-me' : `hand-${p.seat}`) ?? handBox(p.seat, me);
         const slot = pre.get('slot:' + p.slot) ?? slotBox(p.slot);
         const i = nextPileIndex(); const pile = pileBox(i);

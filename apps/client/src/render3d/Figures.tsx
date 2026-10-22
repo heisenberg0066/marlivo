@@ -9,6 +9,7 @@ import { useRigMotion, type Rig } from './rig';
 import { OrangeGuy, AmmarFigure } from './Hero';
 import { usePrefs, graphicsLevel } from '../prefs';
 import { loadManifest, entryFor, loadModel, normalise, clipFor, type CharacterEntry, type Placeholder } from './registry';
+import { registerActor, findArms, newCmd, solveArm, curlArm, resetArm, type Actor } from './actors';
 
 const G = {
   sphere: new THREE.SphereGeometry(1, 18, 14),
@@ -148,6 +149,16 @@ function ModelFigure({ e, id, mood, seed, pose: stance, fallback, onFail }: { e:
     action.current?.fadeOut(0.3);
     action.current = next;
   }, [obj, mood]);
+  // card-action actor for this seat (seed is the seat number on the table)
+  const actor = useRef<Actor | null>(null);
+  useEffect(() => {
+    if (!obj) return;
+    const a: Actor = { seat: seed, root: obj.root, arms: findArms(obj.root), head: obj.bones.head?.bone ?? obj.bones.body?.bone ?? null, cmd: newCmd(), lowDetail: level !== 'high' };
+    actor.current = a;
+    const un = registerActor(a);
+    return () => { un(); actor.current = null; };
+  }, [obj, seed, level]);
+  const lk = useRef({ yaw: 0, pitch: 0 });
   const sm = useRef({ hop: 0, tilt: 0, nod: 0, arm: 0, twist: 0 });
   useFrame((st, dt) => {
     if (!obj) return;
@@ -176,8 +187,46 @@ function ModelFigure({ e, id, mood, seed, pose: stance, fallback, onFail }: { e:
       pose(b.head, s.nod, s.twist * 0.6, s.tilt);
       pose(b.armL, 0, 0, -s.arm * 0.8); pose(b.armR, 0, 0, s.arm * (think ? 0.2 : 0.8));
     }
+    applyActor(actor.current, obj.bones, lk.current, dt);
   });
   return obj ? <primitive object={obj.root} /> : <>{fallback}</>;
+}
+
+/** Layers the card-action commands on top of the mood pose: lean, head look-at, arm IK and paw curl. */
+const vT = new THREE.Vector3(), vH = new THREE.Vector3(), vC0 = new THREE.Vector3(), qT = new THREE.Quaternion();
+function applyActor(a: Actor | null, b: Record<string, BoneRig>, lk: { yaw: number; pitch: number }, dt: number) {
+  if (!a) return;
+  const c = a.cmd;
+  for (const arm of Object.values(a.arms)) if (arm) resetArm(arm);
+  const spine = b.spine ?? b.body;
+  if (spine && Math.abs(c.lean) > 1e-3) spine.bone.quaternion.multiply(qT.setFromAxisAngle(spine.ax[0], c.lean));
+  const hb = b.head ?? b.body;
+  // head look: yaw/pitch towards the target in the figure's own frame, eased, limited like a neck
+  let wy = 0, wp = 0;
+  if (c.look && hb && c.lookW > 0) {
+    const fr = a.root.parent ?? a.root; // the seat group: local +z faces the table centre
+    fr.updateMatrixWorld(true);
+    hb.bone.getWorldPosition(vH);
+    vT.copy(c.look); fr.worldToLocal(vT); const h0 = fr.worldToLocal(vH.clone());
+    vT.sub(h0);
+    wy = THREE.MathUtils.clamp(Math.atan2(vT.x, vT.z), -0.9, 0.9) * c.lookW;
+    wp = THREE.MathUtils.clamp(-Math.atan2(vT.y, Math.hypot(vT.x, vT.z)), -0.5, 0.6) * c.lookW;
+  }
+  const k = Math.min(1, dt * 9);
+  lk.yaw += (wy - lk.yaw) * k; lk.pitch += (wp - lk.pitch) * k;
+  if (hb && (Math.abs(lk.yaw) > 1e-3 || Math.abs(lk.pitch) > 1e-3)) {
+    const share = hb === b.body ? 0.5 : 1; // creature without a neck: the whole body turns a little
+    hb.bone.quaternion.multiply(qT.setFromAxisAngle(hb.ax[1], lk.yaw * share)).multiply(qT.setFromAxisAngle(hb.ax[0], (lk.pitch + c.focus * 0.12) * share));
+  }
+  a.root.updateMatrixWorld(true);
+  a.root.getWorldPosition(vC0); vC0.y += 0.25;
+  for (const sd of ['L', 'R'] as const) {
+    const arm = a.arms[sd], cmd = c.arm[sd];
+    if (!arm || !cmd || cmd.w <= 0.001) continue;
+    solveArm(arm, cmd.target, cmd.w, vC0);
+    if (!a.lowDetail) curlArm(arm, cmd.curl * cmd.w);
+    else curlArm(arm, cmd.curl * cmd.w * 0.5);
+  }
 }
 
 /** The manifest entry for a character id (null until the manifest has loaded). */

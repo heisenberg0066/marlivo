@@ -59,6 +59,29 @@ coming from another job), order = capture hook -> anim system -> re-rig + 2-bone
 - Next: run the full baseline set (DREW by bots and me, THROWN, SWAPPED, Q/J/10, penalties) for 2/3/4p, laptop/phone,
   High/Low; then step (b) the actor registry.
 
+## Run 3 (2026-10-23) — re-rig + first hand-carried draw (branch `anim-rig`)
+- main = f1871de (capture hook merged after pnpm test + e2e laptop/phone R3D=1 BOTS=3, both clean).
+- WARNING for later runs: around 01:43 the box's /workspace/sb and the /workspace/marlivo working tree were
+  restored from an older snapshot (node_modules, dist and uncommitted edits vanished). Work in
+  /workspace/animwork/repo (git worktree on anim-rig) and commit/push often. The garden-scene job uses
+  /workspace/marlivo-scene (branch scene-garden).
+- `tools/character-pipeline/split_arms.mjs` (run with @gltf-transform v4 + meshoptimizer, e.g. from
+  /workspace/animwork/gt): splits armL/armR into arm -> _fore -> _hand -> _curl on the exported GLBs (High + Low,
+  same bones) and rebuilds the arm weights from geometry (lateral of the torso, between the rig's arm heights;
+  optional "split" overrides in rig_<name>.json, Mint uses cx/armX/zmin to keep the tail out). Mesh, UVs and
+  textures are untouched, rest pose identical. Old weights made legs, the belly, Choco's wrapper, Sparkle's cube and
+  Mint's tail follow the arms (see /workspace/sb/anim/rig-before-after-sheet.jpg: per character, old rest | old rig
+  arms raised | new rig same raise + elbow/wrist/curl; right half = weight colours).
+  Known: Mint's arms are fused with the body sides, so its arm region still takes a strip of the flank.
+  Ammar: no arms yet (mesh has none) -> needs modelled arms; not done. Blink: not done.
+- `render3d/actors.ts`: per-seat actor registry, analytic two-bone IK (no stretching, elbow pole out/down/back),
+  paw curl, lean, head look-at (neck limits) and focus; `Figures.tsx` layers it on the mood pose every frame
+  (seed = seat). `backend3d.ts` `act('draw')`: the card slides low on the felt to a pickup point the arm can reach
+  (towards the deck, inside the table edge: uses TABLE_R and the seat distance from the layout, so a smaller table
+  just shortens the slide), the figure leans in, reaches, the paw closes, the card rides in the hand up to the face
+  (head follows, focused), then down to the hold spot; the arm keeps holding until THROWN/SWAPPED (release) or the
+  view says the card left. Director: DREW for opponents uses it when available, else the old flight.
+
 ## Design (next runs)
 1. `render3d/anim/` — per-seat **actor registry**: each figure registers `{ handWorld(side), reach(target, w),
    look(target), lean(x), expr(kind) }`; backend3d resolves `hand-N` to the live hand bone instead of `L.hands`.

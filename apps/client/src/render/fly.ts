@@ -82,6 +82,11 @@ export interface FlyBackend {
   all(): Map<string, Box>;
   sprite(from: Box, face: CardFace | null, faceUp: boolean): SpriteLike;
   clear(): void;
+  /** Optional: a renderer that can stage a whole action itself (3D: a character's hand carries the card).
+   *  Returns null when it cannot (no rigged character there), and the caller falls back to plain flights. */
+  act?(kind: 'draw', p: { seat: number; face: CardFace | null }): Promise<void> | null;
+  /** The seat's character lets go of whatever it holds (its drawn card left its hand). */
+  release?(seat: number): void;
 }
 
 const domKey = (key: string) => {

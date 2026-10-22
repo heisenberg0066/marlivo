@@ -8,10 +8,12 @@ import { speedScale, getPrefs } from '../prefs';
 import { CARD_OPP, type Layout3, type Place3 } from './layout3d';
 import { PLANE, backMat, faceMat, shadowMat, GLOW_COLOR } from './Card3D';
 import { glowTexture } from './textures';
+import { actorFor, shoulderPos, handPos, armLength, easeInOut, easeOutBack, seg, type Side } from './actors';
+import { TABLE_R, CARD_T } from './layout3d';
 
 export interface Ctx3 { camera: THREE.Camera; el: HTMLElement; group: THREE.Group; layout: Layout3; view: PlayerView; four: boolean }
 let ctx: Ctx3 | null = null;
-export function setCtx3(c: Ctx3 | null) { ctx = c; }
+export function setCtx3(c: Ctx3 | null) { ctx = c; if (c) checkHolds(); }
 export const getCtx3 = () => ctx;
 
 const v = new THREE.Vector3();
@@ -118,6 +120,8 @@ class Sprite3D implements SpriteLike {
     if (f) { const t = Math.min(1, (performance.now() - f.t0) / f.ms); this.cur.flip = lerp(f.from, f.to, ease(t)); if (t >= 1) this.flipAnim = null; if (!this.moving) this.apply(); }
   }
   private moving = false;
+  /** Puts the card at an exact world placement (used while a hand carries it). */
+  setPlace(p: THREE.Vector3, yaw: number, tilt: number, w: number, h: number) { const c = this.cur; c.p = [p.x, p.y, p.z]; c.yaw = yaw; c.tilt = tilt; c.w = w; c.h = h; c.flip = 0; c.spin = 0; this.apply(); }
   flip(up: boolean, ms = 260) { this.flipAnim = { from: this.cur.flip, to: up ? Math.PI : 0, t0: performance.now(), ms: Math.max(1, ms * speedScale()) }; }
   setFace(f: CardFace) { this.face.material = faceMat(f, ctx?.four ?? false); this.face.visible = true; }
   addClass(c: string) {
@@ -160,6 +164,86 @@ class Sprite3D implements SpriteLike {
 }
 
 const live = new Set<Sprite3D>();
+
+// ---- staged actions: the character's hand carries the card -------------------------------------------------
+const holds = new Map<number, { side: Side; target: THREE.Vector3; until: number }>();
+const frame = () => new Promise<number>((r) => requestAnimationFrame(() => r(performance.now())));
+function releaseSeat(seat: number) {
+  const h = holds.get(seat); if (!h) return; holds.delete(seat);
+  const a = actorFor(seat); const cmd = a?.cmd.arm[h.side]; if (!a || !cmd) return;
+  const t0 = performance.now(), w0 = cmd.w, c0 = cmd.curl;
+  const step = () => { const k = Math.min(1, (performance.now() - t0) / (380 * speedScale())); const e = easeInOut(k); cmd.w = w0 * (1 - e); cmd.curl = c0 * (1 - e); a.cmd.lookW *= 0.9; if (k < 1 && !holds.has(seat)) requestAnimationFrame(step); else if (k >= 1) { delete a.cmd.arm[h.side]; a.cmd.look = null; a.cmd.lookW = 0; } };
+  requestAnimationFrame(step);
+}
+function checkHolds() { if (!ctx) return; for (const seat of [...holds.keys()]) if (ctx.view.round?.drawn?.by !== seat || performance.now() > holds.get(seat)!.until) releaseSeat(seat); }
+
+/** Draw by an opponent: the card slides low along the felt towards the seat, the character leans in and reaches
+ *  (two-bone IK), the paw closes on it, the hand lifts it to the face (head follows, focused look), then lowers it to
+ *  the hold spot where the held card rests until it is thrown or swapped. ~1.1 s at Normal speed. */
+async function stageDraw(seat: number, face: CardFace | null): Promise<void> {
+  if (!ctx) return;
+  const L = ctx.layout; const a = actorFor(seat); const hold = L.hands[seat]; const ch = L.chars[seat]; const S = L.seats[seat];
+  if (!a || !hold || !ch || !S) return;
+  const deckPl = placeFor('deck')!; const deck = new THREE.Vector3(...deckPl.p);
+  // the arm on the deck's side reaches
+  const sides = (Object.keys(a.arms) as Side[]);
+  const side = sides.sort((x, y) => shoulderPos(a.arms[x]!).distanceTo(deck) - shoulderPos(a.arms[y]!).distanceTo(deck))[0]!;
+  const arm = a.arms[side]!;
+  const sh = shoulderPos(arm); const len = armLength(arm);
+  // pickup point on the felt: towards the deck, as far in as the arm reaches with a lean, never off the table
+  const c = new THREE.Vector3(...ch.p); const dirIn = deck.clone().sub(c).setY(0).normalize();
+  const tableY = CARD_T * 2;
+  const reachH = Math.sqrt(Math.max(0, (len * 1.12) ** 2 - (sh.y - tableY) ** 2));
+  const shAlong = sh.clone().sub(c).dot(dirIn);
+  const along = Math.max(c.length() - TABLE_R + 0.06, Math.min(shAlong + reachH * 0.92, c.length() - 0.25));
+  const P = c.clone().addScaledVector(dirIn, along); P.y = tableY;
+  // a little to the reaching arm's side
+  const lat = sh.clone().sub(c); lat.y = 0; lat.addScaledVector(dirIn, -lat.dot(dirIn)); P.addScaledVector(lat, 0.6);
+  const head = new THREE.Vector3(); (a.head ?? a.root).getWorldPosition(head);
+  const facing = dirIn.clone();
+  const lookSpot = head.clone().addScaledVector(facing, 0.17); lookSpot.y -= 0.06;
+  const holdT = new THREE.Vector3(...hold.p); holdT.y -= hold.h * 0.3;
+  const yawSeat = S.a; const cw = hold.w, chh = hold.h;
+  const s = new Sprite3D(boxOf(deckPl), face, false); live.add(s);
+  const start = handPos(arm); const cmd = { target: start.clone(), w: 0, curl: 0 };
+  a.cmd.arm[side] = cmd; a.cmd.look = deck.clone(); a.cmd.lookW = 0;
+  holds.delete(seat);
+  const T = 1100 * speedScale(); const t0 = performance.now();
+  const yaw0 = deckPl.yaw; let dy = yawSeat - yaw0; while (dy > Math.PI) dy -= 2 * Math.PI; while (dy < -Math.PI) dy += 2 * Math.PI;
+  const cardPos = new THREE.Vector3(); const hp = new THREE.Vector3();
+  for (;;) {
+    const now = await frame(); const t = Math.min(1, (now - t0) / T);
+    // body: anticipation back, lean in for the reach, settle back with a little overshoot
+    a.cmd.lean = t < 0.12 ? -0.06 * easeInOut(t / 0.12) : t < 0.45 ? -0.06 + 0.3 * easeInOut(seg(t, 0.12, 0.45)) : 0.24 - 0.24 * easeOutBack(seg(t, 0.45, 0.85), 1.2);
+    // arm: rest -> pickup -> face -> hold
+    const r1 = easeInOut(seg(t, 0.1, 0.44)), r2 = easeOutBack(seg(t, 0.47, 0.76), 1.3), r3 = easeInOut(seg(t, 0.84, 1));
+    cmd.w = easeInOut(seg(t, 0.06, 0.3));
+    if (t < 0.47) cmd.target.lerpVectors(start, P, r1).y += Math.sin(Math.PI * r1) * 0.05;
+    else if (t < 0.84) cmd.target.lerpVectors(P, lookSpot, r2);
+    else cmd.target.lerpVectors(lookSpot, holdT, r3);
+    cmd.curl = easeInOut(seg(t, 0.4, 0.5));
+    a.cmd.lookW = easeInOut(seg(t, 0, 0.2));
+    a.cmd.focus = easeInOut(seg(t, 0.55, 0.7)) * (1 - seg(t, 0.85, 1));
+    // card: slides on the felt to the pickup point, then rides in the hand
+    if (t < 0.45) {
+      const k = easeInOut(seg(t, 0, 0.42));
+      cardPos.lerpVectors(deck, P, k); cardPos.y = tableY + 0.002 + Math.sin(Math.PI * k) * 0.004;
+      s.setPlace(cardPos, yaw0 + dy * k, 0, deckPl.w + (cw - deckPl.w) * k, deckPl.h + (chh - deckPl.h) * k);
+      a.cmd.look!.copy(cardPos);
+    } else {
+      handPos(arm, hp); const up = seg(t, 0.45, 0.65);
+      cardPos.copy(hp); cardPos.y += chh * 0.32 * up;
+      const tilt = (hold.tilt ?? 1.25) * easeInOut(up);
+      if (t > 0.86) cardPos.lerp(new THREE.Vector3(...hold.p), easeInOut(seg(t, 0.86, 1)));
+      s.setPlace(cardPos, yawSeat, tilt, cw, chh);
+      a.cmd.look!.copy(cardPos);
+    }
+    if (t >= 1) break;
+  }
+  s.remove(); live.delete(s);
+  holds.set(seat, { side, target: cmd.target, until: performance.now() + 30000 });
+  a.cmd.lookW = 0.5; a.cmd.focus = 0;
+}
 export const backend3d: FlyBackend = {
   rect: (key) => { const pl = placeFor(key); return pl ? boxOf(pl) : null; },
   all: () => {
@@ -180,4 +264,10 @@ export const backend3d: FlyBackend = {
   },
   sprite: (from, face, up) => { const s = new Sprite3D(from, face, up); live.add(s); const rm = s.remove.bind(s); s.remove = () => { live.delete(s); rm(); }; return s; },
   clear: () => { for (const s of [...live]) s.remove(); },
+  act: (kind, p) => {
+    if (kind !== 'draw' || !ctx || getPrefs().reduced) return null;
+    const a = actorFor(p.seat); if (!a || !Object.keys(a.arms).length) return null;
+    return stageDraw(p.seat, p.face);
+  },
+  release: (seat) => releaseSeat(seat),
 };
