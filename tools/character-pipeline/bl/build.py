@@ -218,6 +218,10 @@ def project(ob, inv):
             w = min(1, max(0, (facing - a0) / (a1 - a0))); w = w * w * (3 - 2 * w)
             if w > 0 and bvh.ray_cast(v.co - mathutils.Vector(fd) * 0.003, mathutils.Vector(-fd), 10.0)[0] is not None: w = 0
             vw[v.index] = w
+        for bx in extra['front'].get('exclude', []):  # picture regions that land on the wrong surface (painted ears -> cheeks/side of head)
+            u_, v_ = vuv[:, 0], 1 - vuv[:, 1]; m_ = extra['front'].get('exclude_soft', 0.012)
+            inside = np.clip(np.minimum.reduce([(u_ - bx[0]) / m_, (bx[1] - u_) / m_, (v_ - bx[2]) / m_, (bx[3] - v_) / m_]) + 0.5, 0, 1)
+            vw[:] = vw * (1 - inside); print('FRONT exclude', bx, int((inside > 0.5).sum()))
         if extra['front'].get('edge'):  # fade out near the picture's silhouette (grazing, fringe): side views take over
             ep, EW, EH = load_px(extra['front']['alpha'].replace('.png', '_edge.png'))
             ix = np.clip((vuv[:, 0] * EW).astype(int), 0, EW - 1); iy = np.clip(((1 - vuv[:, 1]) * EH).astype(int), 0, EH - 1)
@@ -362,7 +366,7 @@ def multiview(ob, me, bvh, nrm, adj, vw, vuv):
         Fv = fit_view(co, path, mo['views'][k] + mo.get('yaw0', 0)); d, r, px, W, H = Fv['d'], Fv['r'], Fv['px'], Fv['W'], Fv['H']
         al = px[:, :, 3] > 0.5; u = co @ r; v = co[:, 2]
         s, cx, cy, bi = Fv['s'], Fv['cx'], Fv['cy'], Fv['iou']; best = (s, cx, cy)
-        if mo.get('fill'): path = path.replace('.png', '_fill.png')
+        if mo.get('fill'): path = path.replace('.png', mo.get('fill_tag', {}).get(k, '_fill') + '.png')  # fill_tag: per-view cleaned variant (e.g. _nf_fill = painted eye/brow/glasses arm removed)
         uvk = np.stack([(cx + u * s) / W, 1 - (cy - v * s) / H], 1)
         facing = nrm @ -d; w = smoothstep(facing, f0, f1)
         if 'facing_head' in mo: w = np.where(co[:, 2] > extra.get('head_z', 0.7), smoothstep(facing, *mo['facing_head']), w)
@@ -473,7 +477,7 @@ def make_lod(tag, tris, texres):
     vw, vuv = project(lo, INV)
     uvb = lo.data.uv_layers.new(name='UVMap'); lo.data.uv_layers.active = uvb
     lme = lo.data
-    isA = np.array([all(vw[i] >= 0.5 for i in p.vertices) for p in lme.polygons])
+    isA = np.array([all(vw[i] >= extra.get('a_thresh', 0.5) for i in p.vertices) for p in lme.polygons])
     for p, a in zip(lme.polygons, isA): p.select = not a
     bpy.ops.object.mode_set(mode='EDIT')
     bpy.ops.uv.smart_project(angle_limit=math.radians(70), island_margin=0.003)
