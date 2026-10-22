@@ -1,45 +1,57 @@
-// Frame-accurate animation capture of the 3D table: fake clock (Playwright page.clock) so every frame is exactly
-// STEP ms of game time apart, however slow software WebGL is. Plays the human seat simply (skip peeks, draw, throw)
-// and records every animated event (bot or human) as its own frame sequence.
+// Frame-accurate animation capture of the 3D table. The page runs on the app's virtual clock (debug/vclock.ts,
+// localStorage marlivo.animstep=1), so every saved frame is exactly STEP ms of game time after the previous one,
+// however slow software WebGL is. Plays the human seat simply and records each wanted event as a frame sequence.
 // Usage: node scripts/anim-frames.mjs laptop|phone <bots 1-3> <events to record> <outDir> [high|low]
+//   env: ONLY=DREW,THROWN,...  STEP=50  LEN=1600  LOADMS=30000  SPEED=normal|fast  SEAT=any|me|bots
 import { chromium } from 'playwright-core';
 import { mkdirSync, writeFileSync } from 'node:fs';
 const base = process.env.BASE ?? 'http://localhost:4173/marlivo/';
 const which = process.argv[2] ?? 'laptop'; const bots = Number(process.argv[3] ?? 3); const want = Number(process.argv[4] ?? 4);
 const out = process.argv[5] ?? '/tmp/anim'; const gfx = process.argv[6] ?? 'high'; mkdirSync(out, { recursive: true });
-const STEP = Number(process.env.STEP ?? 50), LEN = Number(process.env.LEN ?? 1800);
-const only = (process.env.ONLY ?? 'DREW,THROWN,SWAPPED,PENALTY_DEALT,TEN_GIVEN,JACK_SWAPPED,QUEEN_PEEKED,PEEKED').split(',');
+const STEP = Number(process.env.STEP ?? 50), LEN = Number(process.env.LEN ?? 1600), SEAT = process.env.SEAT ?? 'any';
+const only = (process.env.ONLY ?? 'DREW,THROWN,SWAPPED,PENALTY_DEALT,TEN_GIVEN,JACK_SWAPPED,QUEEN_PEEKED,PEEK_PICKED').split(',');
 const sizes = { phone: { viewport: { width: 390, height: 844 }, deviceScaleFactor: 1, isMobile: true, hasTouch: true }, laptop: { viewport: { width: 1280, height: 720 } } };
 const b = await chromium.launch({ executablePath: '/usr/bin/google-chrome', args: ['--no-sandbox', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
 const ctx = await b.newContext(sizes[which]);
-await ctx.addInitScript(([g, sp]) => { localStorage.setItem('marlivo.prefs', JSON.stringify({ name: 'Ammar', characterId: 'ammar', speed: sp, sound: false, renderer: '3d', graphics: g, confirmSwap: false })); localStorage.setItem('marlivo.lang', 'en'); }, [gfx, process.env.SPEED ?? 'normal']);
-const T00 = Date.now(); const p = await ctx.newPage();
-await p.clock.install();
-await p.clock.pauseAt(Date.now() + 1000);
-const tick = async (ms) => { for (let k = 0; k < ms; k += 100) await p.clock.runFor(Math.min(100, ms - k)); };
+await ctx.addInitScript(([g, sp]) => { localStorage.setItem('marlivo.animstep', '1'); localStorage.setItem('marlivo.prefs', JSON.stringify({ name: 'Ammar', characterId: 'ammar', speed: sp, sound: false, renderer: '3d', graphics: g, confirmSwap: false })); localStorage.setItem('marlivo.lang', 'en'); }, [gfx, process.env.SPEED ?? 'normal']);
+const p = await ctx.newPage();
 p.on('pageerror', (e) => console.log('pageerror', e.message));
-await p.goto(base + '#/practice'); await tick(500);
+const race = (pr, ms, v) => Promise.race([pr, new Promise((r) => setTimeout(() => r(v), ms))]);
+const adv = async (ms, fr = 1000 / 60) => {
+  const r = await race(p.evaluate(([a, f]) => window.__mlAdvance(a, f), [ms, fr]), 30000, 'TIMEOUT');
+  if (r === 'TIMEOUT') { console.log('advance hung', ms, fr, JSON.stringify(await race(p.evaluate(() => [window.__mlNow?.(), window.__ml?.view?.phase]), 5000, 'eval hung'))); await p.screenshot({ path: out + '/hung.jpg' }).catch(() => {}); process.exit(2); }
+  return r;
+};
+const tap = async (xy) => { if (!xy) return; if (which === 'phone') await p.touchscreen.tap(xy.x, xy.y); else await p.mouse.click(xy.x, xy.y); };
+const btn = async (re) => { const l = p.locator('.actions button.act, .overlay .panel button', { hasText: re }); if (await l.count()) { await l.first().click({ force: true, timeout: 1500, noWaitAfter: true }).catch(() => {}); return true; } return false; };
+await p.goto(base + '#/practice'); await adv(300);
 await p.locator('.seg').nth(0).locator('button').nth(bots - 1).click();
 await p.locator('button.act.primary').last().click();
-for (let k = 0; k < Number(process.env.LOADMS ?? 30000); k += 1000) { await tick(200); await p.waitForTimeout(800); }
-const click = async (re) => { const l = p.locator('.actions button.act, .modal button, dialog button', { hasText: re }); if (await l.count()) { await l.first().click({ timeout: 2000, noWaitAfter: true }).catch(() => {}); return true; } return false; };
-await click(/Roll/); console.log("rolled", Date.now() - T00); await p.screenshot({ path: out + "/start.jpg" });
-const state = () => Promise.race([new Promise((_, j) => setTimeout(() => j(new Error("eval timeout")), 20000)), p.evaluate(() => { const v = window.__ml?.view; const r = v?.round; return { n: (v?.log ?? []).length, last: (v?.log ?? []).slice(-3).map((e) => e.t), my: !!(r && r.current === v.you && v.phase === 'PLAY' && !r.drawn && !r.active), held: !!(r && r.drawn?.by === v.you), phase: v?.phase, seat: r?.current }; })]);
-let rec = 0, seenN = (await state()).n; const t0 = Date.now();
-while (rec < want && Date.now() - t0 < 600000) {
-  await tick(150);
+for (let k = 0; k < Number(process.env.LOADMS ?? 30000); k += 1000) { await adv(200, 100); await p.waitForTimeout(800); }
+const state = () => p.evaluate(() => { const v = window.__ml?.view; const r = v?.round; return { n: (v?.log ?? []).length, you: v?.you, phase: v?.phase, cur: r?.current, drawn: r?.drawn?.by, active: r?.active?.k, owner: r?.active?.owner, aseat: r?.active?.seat, peekSlot: r?.active?.peekSlot, buttons: [...document.querySelectorAll('.actions button.act')].map((x) => x.textContent), sel: window.__ml3dHook?.selectable ?? [] }; });
+let seenN = (await state()).n, rec = 0; const t0 = Date.now(); const idx = [];
+while (rec < want && Date.now() - t0 < Number(process.env.MAXMS ?? 900000)) {
+  await adv(200, 50);
   const st = await state();
-  if (st.my) { const xy = await p.evaluate(() => window.__ml3dHook?.deck()); if (xy) await p.mouse.click(xy.x, xy.y); }
-  else if (st.held) { await click(/Throw|Discard/); }
-  else { await click(/^Skip$|^Yes$|Continue|Ready|Next/); }
-  // a new animated event? freeze time and step through it frame by frame
-  const ev = await p.evaluate((n) => (window.__ml?.view?.log ?? []).slice(n).map((e) => e.t + ':' + (e.p?.seat ?? '')), seenN);
+  const mine = (id) => id.startsWith(`p${st.you + 1}-`);
+  if (st.phase === 'START_ROLL') await btn(/Roll/);
+  else if (st.phase === 'PEEK') { const s = st.sel.filter(mine); if (s.length) { await tap(await p.evaluate((i) => window.__ml3dHook.slot(i), s[0])); await adv(400, 50); } else await btn(/Memori/); }
+  else if (st.phase === 'ROUND_END') { const nb = p.locator('.end-panel button.primary'); if (await nb.count()) await nb.click({ force: true, noWaitAfter: true }).catch(() => {}); }
+  else if (st.phase === 'PLAY') {
+    if (st.active === 'power' && st.owner === st.you) { if (!(await btn(/Skip|Done|OK/))) await btn(/→/); }
+    else if (st.active === 'attempt' && st.aseat === st.you) { await btn(/Stop/); await adv(300, 50); await btn(/Yes|OK|Stop/); }
+    else if (st.active === 'finish') await btn(/Skip|No|Pass|Later/);
+    else if (st.cur === st.you && !st.active) { if (st.drawn === st.you) await btn(/Throw/); else await tap(await p.evaluate(() => window.__ml3dHook?.deck())); }
+  }
+  const ev = await p.evaluate((n) => (window.__ml?.view?.log ?? []).slice(n).map((e) => ({ t: e.t, seat: e.p?.seat ?? e.p?.by ?? e.p?.to })), seenN);
   if (!ev.length) continue;
   seenN += ev.length;
-  const hit = ev.find((e) => only.includes(e.split(':')[0]));
+  const hit = ev.find((e) => only.includes(e.t) && (SEAT === 'any' || (SEAT === 'me') === (e.seat === st.you)));
   if (!hit) continue;
-  const dir = `${out}/${String(rec).padStart(2, '0')}-${hit.replace(':', '-s')}`; mkdirSync(dir, { recursive: true });
-  for (let t = 0; t <= LEN; t += STEP) { await p.screenshot({ path: `${dir}/f${String(t).padStart(5, '0')}.jpg`, type: 'jpeg', quality: 75 }); await p.clock.runFor(STEP); }
-  console.log('recorded', dir); rec++;
+  const name = `${String(rec).padStart(2, '0')}-${hit.t}-s${hit.seat}${hit.seat === st.you ? 'me' : ''}`;
+  const dir = `${out}/${name}`; mkdirSync(dir, { recursive: true });
+  for (let t = 0; t <= LEN; t += STEP) { await p.screenshot({ path: `${dir}/f${String(t).padStart(5, '0')}.jpg`, type: 'jpeg', quality: 72 }); await adv(STEP); }
+  idx.push(name); console.log('recorded', name); rec++;
 }
+writeFileSync(`${out}/index.json`, JSON.stringify(idx));
 await b.close();

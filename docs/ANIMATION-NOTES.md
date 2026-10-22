@@ -42,6 +42,23 @@ Ammar needs arms added (mesh may not have them — check the 9 meshes first).
   (`window.__mlAnimClock`) that steps the director + r3f frame loop deterministically (`frameloop="never"` +
   `advance()`), which is the robust option.
 
+## Run 2 (2026-10-23) — deterministic capture hook (branch `anim-wip`, not on main yet)
+Decisions from the parent: re-rig approved (upper/forearm/hand + one curl bone, arms for Ammar, Ammar's face must
+not change), blink per character, table radius + seat distance configurable (garden terrace with a smaller table is
+coming from another job), order = capture hook -> anim system -> re-rig + 2-bone IK -> draw/peek -> the rest.
+- `apps/client/src/debug/vclock.ts` (imported first in main.tsx): with localStorage `marlivo.animstep=1` the page
+  runs on a virtual clock (performance.now, Date.now, timers, rAF); `window.__mlAdvance(ms, frameMs)` steps it.
+  Off by default. Verified: stepping works, the 3D scene renders, the game plays under it.
+- `scripts/anim-frames.mjs` rewritten on top of it: plays the human seat (roll, picks the 2 start peeks,
+  draw + throw, skips powers), records each wanted event (ONLY=...) as exact 50 ms frames; SEAT=me|bots.
+  First sequence: /workspace/sb/anim/before-laptop-4p/00-PEEK_PICKED-s3 (actually shows the DEAL: the peek event
+  is logged while the deal is still animating) -> strip before-laptop-4p-peekpicked-strip.jpg + .mp4.
+- Known: slow (~150 s real for load + one round start; screenshots ~0.3 s each). An earlier run hung inside
+  __mlAdvance once (not reproduced since; the script now aborts with a 'advance hung' message + hung.jpg).
+- Not merged to main: game-code change (main.tsx import) needs pnpm test + e2e + monkey first.
+- Next: run the full baseline set (DREW by bots and me, THROWN, SWAPPED, Q/J/10, penalties) for 2/3/4p, laptop/phone,
+  High/Low; then step (b) the actor registry.
+
 ## Design (next runs)
 1. `render3d/anim/` — per-seat **actor registry**: each figure registers `{ handWorld(side), reach(target, w),
    look(target), lean(x), expr(kind) }`; backend3d resolves `hand-N` to the live hand bone instead of `L.hands`.
