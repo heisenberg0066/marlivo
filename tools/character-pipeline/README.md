@@ -16,4 +16,17 @@ and glTF export, gltfpack (MIT) for meshopt compression. The Ammar model is buil
    (body/armL/armR or hips/spine/head), GLB export (WebP textures) and `gltfpack -cc`.
 4. `bl/bust.py` + `bust_crop.py` — portraits for the 2D picker/seats.
 
-Settings used: orange `blur`, ammar `vc '{"smooth": 10, "face": {"z": [0.58, 0.9], "iters": 120, "lap": 40}, "keep_frac": 0.05, "facing": [0.2, 0.5]}'` (TripoSR at 512³).
+5. `bl/detail.py <name> spec_<name>.json` (run by `build_all.sh` after rigging) — hand-modelled extras placed by casting
+   rays from the reference camera through points picked on the reference picture, so they line up with the painted front:
+   Ammar's wire glasses (rims, lenses, bridge, temples), silver chain, a tidy backpack with straps; Orange guy's
+   palms with three pointed fingers. Each part is parented to a bone (head / spine / arms).
+
+Build options (`settings_<name>.json`, passed to `bl/build.py`): `facing`/`facing_head` limit the projected picture to
+front-facing areas; `paint` repaints sides/back with clean flat colours (clothes, hair, faded sides, skin);
+`tint` colour-matches Orange guy's sides/back (body, arms, legs) to the front; `hair` squashes the bulky top, pulls the
+sides in and sculpts curl clumps; `flatten` presses the old lumpy backpack onto the back; `shoes` paints white sneakers
+with a grey stripe; `normal` bakes a tangent-space normal map (High only) from the full-resolution mesh plus a procedural
+bump (curls, orange-peel dimples).
+
+Run: `./build_all.sh ammar vc "$(cat settings_ammar.json)"`, `./build_all.sh orange vc "$(cat settings_orange.json)"`
+(TripoSR carve at 512³ for Ammar, 384³ for Orange guy). Colours in the settings are linear.

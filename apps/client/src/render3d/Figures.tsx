@@ -2,7 +2,7 @@
 // owl, Tango the orange guy and a generic guest), with idle / think / celebrate / sad / surprised / away motions.
 // A GLB listed in the character manifest replaces the placeholder with no code changes (see registry.ts).
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { useFrame } from '@react-three/fiber';
+import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { Mood } from '../render/characters';
 import { useRigMotion, type Rig } from './rig';
@@ -113,6 +113,7 @@ function pose(r: BoneRig | undefined, x: number, y: number, z: number) {
  *  While the file loads the built-in procedural figure stands in. */
 function ModelFigure({ e, id, mood, seed, pose: stance, fallback, onFail }: { e: CharacterEntry; id: string; mood: Mood; seed: number; pose: 'sit' | 'stand'; fallback: ReactNode; onFail(): void }) {
   const level = usePrefs().graphics && graphicsLevel();
+  const gl = useThree((st) => st.gl);
   const [obj, setObj] = useState<{ root: THREE.Object3D; mixer: THREE.AnimationMixer; clips: THREE.AnimationClip[]; bones: Record<string, BoneRig>; y0: number } | null>(null);
   const action = useRef<THREE.AnimationAction | null>(null);
   useEffect(() => {
@@ -122,12 +123,21 @@ function ModelFigure({ e, id, mood, seed, pose: stance, fallback, onFail }: { e:
       if (!gltf) { onFail(); return; }
       const { clone } = await import('three/examples/jsm/utils/SkeletonUtils.js');
       const root = clone(gltf.scene);
-      root.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh) { m.castShadow = true; m.frustumCulled = false; const mt = m.material as THREE.MeshStandardMaterial; if (mt?.isMeshStandardMaterial) { mt.roughness = Math.max(mt.roughness, 0.62); mt.metalness = 0; } } });
+      // High: sharpest texture filtering the GPU offers (textures are sRGB colour + linear normal maps, mipmapped)
+      const aniso = level === 'high' ? gl.capabilities.getMaxAnisotropy() : 1;
+      root.traverse((o) => {
+        const m = o as THREE.Mesh; if (!m.isMesh) return;
+        m.castShadow = true; m.frustumCulled = false;
+        const mt = m.material as THREE.MeshStandardMaterial; if (!mt?.isMeshStandardMaterial) return;
+        if (mt.map) mt.roughness = Math.max(mt.roughness, 0.62); // painted skin/cloth: matte. Wire, chain, lenses keep their shine
+        mt.metalness = 0; // no environment map in the room: metals would render black
+        for (const tx of [mt.map, mt.normalMap, mt.emissiveMap]) if (tx && tx.anisotropy !== aniso) { tx.anisotropy = aniso; tx.needsUpdate = true; }
+      });
       normalise(root, stance === 'stand' && e.chair !== false ? { ...e, baseY: -0.12 } : e);
       setObj({ root, mixer: new THREE.AnimationMixer(root), clips: gltf.animations, bones: rigBones(root, ['body', 'armL', 'armR', 'root', 'hips', 'spine', 'head']), y0: root.position.y });
     });
     return () => { alive = false; };
-  }, [e, level, stance]);
+  }, [e, level, stance, gl]);
   useEffect(() => {
     if (!obj) return;
     const name = clipFor(obj.clips.map((c) => c.name), e, mood);

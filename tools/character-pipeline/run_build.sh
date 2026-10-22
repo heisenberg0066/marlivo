@@ -5,7 +5,7 @@ cd /workspace/tools
 B=/workspace/tools/blender-4.2.3-linux-x64/blender
 read SC TX TY < <(python3 -c "import json;v=json.load(open('fit.json'))['$1'];print(*v)")
 BACK=$2; [ "$BACK" = blur ] && BACK=/workspace/tools/in/$1_projblur.png
-$B -b -P bl/build.py -- $1 /workspace/tools/carve_$1.obj /workspace/tools/in/$1_proj.png $BACK $SC $TX $TY ${HI:-50000} ${LO:-12000} /workspace/tools/build "${3:-{\}}" 2>&1 | grep -E "PARTS|SRC|LOD|FACE|SMOOTH|rror"
+$B -b -P bl/build.py -- $1 /workspace/tools/carve_$1.obj /workspace/tools/in/$1_proj.png $BACK $SC $TX $TY ${HI:-50000} ${LO:-12000} /workspace/tools/build "${3:-{\}}" 2>&1 | grep -E "PARTS|SRC|LOD|FACE|SMOOTH|HAIR|FLAT|NORMAL|rror|Trace"
 cd build
 for t in hi lo; do $B -b $1.blend -P ../bl/export.py -- $1_$t $1_$t.glb 2>&1 | grep -iE "rror" || true; done
 ls -la $1_*.glb

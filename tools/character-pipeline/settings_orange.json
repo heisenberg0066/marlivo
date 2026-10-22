@@ -1,0 +1,1 @@
+{"facing": [0.3, 0.6], "normal": {"layers": [{"kind": "dimple", "scale": 150, "mask": "vc", "lo": 0.0, "hi": 0.5, "smooth": false, "m0": 0.1, "m1": 0.2}], "strength": 0.6, "dist": 0.002}, "tint": {"color": [0.72, 0.25, 0.085], "arm": [0.74, 0.37, 0.21], "arm_x": 0.39, "leg": [0.62, 0.3, 0.14], "leg_z": 0.3, "mix": 0.92}}

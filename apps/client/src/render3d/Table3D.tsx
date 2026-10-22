@@ -9,7 +9,7 @@ import type { TableProps } from '../render/Table';
 import { NamePlate } from '../render/Table';
 import { SEAT_COLORS, type Mood } from '../render/characters';
 import { setFlyBackend } from '../render/fly';
-import { usePrefs } from '../prefs';
+import { usePrefs, graphicsLevel } from '../prefs';
 import { t } from '../i18n';
 import { layout3, TABLE_R, CARD_T, type Layout3, type V3 } from './layout3d';
 import { Room, Chair } from './Room';
@@ -131,6 +131,7 @@ function Deck({ L, onDeck, clickable }: { L: Layout3; onDeck(): void; clickable:
 
 const Scene = memo(function Scene({ p, L, stage, points, els, portrait }: { p: TableProps; L: Layout3; stage: React.RefObject<HTMLDivElement>; points: React.MutableRefObject<OverlayPoints>; els: React.MutableRefObject<Map<string, HTMLElement>>; portrait: boolean }) {
   const prefs = usePrefs();
+  const hi = !!prefs.graphics && graphicsLevel() === 'high';
   const { camera, gl } = useThree();
   const group = useRef<THREE.Group>(null);
   const v = p.view; const r = v.round; const me = v.you; const ov = p.ov;
@@ -152,6 +153,8 @@ const Scene = memo(function Scene({ p, L, stage, points, els, portrait }: { p: T
       <OverlaySync points={points} els={els} stage={stage} />
       <Stats />
       <Room />
+      {/* High: a soft back light from behind the far seats puts a rim on the characters */}
+      {hi && <directionalLight position={[0.4, 1.9, -2.6]} intensity={1.1} color="#ffe9cf" />}
       <group ref={group} />
       <Deck L={L} onDeck={p.onDeck} clickable={myTurnDraw} />
       {/* the discard pile, scattered inside the centre circle */}
@@ -235,7 +238,7 @@ export const Table3D = memo(function Table3D(p: TableProps & { onFail?(why: stri
 
   // DOM overlays that follow 3D points: name plates + chat bubbles + "+2" badges above heads, the Match badge, deck count
   const reg = (k: string, f: () => V3 | null) => (el: HTMLElement | null) => { if (el) { els.current.set(k, el); points.current.set(k, f); } else { els.current.delete(k); points.current.delete(k); } };
-  const dpr = Math.min(window.devicePixelRatio || 1, portrait ? 1.5 : 1.75);
+  const dpr = Math.min(window.devicePixelRatio || 1, prefs.graphics && graphicsLevel() === 'high' ? 2 : portrait ? 1.5 : 1.75);
   return (
     <div className="stage stage3d" ref={stage}>
       <Canvas dpr={dpr} gl={{ antialias: true, powerPreference: 'default', alpha: false }} camera={{ fov: 42, near: 0.05, far: 30, position: [0, 1.6, 2.4] }}
