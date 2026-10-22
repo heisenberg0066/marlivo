@@ -67,3 +67,11 @@ Short log of the problems hit while building the Ammar and Orange guy models, wh
 - Animals (Biscuit/Mint/Pepper): cut6.py (rembg, 4k ESRGAN front, 2x sides/back), prep6.py (front cut acts as the reference: mask/proj/bbox), align_hy.py falls back to a unit-height frame when there is no TripoSR carve, GEN env selects the view folder; rig.py reads rig_<name>.json (hips/spine/head + armL/armR); client motion 'animal'.
 - Queue (box, nohup): q4.sh Hunyuan biscuit->mint->pepper (384 sample + 512 decode + align), q5.sh builds them after Q4_DONE (settings_<n>_hy1.json, yaw from hy_<n>_align.json), q6.sh then does Part C (Choco bar, Sparkle cube; views in /workspace/sb/gen7). Biscuit align IoU 0.968 (yaw 2.0).
 - Generated views: gen6/<animal>_{front,sideL,back}.jpg (sideR = mirror of sideL; Mint back mirrored so the tail side matches the front). Sparkle cube: front/3/4/side/back with ivory limbs (gen7/sugar_*); Choco bar front/side/back regenerated at higher res from the 02 turnaround (gen7/choco_*).
+
+## live6 part B/C log
+- OOM lesson (again): Pepper's Hunyuan sampling was killed because unglass inpainting + Blender preview renders ran at the same time. qq3.sh now writes HY_RUN/HY_DONE markers; run nothing heavy between them.
+- Biscuit v1 (live 08df203): dark grey smears on top of head/ears seen from the seat camera. Cause: barely-seen top vertices got their vertex colour from the cut-out's dark silhouette fringe (front view at grazing angle wins after normalisation). Fix in align_hy.py: view weight ramps up over 2..10 px from each silhouette (_edge.png) and vertices with < 3% of median weight are filled from well-seen neighbours, then diffused 30 rings. Rebuild queued.
+- Biscuit side-right view regenerated (scarf end on the bear's right chest, peeking from behind) instead of the mirrored side-left.
+- Mint/Pepper 3D glasses: rims found with HoughCircles on the generated fronts (spec_<n>_hy.json, dark wire, lens alpha 0.05), painted rims removed with unglass2.py (darkest-radius trace per angle +-18%, band = 1.9x rim thickness, Telea). build_hy.sh picks spec_<name>_hy.json automatically.
+- High renderer: CAS-style sharpen (contrast-adaptive, clamped to the local min/max, amount 0.4) after a 4x MSAA HalfFloat render target, then OutputPass (tone map + sRGB). Only on graphics=high.
+- look.py: ELEV env var for elevated (seat-like) previews.
