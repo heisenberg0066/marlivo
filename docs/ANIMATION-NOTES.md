@@ -82,6 +82,12 @@ coming from another job), order = capture hook -> anim system -> re-rig + 2-bone
   (head follows, focused), then down to the hold spot; the arm keeps holding until THROWN/SWAPPED (release) or the
   view says the card left. Director: DREW for opponents uses it when available, else the old flight.
 
+- Capture notes: under SwiftShader a High 4-player frame can take seconds; the script now waits up to 120 s per
+  advance / 180 s per screenshot and renders once per saved frame. Don't run two captures + pnpm test at once (the
+  GPU process backs up and screenshots time out). vclock timers now fire >= 1 ms later (no setTimeout(0) spin).
+- NOT verified yet in the running game (clips pending): the draw choreography may need sign fixes (lean direction,
+  curl axis, elbow pole) per character; check frames before merging. Not deployed.
+
 ## Design (next runs)
 1. `render3d/anim/` — per-seat **actor registry**: each figure registers `{ handWorld(side), reach(target, w),
    look(target), lean(x), expr(kind) }`; backend3d resolves `hand-N` to the live hand bone instead of `L.hands`.

@@ -15,8 +15,9 @@ if (on) {
   performance.now = () => perf0 + now;
   Date.now = () => date0 + now;
   const w = window as unknown as Record<string, unknown>;
-  w.setTimeout = ((cb: Cb, ms = 0, ...args: unknown[]) => { const id = seq++; timers.set(id, { at: now + Math.max(0, Number(ms) || 0), cb, args, every: null }); return id; }) as unknown;
-  w.setInterval = ((cb: Cb, ms = 0, ...args: unknown[]) => { const id = seq++; const e = Math.max(1, Number(ms) || 0); timers.set(id, { at: now + e, cb, args, every: e }); return id; }) as unknown;
+  // timers fire >= 1 ms later (like real clamping), so setTimeout(0) chains cannot spin inside one frame
+  w.setTimeout = ((cb: Cb, ms = 0, ...args: unknown[]) => { const id = seq++; timers.set(id, { at: now + Math.max(1, Number(ms) || 0), cb, args, every: null }); return id; }) as unknown;
+  w.setInterval = ((cb: Cb, ms = 0, ...args: unknown[]) => { const id = seq++; const e = Math.max(4, Number(ms) || 0); timers.set(id, { at: now + e, cb, args, every: e }); return id; }) as unknown;
   w.clearTimeout = w.clearInterval = ((id: number) => { timers.delete(id); }) as unknown;
   w.requestAnimationFrame = ((cb: FrameRequestCallback) => { const id = seq++; rafs.set(id, cb); return id; }) as unknown;
   w.cancelAnimationFrame = ((id: number) => { rafs.delete(id); }) as unknown;

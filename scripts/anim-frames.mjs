@@ -18,7 +18,7 @@ const p = await ctx.newPage();
 p.on('pageerror', (e) => console.log('pageerror', e.message));
 const race = (pr, ms, v) => Promise.race([pr, new Promise((r) => setTimeout(() => r(v), ms))]);
 const adv = async (ms, fr = 1000 / 60) => {
-  const r = await race(p.evaluate(([a, f]) => window.__mlAdvance(a, f), [ms, fr]), 30000, 'TIMEOUT');
+  const r = await race(p.evaluate(([a, f]) => window.__mlAdvance(a, f), [ms, fr]), 120000, 'TIMEOUT'); // software WebGL can take seconds per frame (shader compiles, glow passes)
   if (r === 'TIMEOUT') { console.log('advance hung', ms, fr, JSON.stringify(await race(p.evaluate(() => [window.__mlNow?.(), window.__ml?.view?.phase]), 5000, 'eval hung'))); await p.screenshot({ path: out + '/hung.jpg' }).catch(() => {}); process.exit(2); }
   return r;
 };
@@ -31,11 +31,11 @@ for (let k = 0; k < Number(process.env.LOADMS ?? 30000); k += 1000) { await adv(
 const state = () => p.evaluate(() => { const v = window.__ml?.view; const r = v?.round; return { n: (v?.log ?? []).length, you: v?.you, phase: v?.phase, cur: r?.current, drawn: r?.drawn?.by, active: r?.active?.k, owner: r?.active?.owner, aseat: r?.active?.seat, peekSlot: r?.active?.peekSlot, buttons: [...document.querySelectorAll('.actions button.act')].map((x) => x.textContent), sel: window.__ml3dHook?.selectable ?? [] }; });
 let seenN = (await state()).n, rec = 0; const t0 = Date.now(); const idx = [];
 while (rec < want && Date.now() - t0 < Number(process.env.MAXMS ?? 900000)) {
-  await adv(200, 50);
+  await adv(200, 100);
   const st = await state();
   const mine = (id) => id.startsWith(`p${st.you + 1}-`);
   if (st.phase === 'START_ROLL') await btn(/Roll/);
-  else if (st.phase === 'PEEK') { const s = st.sel.filter(mine); if (s.length) { await tap(await p.evaluate((i) => window.__ml3dHook.slot(i), s[0])); await adv(400, 50); } else await btn(/Memori/); }
+  else if (st.phase === 'PEEK') { const s = st.sel; if (s.length) { await tap(await p.evaluate((i) => window.__ml3dHook.slot(i), s[0])); await adv(400, 50); } else await btn(/Memori/); }
   else if (st.phase === 'ROUND_END') { const nb = p.locator('.end-panel button.primary'); if (await nb.count()) await nb.click({ force: true, noWaitAfter: true }).catch(() => {}); }
   else if (st.phase === 'PLAY') {
     if (st.active === 'power' && st.owner === st.you) { if (!(await btn(/Skip|Done|OK/))) await btn(/→/); }
@@ -50,7 +50,7 @@ while (rec < want && Date.now() - t0 < Number(process.env.MAXMS ?? 900000)) {
   if (!hit) continue;
   const name = `${String(rec).padStart(2, '0')}-${hit.t}-s${hit.seat}${hit.seat === st.you ? 'me' : ''}`;
   const dir = `${out}/${name}`; mkdirSync(dir, { recursive: true });
-  for (let t = 0; t <= LEN; t += STEP) { await p.screenshot({ path: `${dir}/f${String(t).padStart(5, '0')}.jpg`, type: 'jpeg', quality: 72 }); await adv(STEP); }
+  for (let t = 0; t <= LEN; t += STEP) { await p.screenshot({ path: `${dir}/f${String(t).padStart(5, '0')}.jpg`, type: 'jpeg', quality: 72, timeout: 180000 }); await adv(STEP, STEP); } // one render per saved frame: animations are time-based
   idx.push(name); console.log('recorded', name); rec++;
 }
 writeFileSync(`${out}/index.json`, JSON.stringify(idx));
