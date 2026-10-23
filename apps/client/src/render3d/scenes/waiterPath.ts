@@ -26,9 +26,9 @@ export function pickWaiterOutfit(
 export const KITCHEN_DOOR: V3 = [-2.35, FLOOR_Y, -1.65];
 export const OFF_STAGE: V3 = [-2.35, FLOOR_Y, -1.65];
 /** Radius of the dashed walking loop around the table (outside chairs at ~1.35, inside stone rim at 2.38). */
-export const LOOP_R = 1.58;
+export const LOOP_R = 1.62;
 /** Radius when stepped into a gap between seats to pour tea / splash / present medal. */
-export const STOP_R = 1.26;
+export const STOP_R = 1.34;
 /** Minimum allowed distance from the waiter to any seated character's root. */
 export const CHAR_CLEAR_R = 0.44;
 /** Hedge line z (waiter must never cross onto the badminton court z < HEDGE_Z). */
@@ -73,8 +73,8 @@ export function cupStopForSeat(L: Layout3, seat: number, cupPos?: V3): WaiterSto
   const rawCupAngle = cupPos ? Math.atan2(cupPos[0], cupPos[2]) : normAngle(seatAngle + 0.36);
   let bestA = rawCupAngle;
   let bestScore = -1e9;
-  for (let step = -24; step <= 24; step++) {
-    const cand = normAngle(rawCupAngle + step * 0.045);
+  for (let step = -36; step <= 36; step++) {
+    const cand = normAngle(rawCupAngle + step * 0.04);
     const sx = Math.sin(cand) * STOP_R;
     const sz = Math.cos(cand) * STOP_R;
     if (sz < HEDGE_Z + 0.08) continue;
@@ -83,10 +83,10 @@ export function cupStopForSeat(L: Layout3, seat: number, cupPos?: V3): WaiterSto
       minCharD = Math.min(minCharD, Math.hypot(sx - c.p[0], sz - c.p[2]));
     }
     const cupD = cupPos ? Math.hypot(sx - cupPos[0], sz - cupPos[2]) : Math.abs(normAngle(cand - rawCupAngle));
-    // Keep stops in the 4 open diagonal quadrants (|sx| >= 0.55, sz in [-1.08, +0.42]) so he is never hidden behind the top player or below the bottom HUD
-    const inFrameBonus = (sz <= 0.42 && sz >= -1.08 ? 45 : 0) + (Math.abs(sx) >= 0.58 ? 35 : 0);
-    const clearBonus = minCharD >= CHAR_CLEAR_R + 0.02 ? 100 : minCharD * 50;
-    const score = clearBonus + inFrameBonus - cupD * 2.2;
+    // Keep stops strictly inside the full head-to-toe camera frame (|sx| >= 0.88, sz in [-1.02, +0.28]) so he is never clipped by the bottom corners of the screen
+    const flankBonus = (Math.abs(sx) >= 0.88 ? 65 : Math.abs(sx) >= 0.68 ? 25 : 0) + (sz <= 0.28 && sz >= -1.02 ? 140 : sz <= 0.45 ? 40 : -120);
+    const clearBonus = minCharD >= CHAR_CLEAR_R + 0.06 ? 120 : minCharD >= CHAR_CLEAR_R + 0.01 ? 95 : minCharD * 40;
+    const score = clearBonus + flankBonus - cupD * 24;
     if (score > bestScore) {
       bestScore = score;
       bestA = cand;
@@ -159,7 +159,7 @@ export function arcWaypoints(fromAngle: number, toAngle: number, steps = 10): V3
 export function buildWaiterRoute(stops: WaiterStop[]): { pos: V3; pauseIdx?: number }[] {
   if (!stops.length) return [{ pos: KITCHEN_DOOR }];
   const route: { pos: V3; pauseIdx?: number }[] = [{ pos: KITCHEN_DOOR }];
-  const entryA = -Math.PI * 0.25;
+  const entryA = -Math.PI * 0.62;
   route.push({ pos: [Math.sin(entryA) * LOOP_R, FLOOR_Y, Math.cos(entryA) * LOOP_R] });
   let curA = entryA;
   stops.forEach((st, idx) => {

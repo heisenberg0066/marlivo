@@ -210,11 +210,11 @@ export function poseLeg(
 ) {
   if (!leg) return;
   resetLeg(leg);
-  // Expressive Pixar stride & knee lift: combine bone rotation with subtle socket extension so compact cartoon legs read clearly
+  // Expressive Pixar stride & knee lift: combine bone rotation with socket excursion so compact cartoon legs step clearly past the torso silhouette
   leg.hip.position.set(
-    leg.restPosHip.x + hipRoll * 0.03,
-    leg.restPosHip.y + Math.max(0, kneeBend - 0.2) * 0.035 + Math.max(0, hipPitch) * 0.025,
-    leg.restPosHip.z + Math.sin(hipPitch) * 0.055,
+    leg.restPosHip.x + hipRoll * 0.045,
+    leg.restPosHip.y + Math.max(0, kneeBend - 0.15) * 0.065 + Math.max(0, hipPitch) * 0.042,
+    leg.restPosHip.z + Math.sin(hipPitch) * 0.115,
   );
   if (Math.abs(hipPitch) > 1e-4) {
     leg.hip.quaternion.multiply(qLeg1.setFromAxisAngle(leg.axHip[0], -hipPitch));
@@ -254,23 +254,23 @@ export function computeWalkGait(phase: number, stride = 1.0): {
   const sR = -sL;
   const cR = -cL;
 
-  const hipL = sL * 0.72 * k;
-  const hipR = sR * 0.72 * k;
+  const hipL = sL * 0.88 * k;
+  const hipR = sR * 0.88 * k;
   // Bend knee strongly during back-to-forward recovery lift (max(0, -s) + max(0, c)) so the shoe lifts high clear of the floor!
-  const kneeL = (Math.max(0, -sL) * 0.85 + Math.max(0, cL) * 0.55 + 0.08) * k;
-  const kneeR = (Math.max(0, -sR) * 0.85 + Math.max(0, cR) * 0.55 + 0.08) * k;
-  const footL = (sL * 0.38 - Math.max(0, -sL) * 0.30) * k;
-  const footR = (sR * 0.38 - Math.max(0, -sR) * 0.30) * k;
-  const rollL = -0.06 * cL * k;
-  const rollR = 0.06 * cR * k;
+  const kneeL = (Math.max(0, -sL) * 1.05 + Math.max(0, cL) * 0.68 + 0.10) * k;
+  const kneeR = (Math.max(0, -sR) * 1.05 + Math.max(0, cR) * 0.68 + 0.10) * k;
+  const footL = (sL * 0.44 - Math.max(0, -sL) * 0.36) * k;
+  const footR = (sR * 0.44 - Math.max(0, -sR) * 0.36) * k;
+  const rollL = -0.08 * cL * k;
+  const rollR = 0.08 * cR * k;
 
   return {
     L: { hipPitch: hipL, kneeBend: kneeL, footPitch: footL, hipRoll: rollL },
     R: { hipPitch: hipR, kneeBend: kneeR, footPitch: footR, hipRoll: rollR },
-    bob: Math.abs(Math.cos(phase)) * 0.052 * k,
-    hipRoll: sL * 0.08 * k,
-    torsoTwist: -sL * 0.22 * k,
-    armSwing: -sL * 0.18 * k,
+    bob: Math.abs(Math.cos(phase)) * 0.065 * k,
+    hipRoll: sL * 0.095 * k,
+    torsoTwist: -sL * 0.25 * k,
+    armSwing: -sL * 0.22 * k,
   };
 }
 

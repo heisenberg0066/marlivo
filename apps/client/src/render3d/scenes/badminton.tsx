@@ -33,26 +33,29 @@ const clamp = (x: number, a = 0, b = 1) => Math.min(b, Math.max(a, x));
 const ease = (x: number) => { x = clamp(x); return x * x * (3 - 2 * x); };
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 
-/** Racket: orange frame, see-through strings, blue grip. Origin at the grip end, head along +y. */
+/** Racket: bold high-contrast white/gold frame, visible string grid, royal-blue grip. Origin at grip end, head along +y. */
 function makeRacket() {
   const g = new THREE.Group();
-  const frame = new THREE.MeshLambertMaterial({ color: '#e8892f' }), grip = new THREE.MeshLambertMaterial({ color: '#3b6fb0' });
-  const strings = new THREE.MeshBasicMaterial({ color: '#f6ebd9', transparent: true, opacity: 0.45, side: THREE.DoubleSide, depthWrite: false });
-  const head = new THREE.Mesh(new THREE.TorusGeometry(0.085, 0.008, 5, 22), frame); head.scale.set(1, 1.3, 1); head.position.y = 0.36;
-  const str = new THREE.Mesh(new THREE.CircleGeometry(0.085, 16), strings); str.scale.set(1, 1.3, 1); str.position.y = 0.36;
-  const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, 0.2, 5), frame); shaft.position.y = 0.17;
-  const gr = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.014, 0.09, 6), grip); gr.position.y = 0.045;
-  const tip = new THREE.Object3D(); tip.position.y = 0.36; tip.name = 'tip';
-  g.add(head, str, shaft, gr, tip);
+  const frame = new THREE.MeshLambertMaterial({ color: '#fffcf2', emissive: '#4a3810' });
+  const rimAccent = new THREE.MeshLambertMaterial({ color: '#ff7a18', emissive: '#381604' });
+  const grip = new THREE.MeshLambertMaterial({ color: '#2563eb', emissive: '#0a1e48' });
+  const strings = new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.72, side: THREE.DoubleSide, depthWrite: false });
+  const head = new THREE.Mesh(new THREE.TorusGeometry(0.135, 0.022, 8, 24), frame); head.scale.set(1, 1.28, 1); head.position.y = 0.48;
+  const rim = new THREE.Mesh(new THREE.TorusGeometry(0.118, 0.010, 6, 20), rimAccent); rim.scale.set(1, 1.28, 1); rim.position.y = 0.48;
+  const str = new THREE.Mesh(new THREE.CircleGeometry(0.125, 18), strings); str.scale.set(1, 1.28, 1); str.position.y = 0.48;
+  const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.014, 0.26, 8), frame); shaft.position.y = 0.22;
+  const gr = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.12, 8), grip); gr.position.y = 0.06;
+  const tip = new THREE.Object3D(); tip.position.y = 0.48; tip.name = 'tip';
+  g.add(head, rim, str, shaft, gr, tip);
   return g;
 }
 
 function makeShuttle() {
   const g = new THREE.Group();
-  const skirt = new THREE.Mesh(new THREE.ConeGeometry(0.045, 0.08, 10, 1, true), new THREE.MeshLambertMaterial({ color: '#fffdf6', side: THREE.DoubleSide, emissive: '#555550' }));
-  skirt.position.y = 0.04; skirt.rotation.x = Math.PI;
-  const cork = new THREE.Mesh(new THREE.SphereGeometry(0.018, 8, 6), new THREE.MeshLambertMaterial({ color: '#e8892f' }));
-  g.add(skirt, cork); g.scale.setScalar(1.3);
+  const skirt = new THREE.Mesh(new THREE.ConeGeometry(0.052, 0.095, 12, 1, true), new THREE.MeshLambertMaterial({ color: '#ffffff', side: THREE.DoubleSide, emissive: '#777770' }));
+  skirt.position.y = 0.048; skirt.rotation.x = Math.PI;
+  const cork = new THREE.Mesh(new THREE.SphereGeometry(0.022, 10, 8), new THREE.MeshLambertMaterial({ color: '#ff7a18', emissive: '#441a04' }));
+  g.add(skirt, cork); g.scale.setScalar(1.85);
   return g;
 }
 
@@ -89,10 +92,10 @@ export interface BadmintonRallyState {
 // Shot 3 (t=4.95): B net lunge lob from (+0.86, +0.24) -> A baseline (-1.52, +0.20) at t=6.40 (0.45)
 const HIT_TIMES = [0.45, 2.05, 3.45, 4.95] as const;
 const CONTACT_PTS: [number, number, number][] = [
-  [-1.28, 1.18, 0.20],   // A overhead clear contact
-  [1.18, 1.56, -0.20],   // B jump-smash high contact
-  [-0.62, 0.72, -0.22],  // A low net-lunge drive contact
-  [0.64, 0.68, 0.22],    // B low net-lunge lob contact
+  [-1.58, 1.32, 0.44],   // A overhead clear contact
+  [1.52, 1.72, -0.44],   // B jump-smash high contact
+  [-0.56, 0.78, -0.48],  // A low net-lunge drive contact
+  [0.58, 0.74, 0.48],    // B low net-lunge lob contact
 ];
 
 function evalCourtTrack(
@@ -123,23 +126,23 @@ function evalCourtTrack(
 }
 
 const WAYPOINTS_A = [
-  { t: 0.45, x: -1.52, z: 0.20 },  // Hit 0: overhead clear at baseline
-  { t: 1.40, x: -1.25, z: 0.02 },  // Split-step ready center
-  { t: 2.25, x: -1.22, z: -0.04 }, // React to B's jump-smash
-  { t: 3.35, x: -0.84, z: -0.24 }, // Sprint & lunge to forecourt net corner
-  { t: 3.75, x: -0.84, z: -0.24 }, // Hold lunge follow-through briefly
-  { t: 5.10, x: -1.30, z: 0.08 },  // Recover toward mid-court
-  { t: 6.15, x: -1.52, z: 0.20 },  // Set up under incoming high lob
+  { t: 0.45, x: -1.86, z: 0.46 },  // Hit 0: overhead clear at rear baseline corner
+  { t: 1.35, x: -1.22, z: 0.04 },  // Sprint to split-step ready center
+  { t: 2.20, x: -1.30, z: -0.12 }, // React to B's jump-smash
+  { t: 3.35, x: -0.62, z: -0.52 }, // Sprint & deep lunge to forecourt net corner
+  { t: 3.72, x: -0.66, z: -0.48 }, // Hold lunge follow-through briefly
+  { t: 5.05, x: -1.36, z: 0.14 },  // Recover toward mid-court
+  { t: 6.15, x: -1.86, z: 0.46 },  // Sprint back under incoming high lob
 ];
 
 const WAYPOINTS_B = [
-  { t: 0.45, x: 1.18, z: 0.05 },   // Ready stance watching A's clear
-  { t: 1.60, x: 1.42, z: -0.20 },  // Chased back to rear corner for jump-smash
-  { t: 2.40, x: 1.38, z: -0.18 },  // Land from jump-smash
-  { t: 3.45, x: 1.18, z: 0.02 },   // Center court split-step
-  { t: 4.80, x: 0.86, z: 0.24 },   // Sprint & lunge to net corner
-  { t: 5.25, x: 0.88, z: 0.22 },   // Hold net lunge follow-through
-  { t: 6.20, x: 1.18, z: 0.05 },   // Recover to center ready stance
+  { t: 0.45, x: 1.12, z: 0.12 },   // Ready stance watching A's clear
+  { t: 1.62, x: 1.84, z: -0.46 },  // Sprint back to rear corner for jump-smash
+  { t: 2.42, x: 1.72, z: -0.36 },  // Land from jump-smash
+  { t: 3.45, x: 1.16, z: -0.04 },  // Sprint to center court split-step
+  { t: 4.80, x: 0.62, z: 0.52 },   // Sprint & deep lunge to net corner
+  { t: 5.22, x: 0.66, z: 0.48 },   // Hold net lunge follow-through
+  { t: 6.20, x: 1.12, z: 0.12 },   // Recover to center ready stance
 ];
 
 function cyclicDiff(u: number, target: number): number {
@@ -178,7 +181,7 @@ function buildPlayerPose(
     } else if (dOverhead < 0.24) {
       // Explosive leap into the air
       const k = (dOverhead + 0.20) / 0.44;
-      jumpY = Math.sin(k * Math.PI) * 0.30;
+      jumpY = Math.sin(k * Math.PI) * 0.42;
       squashY = 1.0 + 0.10 * Math.sin(k * Math.PI);
       isMidAir = jumpY > 0.06;
     } else {
@@ -189,7 +192,7 @@ function buildPlayerPose(
   } else if (!isB && dOverhead > -0.35 && dOverhead < 0.28) {
     if (dOverhead >= -0.15 && dOverhead <= 0.18) {
       const k = (dOverhead + 0.15) / 0.33;
-      jumpY = Math.sin(k * Math.PI) * 0.14;
+      jumpY = Math.sin(k * Math.PI) * 0.24;
       isMidAir = jumpY > 0.05;
     }
   }
@@ -248,72 +251,72 @@ function buildPlayerPose(
     rollL = lerp(rollL, -0.10, lungeEnv);
   }
 
-  // ---- BOTH HANDS (armR racket whip + armL balance/sighting arm) & TORSO COIL ----
-  // Ready stance defaults
-  const pump = Math.sin(runPhase) * (0.06 + runWeight * 0.10);
-  let armR: [number, number, number] = [0.26, 0.44 + Math.abs(pump) * 0.2, 0.22 - pump];
-  let armL: [number, number, number] = [-0.26, 0.40 + Math.abs(pump) * 0.2, 0.20 + pump];
-  let curlR = 0.90;
-  let curlL = 0.38;
-  let bodyPitch = 0.08 + runWeight * 0.10;
-  let bodyYaw = Math.sin(splitPhase * 0.5) * 0.12;
-  let bodyRoll = Math.cos(splitPhase) * 0.06;
-  let racketRot: [number, number, number] = [0.35, 0, -0.35];
+  // ---- BOTH HANDS (armR racket whip + armL balance/sighting arm, outside height=1.18 torso radius 0.39m) & TORSO COIL ----
+  // Ready stance defaults (racket held clearly outside right shoulder at x=0.52, y=0.58)
+  const pump = Math.sin(runPhase) * (0.09 + runWeight * 0.14);
+  let armR: [number, number, number] = [0.52, 0.56 + Math.abs(pump) * 0.28, 0.26 - pump];
+  let armL: [number, number, number] = [-0.50, 0.50 + Math.abs(pump) * 0.28, 0.24 + pump];
+  let curlR = 0.85;
+  let curlL = 0.35;
+  let bodyPitch = 0.10 + runWeight * 0.14;
+  let bodyYaw = Math.sin(splitPhase * 0.5) * 0.16;
+  let bodyRoll = Math.cos(splitPhase) * 0.08;
+  let racketRot: [number, number, number] = [0.25, 0, -0.25];
 
   if (dOverhead > -0.52 && dOverhead < 0.45) {
     if (dOverhead < -0.10) {
-      // Overhead wind-up / trophy pose: torso coils back, armR cocks racket high behind head, armL points up at shuttlecock!
+      // Overhead wind-up / trophy pose: torso coils back, armR cocks racket high above head (y=0.98), armL points up at shuttlecock!
       const w = ease((dOverhead + 0.52) / 0.42);
-      armR = [lerp(0.26, 0.30, w), lerp(0.44, 0.72, w), lerp(0.22, -0.06, w)];
-      armL = [lerp(-0.26, -0.20, w), lerp(0.40, 0.68, w), lerp(0.20, 0.32, w)];
-      curlL = 0.15;
-      bodyPitch = lerp(0.08, -0.24, w);
-      bodyYaw = lerp(0, -0.46, w);
-      racketRot = [lerp(0.35, -0.95, w), 0, lerp(-0.35, -1.45, w)];
+      armR = [lerp(0.52, 0.56, w), lerp(0.56, 0.98, w), lerp(0.26, -0.08, w)];
+      armL = [lerp(-0.50, -0.44, w), lerp(0.50, 0.90, w), lerp(0.24, 0.36, w)];
+      curlL = 0.12;
+      bodyPitch = lerp(0.10, -0.32, w);
+      bodyYaw = lerp(0, -0.55, w);
+      racketRot = [lerp(0.25, -0.85, w), 0, lerp(-0.25, -0.65, w)];
     } else if (dOverhead < 0.10) {
-      // Explosive overhead whip through high contact point, left arm pulls down/back as counter-balance!
+      // Explosive overhead whip through high contact point (y=1.06), left arm pulls down/back as counter-balance!
       const w = ease((dOverhead + 0.10) / 0.20);
-      armR = [lerp(0.30, 0.20, w), lerp(0.72, 0.78, Math.sin(w * Math.PI)), lerp(-0.06, 0.32, w)];
-      armL = [lerp(-0.20, -0.32, w), lerp(0.68, 0.30, w), lerp(0.32, 0.08, w)];
+      armR = [lerp(0.56, 0.46, w), lerp(0.98, 1.06, Math.sin(w * Math.PI)), lerp(-0.08, 0.38, w)];
+      armL = [lerp(-0.44, -0.58, w), lerp(0.90, 0.38, w), lerp(0.36, -0.10, w)];
       curlL = 0.55;
-      bodyPitch = lerp(-0.24, 0.22, w);
-      bodyYaw = lerp(-0.46, 0.42, w);
-      racketRot = [lerp(-0.95, 0.85, w), 0, lerp(-1.45, -0.15, w)];
+      bodyPitch = lerp(-0.32, 0.28, w);
+      bodyYaw = lerp(-0.55, 0.52, w);
+      racketRot = [lerp(-0.85, 0.78, w), 0, lerp(-0.65, -0.12, w)];
     } else {
       // Cross-body follow-through & recovery to ready guard
       const w = ease((dOverhead - 0.10) / 0.35);
-      armR = [lerp(0.20, 0.26, w), lerp(0.52, 0.44, w), lerp(0.32, 0.22, w)];
-      armL = [lerp(-0.32, -0.26, w), lerp(0.30, 0.40, w), lerp(0.08, 0.20, w)];
-      bodyPitch = lerp(0.22, 0.08, w);
-      bodyYaw = lerp(0.42, 0, w);
-      racketRot = [lerp(0.85, 0.35, w), 0, lerp(-0.15, -0.35, w)];
+      armR = [lerp(0.46, 0.52, w), lerp(0.48, 0.56, w), lerp(0.38, 0.26, w)];
+      armL = [lerp(-0.58, -0.50, w), lerp(0.38, 0.50, w), lerp(-0.10, 0.24, w)];
+      bodyPitch = lerp(0.28, 0.10, w);
+      bodyYaw = lerp(0.52, 0, w);
+      racketRot = [lerp(0.78, 0.25, w), 0, lerp(-0.12, -0.25, w)];
     }
   } else if (dNetLunge > -0.48 && dNetLunge < 0.42) {
     if (dNetLunge < -0.08) {
-      // Low backswing preparation as player lunges toward the net; left arm extends back for balance
+      // Low backswing preparation as player lunges toward the net; left arm extends wide back for balance
       const w = ease((dNetLunge + 0.48) / 0.40);
-      armR = [lerp(0.26, 0.34, w), lerp(0.44, 0.26, w), lerp(0.22, 0.06, w)];
-      armL = [lerp(-0.26, -0.36, w), lerp(0.40, 0.52, w), lerp(0.20, -0.06, w)];
-      curlL = 0.20;
-      bodyPitch = lerp(0.08, 0.30, w);
-      bodyYaw = lerp(0, -0.38, w);
-      racketRot = [lerp(0.35, 1.10, w), 0, lerp(-0.35, -0.85, w)];
+      armR = [lerp(0.52, 0.62, w), lerp(0.56, 0.38, w), lerp(0.26, 0.04, w)];
+      armL = [lerp(-0.50, -0.62, w), lerp(0.50, 0.74, w), lerp(0.24, -0.18, w)];
+      curlL = 0.15;
+      bodyPitch = lerp(0.10, 0.38, w);
+      bodyYaw = lerp(0, -0.45, w);
+      racketRot = [lerp(0.25, 0.95, w), 0, lerp(-0.25, -0.75, w)];
     } else if (dNetLunge < 0.12) {
-      // Fast underhand/drive whip forward at the net
+      // Fast underhand/drive whip forward at the net (reaching z=0.44, y=0.72)
       const w = ease((dNetLunge + 0.08) / 0.20);
-      armR = [lerp(0.34, 0.18, w), lerp(0.26, 0.56, w), lerp(0.06, 0.36, w)];
-      armL = [lerp(-0.36, -0.28, w), lerp(0.52, 0.42, w), lerp(-0.06, 0.14, w)];
-      bodyPitch = lerp(0.30, 0.24, w);
-      bodyYaw = lerp(-0.38, 0.36, w);
-      racketRot = [lerp(1.10, 0.25, w), 0, lerp(-0.85, 0.10, w)];
+      armR = [lerp(0.62, 0.48, w), lerp(0.38, 0.72, w), lerp(0.04, 0.44, w)];
+      armL = [lerp(-0.62, -0.54, w), lerp(0.74, 0.52, w), lerp(-0.18, 0.12, w)];
+      bodyPitch = lerp(0.38, 0.30, w);
+      bodyYaw = lerp(-0.45, 0.44, w);
+      racketRot = [lerp(0.95, 0.22, w), 0, lerp(-0.75, 0.08, w)];
     } else {
       // Recovery from net lunge
       const w = ease((dNetLunge - 0.12) / 0.30);
-      armR = [lerp(0.18, 0.26, w), lerp(0.56, 0.44, w), lerp(0.36, 0.22, w)];
-      armL = [lerp(-0.28, -0.26, w), lerp(0.42, 0.40, w), lerp(0.14, 0.20, w)];
-      bodyPitch = lerp(0.24, 0.08, w);
-      bodyYaw = lerp(0.36, 0, w);
-      racketRot = [lerp(0.25, 0.35, w), 0, lerp(0.10, -0.35, w)];
+      armR = [lerp(0.48, 0.52, w), lerp(0.72, 0.56, w), lerp(0.44, 0.26, w)];
+      armL = [lerp(-0.54, -0.50, w), lerp(0.52, 0.50, w), lerp(0.12, 0.24, w)];
+      bodyPitch = lerp(0.30, 0.10, w);
+      bodyYaw = lerp(0.44, 0, w);
+      racketRot = [lerp(0.22, 0.25, w), 0, lerp(0.08, -0.25, w)];
     }
   } else {
     // Track incoming shuttlecock with subtle body yaw & sighting arm adjustment

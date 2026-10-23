@@ -117,130 +117,130 @@ function OutfitMeshes({
   showTowel: boolean;
   towelRef?: React.RefObject<THREE.Group>;
 }) {
-  const hasBowTie = outfit === 'full' || outfit === 'tuxedo';
-  const hasNeckTie = outfit === 'suit' || outfit === 'tie';
-  const hasShirt = outfit === 'full' || outfit === 'suit' || outfit === 'tuxedo' || outfit === 'tie';
-  const hasVest = outfit === 'full' || outfit === 'tie';
-  const vestMat = outfit === 'tie' ? WM.crimson : WM.black;
-  const hasApron = outfit === 'full' || outfit === 'plain' || outfit === 'chef';
-  const apronMat = outfit === 'plain' ? WM.emerald : WM.white;
-  const hasJacket = outfit === 'suit' || outfit === 'tuxedo' || outfit === 'chef';
-  const jacketMat = outfit === 'tuxedo' ? WM.black : outfit === 'chef' ? WM.white : WM.navy;
+  const hasBowTie = outfit === "full" || outfit === "tuxedo";
+  const hasNeckTie = outfit === "suit" || outfit === "tie";
+  const hasShirt = outfit === "full" || outfit === "suit" || outfit === "tuxedo" || outfit === "tie";
+  const hasVest = outfit === "full" || outfit === "tie";
+  const vestMat = outfit === "tie" ? WM.crimson : WM.black;
+  const hasApron = outfit === "full" || outfit === "plain" || outfit === "chef";
+  const apronMat = outfit === "plain" ? WM.emerald : WM.white;
+  const hasJacket = outfit === "suit" || outfit === "tuxedo" || outfit === "chef";
+  const jacketMat = outfit === "tuxedo" ? WM.black : outfit === "chef" ? WM.white : WM.navy;
 
   return (
     <group>
-      {/* ---- DISTINCT HEADPIECES / HATS (at crown of head y ~ 0.80..0.92) ---- */}
-      {outfit === 'full' && (
-        // Classic Bellhop / Waiter Pillbox Cap in black & gold
-        <group position={[0, 0.82, 0.02]} rotation={[-0.08, 0, 0.05]}>
-          <mesh geometry={WG.cyl} material={WM.black} scale={[0.135, 0.065, 0.135]} />
-          <mesh geometry={WG.cyl} material={WM.gold} position={[0, -0.022, 0]} scale={[0.138, 0.015, 0.138]} />
-          <mesh geometry={WG.sph} material={WM.gold} position={[0, 0.035, 0]} scale={0.018} />
+      {/* ---- DISTINCT HEADPIECES / HATS (fitted to orange-guy height=0.80: crown at y=0.78..0.82, forehead at y=0.65) ---- */}
+      {outfit === "full" && (
+        // Classic Bellhop / Waiter Pillbox Cap in black & gold on top of crown
+        <group position={[0, 0.79, 0.01]} rotation={[-0.06, 0, 0.04]}>
+          <mesh geometry={WG.cyl} material={WM.black} scale={[0.145, 0.068, 0.145]} />
+          <mesh geometry={WG.cyl} material={WM.gold} position={[0, -0.024, 0]} scale={[0.149, 0.016, 0.149]} />
+          <mesh geometry={WG.sph} material={WM.gold} position={[0, 0.038, 0]} scale={0.020} />
         </group>
       )}
-      {outfit === 'suit' && (
-        // Tall Burgundy Fez Hat with Gold Tassel
-        <group position={[0, 0.84, 0.01]} rotation={[-0.06, 0, -0.04]}>
-          <mesh geometry={WG.cyl} material={WM.fezRed} scale={[0.115, 0.11, 0.115]} />
-          <mesh geometry={WG.sph} material={WM.gold} position={[0, 0.058, 0]} scale={0.018} />
-          <mesh geometry={WG.cyl} material={WM.gold} position={[0.075, 0.015, 0.02]} rotation={[0, 0, -0.55]} scale={[0.012, 0.075, 0.012]} />
+      {outfit === "suit" && (
+        // Tall Burgundy Fez Hat with Gold Tassel on top of crown
+        <group position={[0, 0.81, 0.01]} rotation={[-0.05, 0, -0.04]}>
+          <mesh geometry={WG.cyl} material={WM.fezRed} scale={[0.125, 0.115, 0.125]} />
+          <mesh geometry={WG.sph} material={WM.gold} position={[0, 0.062, 0]} scale={0.020} />
+          <mesh geometry={WG.cyl} material={WM.gold} position={[0.082, 0.015, 0.02]} rotation={[0, 0, -0.55]} scale={[0.014, 0.08, 0.014]} />
         </group>
       )}
-      {outfit === 'tie' && (
-        // Sporty Crimson & Gold Headband / Bandana with Knot
-        <group position={[0, 0.74, 0.01]}>
-          <mesh geometry={WG.cyl} material={WM.redTie} scale={[0.215, 0.038, 0.205]} />
-          <mesh geometry={WG.cyl} material={WM.gold} scale={[0.218, 0.012, 0.208]} />
-          <mesh geometry={WG.sph} material={WM.redTie} position={[-0.19, -0.01, -0.08]} scale={[0.032, 0.028, 0.032]} />
-          <mesh geometry={WG.cone} material={WM.redTie} position={[-0.22, -0.05, -0.09]} rotation={[0.2, 0, 0.45]} scale={[0.022, 0.065, 0.014]} />
+      {outfit === "tie" && (
+        // Sporty Crimson & Gold Headband / Bandana around forehead above the eyes
+        <group position={[0, 0.655, 0.02]}>
+          <mesh geometry={WG.cyl} material={WM.redTie} scale={[0.218, 0.038, 0.208]} />
+          <mesh geometry={WG.cyl} material={WM.gold} scale={[0.221, 0.013, 0.211]} />
+          <mesh geometry={WG.sph} material={WM.redTie} position={[-0.20, -0.005, -0.06]} scale={[0.035, 0.030, 0.035]} />
+          <mesh geometry={WG.cone} material={WM.redTie} position={[-0.23, -0.045, -0.07]} rotation={[0.2, 0, 0.45]} scale={[0.024, 0.068, 0.016]} />
         </group>
       )}
-      {outfit === 'plain' && (
-        // Emerald Bistro Sun Visor Cap with Gold Trim
-        <group position={[0, 0.75, 0.03]} rotation={[0.08, 0, 0]}>
-          <mesh geometry={WG.cyl} material={WM.emerald} scale={[0.21, 0.034, 0.20]} />
-          <mesh geometry={WG.cyl} material={WM.emerald} position={[0, -0.01, 0.14]} scale={[0.16, 0.012, 0.11]} />
-          <mesh geometry={WG.cyl} material={WM.gold} position={[0, 0.012, 0]} scale={[0.213, 0.008, 0.203]} />
+      {outfit === "plain" && (
+        // Emerald Bistro Sun Visor Cap with Gold Trim above the eyes
+        <group position={[0, 0.655, 0.02]} rotation={[0.06, 0, 0]}>
+          <mesh geometry={WG.cyl} material={WM.emerald} scale={[0.216, 0.035, 0.206]} />
+          <mesh geometry={WG.cyl} material={WM.emerald} position={[0, -0.010, 0.155]} scale={[0.175, 0.014, 0.115]} />
+          <mesh geometry={WG.cyl} material={WM.gold} position={[0, 0.012, 0]} scale={[0.219, 0.009, 0.209]} />
         </group>
       )}
-      {outfit === 'tuxedo' && (
-        // Sleek Black & Gold Silk Top Hat
-        <group position={[0, 0.85, 0.01]} rotation={[-0.08, 0, 0.04]}>
-          <mesh geometry={WG.cyl} material={WM.black} position={[0, -0.055, 0]} scale={[0.195, 0.014, 0.195]} />
-          <mesh geometry={WG.cyl} material={WM.satin} position={[0, 0.02, 0]} scale={[0.125, 0.135, 0.125]} />
-          <mesh geometry={WG.cyl} material={WM.gold} position={[0, -0.032, 0]} scale={[0.128, 0.022, 0.128]} />
+      {outfit === "tuxedo" && (
+        // Sleek Black & Gold Silk Top Hat on top of crown
+        <group position={[0, 0.82, 0.01]} rotation={[-0.06, 0, 0.03]}>
+          <mesh geometry={WG.cyl} material={WM.black} position={[0, -0.055, 0]} scale={[0.205, 0.015, 0.205]} />
+          <mesh geometry={WG.cyl} material={WM.satin} position={[0, 0.022, 0]} scale={[0.132, 0.14, 0.132]} />
+          <mesh geometry={WG.cyl} material={WM.gold} position={[0, -0.032, 0]} scale={[0.136, 0.024, 0.136]} />
         </group>
       )}
-      {outfit === 'chef' && (
-        // Tall White Pleated Chef Toque Hat + Red Neckerchief
-        <group position={[0, 0.85, 0.01]} rotation={[-0.06, 0, 0]}>
-          <mesh geometry={WG.cyl} material={WM.white} position={[0, -0.03, 0]} scale={[0.135, 0.065, 0.135]} />
-          <mesh geometry={WG.sph} material={WM.white} position={[0, 0.045, 0]} scale={[0.165, 0.095, 0.165]} />
-          <mesh geometry={WG.sph} material={WM.white} position={[-0.06, 0.055, 0.04]} scale={0.075} />
-          <mesh geometry={WG.sph} material={WM.white} position={[0.06, 0.055, 0.04]} scale={0.075} />
+      {outfit === "chef" && (
+        // Tall White Pleated Chef Toque Hat on top of crown
+        <group position={[0, 0.82, 0.01]} rotation={[-0.05, 0, 0]}>
+          <mesh geometry={WG.cyl} material={WM.white} position={[0, -0.03, 0]} scale={[0.142, 0.072, 0.142]} />
+          <mesh geometry={WG.sph} material={WM.white} position={[0, 0.05, 0]} scale={[0.175, 0.10, 0.175]} />
+          <mesh geometry={WG.sph} material={WM.white} position={[-0.065, 0.06, 0.04]} scale={0.08} />
+          <mesh geometry={WG.sph} material={WM.white} position={[0.065, 0.06, 0.04]} scale={0.08} />
         </group>
       )}
 
-      {/* ---- BODY VESTS, JACKETS, TIES & APRONS ---- */}
+      {/* ---- LOWER-CHEST VESTS, JACKETS, TIES & APRONS (y=0.22..0.36, strictly below mouth at y=0.39) ---- */}
       {hasShirt && (
-        <mesh geometry={WG.sph} material={WM.white} position={[0, 0.36, 0.15]} scale={[0.15, 0.185, 0.095]} />
+        <mesh geometry={WG.sph} material={WM.white} position={[0, 0.30, 0.165]} scale={[0.14, 0.11, 0.078]} />
       )}
       {hasVest && (
         <>
-          <mesh geometry={WG.sph} material={vestMat} position={[-0.09, 0.34, 0.135]} scale={[0.11, 0.18, 0.095]} />
-          <mesh geometry={WG.sph} material={vestMat} position={[0.09, 0.34, 0.135]} scale={[0.11, 0.18, 0.095]} />
-          {[0.28, 0.33, 0.38].map((y, i) => (
-            <mesh key={i} geometry={WG.sph} material={WM.gold} position={[0, y, 0.228]} scale={0.013} />
+          <mesh geometry={WG.sph} material={vestMat} position={[-0.105, 0.295, 0.155]} scale={[0.118, 0.115, 0.088]} />
+          <mesh geometry={WG.sph} material={vestMat} position={[0.105, 0.295, 0.155]} scale={[0.118, 0.115, 0.088]} />
+          {[0.25, 0.29, 0.33].map((y, i) => (
+            <mesh key={i} geometry={WG.sph} material={WM.gold} position={[0, y, 0.238]} scale={0.013} />
           ))}
         </>
       )}
       {hasApron && (
-        <group position={[0, 0.19, 0.025]}>
-          <mesh geometry={WG.cyl} material={apronMat} scale={[0.24, 0.165, 0.21]} />
-          <mesh geometry={WG.box} material={outfit === 'plain' ? WM.gold : WM.towel} position={[0, -0.01, 0.208]} scale={[0.23, 0.15, 0.018]} />
+        <group position={[0, 0.225, 0.035]}>
+          <mesh geometry={WG.cyl} material={apronMat} scale={[0.235, 0.085, 0.205]} />
+          <mesh geometry={WG.box} material={outfit === "plain" ? WM.gold : WM.towel} position={[0, 0.0, 0.198]} scale={[0.21, 0.085, 0.02]} />
         </group>
       )}
       {hasJacket && (
         <>
-          <mesh geometry={WG.sph} material={jacketMat} position={[-0.098, 0.33, 0.128]} scale={[0.125, 0.20, 0.12]} />
-          <mesh geometry={WG.sph} material={jacketMat} position={[0.098, 0.33, 0.128]} scale={[0.125, 0.20, 0.12]} />
-          <mesh geometry={WG.box} material={outfit === 'tuxedo' ? WM.satin : outfit === 'chef' ? WM.redTie : jacketMat} position={[-0.058, 0.38, 0.215]} rotation={[0, 0, -0.32]} scale={[0.04, 0.15, 0.02]} />
-          <mesh geometry={WG.box} material={outfit === 'tuxedo' ? WM.satin : outfit === 'chef' ? WM.redTie : jacketMat} position={[0.058, 0.38, 0.215]} rotation={[0, 0, 0.32]} scale={[0.04, 0.15, 0.02]} />
-          {outfit === 'suit' && (
-            <mesh geometry={WG.box} material={WM.redTie} position={[-0.115, 0.39, 0.205]} rotation={[0, 0, 0.2]} scale={[0.038, 0.026, 0.014]} />
+          <mesh geometry={WG.sph} material={jacketMat} position={[-0.11, 0.295, 0.155]} scale={[0.126, 0.12, 0.092]} />
+          <mesh geometry={WG.sph} material={jacketMat} position={[0.11, 0.295, 0.155]} scale={[0.126, 0.12, 0.092]} />
+          <mesh geometry={WG.box} material={outfit === "tuxedo" ? WM.satin : outfit === "chef" ? WM.redTie : jacketMat} position={[-0.058, 0.32, 0.228]} rotation={[0, 0, -0.32]} scale={[0.038, 0.10, 0.018]} />
+          <mesh geometry={WG.box} material={outfit === "tuxedo" ? WM.satin : outfit === "chef" ? WM.redTie : jacketMat} position={[0.058, 0.32, 0.228]} rotation={[0, 0, 0.32]} scale={[0.038, 0.10, 0.018]} />
+          {outfit === "suit" && (
+            <mesh geometry={WG.box} material={WM.redTie} position={[-0.115, 0.325, 0.222]} rotation={[0, 0, 0.2]} scale={[0.038, 0.024, 0.014]} />
           )}
-          {(outfit === 'tuxedo' || outfit === 'chef') && [0.30, 0.35, 0.40].map((y, i) => (
-            <mesh key={i} geometry={WG.sph} material={outfit === 'chef' ? WM.black : WM.gold} position={[-0.03, y, 0.23]} scale={0.012} />
+          {(outfit === "tuxedo" || outfit === "chef") && [0.255, 0.29, 0.325].map((y, i) => (
+            <mesh key={i} geometry={WG.sph} material={outfit === "chef" ? WM.black : WM.gold} position={[-0.028, y, 0.238]} scale={0.012} />
           ))}
-          {outfit === 'chef' && [0.30, 0.35, 0.40].map((y, i) => (
-            <mesh key={i} geometry={WG.sph} material={WM.black} position={[0.03, y, 0.23]} scale={0.012} />
+          {outfit === "chef" && [0.255, 0.29, 0.325].map((y, i) => (
+            <mesh key={i} geometry={WG.sph} material={WM.black} position={[0.028, y, 0.238]} scale={0.012} />
           ))}
         </>
       )}
       {hasBowTie && (
-        <group position={[0, 0.465, 0.215]}>
-          <mesh geometry={WG.cone} material={outfit === 'tuxedo' ? WM.redTie : WM.black} position={[-0.036, 0, 0]} rotation={[0, 0, -Math.PI / 2]} scale={[0.028, 0.052, 0.018]} />
-          <mesh geometry={WG.cone} material={outfit === 'tuxedo' ? WM.redTie : WM.black} position={[0.036, 0, 0]} rotation={[0, 0, Math.PI / 2]} scale={[0.028, 0.052, 0.018]} />
+        <group position={[0, 0.355, 0.228]}>
+          <mesh geometry={WG.cone} material={outfit === "tuxedo" ? WM.redTie : WM.black} position={[-0.036, 0, 0]} rotation={[0, 0, -Math.PI / 2]} scale={[0.028, 0.052, 0.018]} />
+          <mesh geometry={WG.cone} material={outfit === "tuxedo" ? WM.redTie : WM.black} position={[0.036, 0, 0]} rotation={[0, 0, Math.PI / 2]} scale={[0.028, 0.052, 0.018]} />
           <mesh geometry={WG.sph} material={WM.gold} scale={[0.017, 0.017, 0.016]} />
         </group>
       )}
       {hasNeckTie && (
-        <group position={[0, 0.455, 0.216]}>
-          <mesh geometry={WG.box} material={WM.white} position={[-0.038, 0.012, -0.006]} rotation={[0, 0, 0.35]} scale={[0.048, 0.022, 0.014]} />
-          <mesh geometry={WG.box} material={WM.white} position={[0.038, 0.012, -0.006]} rotation={[0, 0, -0.35]} scale={[0.048, 0.022, 0.014]} />
+        <group position={[0, 0.355, 0.228]}>
+          <mesh geometry={WG.box} material={WM.white} position={[-0.036, 0.010, -0.004]} rotation={[0, 0, 0.35]} scale={[0.045, 0.020, 0.014]} />
+          <mesh geometry={WG.box} material={WM.white} position={[0.036, 0.010, -0.004]} rotation={[0, 0, -0.35]} scale={[0.045, 0.020, 0.014]} />
           <mesh geometry={WG.sph} material={WM.redTie} scale={[0.020, 0.020, 0.016]} />
-          <mesh geometry={WG.box} material={WM.redTie} position={[0, -0.075, 0.006]} scale={[0.032, 0.14, 0.012]} />
-          <mesh geometry={WG.cone} material={WM.redTie} position={[0, -0.155, 0.006]} rotation={[0, 0, Math.PI]} scale={[0.024, 0.034, 0.012]} />
-          <mesh geometry={WG.box} material={WM.gold} position={[0, -0.07, 0.014]} rotation={[0, 0, 0.45]} scale={[0.034, 0.011, 0.005]} />
+          <mesh geometry={WG.box} material={WM.redTie} position={[0, -0.055, 0.008]} scale={[0.030, 0.10, 0.012]} />
+          <mesh geometry={WG.cone} material={WM.redTie} position={[0, -0.115, 0.008]} rotation={[0, 0, Math.PI]} scale={[0.022, 0.030, 0.012]} />
+          <mesh geometry={WG.box} material={WM.gold} position={[0, -0.05, 0.015]} rotation={[0, 0, 0.45]} scale={[0.032, 0.010, 0.005]} />
         </group>
       )}
-      {(showTowel || outfit === 'full' || outfit === 'tuxedo') && (
-        <group ref={towelRef} position={[-0.24, 0.35, 0.14]} rotation={[0.1, 0.1, -0.05]}>
+      {(showTowel || outfit === "full" || outfit === "tuxedo") && (
+        <group ref={towelRef} position={[-0.28, 0.33, 0.18]} rotation={[0.1, 0.1, -0.05]}>
           {/* Silver serving tray balanced on the left hand + folded white waiter towel */}
-          <mesh geometry={WG.cyl} material={WM.silver} position={[0, 0.025, 0.03]} scale={[0.135, 0.008, 0.135]} />
-          <mesh geometry={WG.torus} material={WM.gold} position={[0, 0.03, 0.03]} rotation={[Math.PI / 2, 0, 0]} scale={0.135} />
-          <mesh geometry={WG.rbox} material={WM.towel} position={[-0.02, -0.03, -0.01]} scale={[0.055, 0.14, 0.085]} />
-          <mesh geometry={WG.box} material={WM.gold} position={[-0.02, -0.085, 0.035]} scale={[0.056, 0.008, 0.005]} />
+          <mesh geometry={WG.cyl} material={WM.silver} position={[0, 0.025, 0.03]} scale={[0.125, 0.008, 0.125]} />
+          <mesh geometry={WG.torus} material={WM.gold} position={[0, 0.03, 0.03]} rotation={[Math.PI / 2, 0, 0]} scale={0.125} />
+          <mesh geometry={WG.rbox} material={WM.towel} position={[-0.02, -0.03, -0.01]} scale={[0.05, 0.12, 0.075]} />
+          <mesh geometry={WG.box} material={WM.gold} position={[-0.02, -0.075, 0.032]} scale={[0.052, 0.008, 0.005]} />
         </group>
       )}
     </group>
@@ -357,7 +357,7 @@ function useWaiterModel(level: 'high' | 'low') {
         }
       });
       const blinkU = attachBlinkShader(obj, 'tango', e.rotationY ?? 0);
-      normalise(obj, { ...e, height: 1.14, baseY: 0 });
+      normalise(obj, { ...e, height: 0.80, baseY: 0 });
       const arms = findArms(obj);
       const legs = findLegs(obj);
       const fb = container.getObjectByName('fallback-egg');
@@ -681,7 +681,7 @@ export const OrangeWaiter = memo(function OrangeWaiter({ L, view, level }: { L: 
         const su = (u - 0.2) / 0.32;
         lean = su < 0.22 ? -0.2 : 0.22;
         if (su >= 0.18) {
-          showSplash = true;
+          showSplash = false; confettiKind = 'multi'; confettiU = (u - 0.2) / 0.35; confettiAt = [st.standPos[0], 0.55, st.standPos[2]];
           splashFrom = [pos[0] + Math.sin(yaw) * 0.28, pos[1] + 0.48, pos[2] + Math.cos(yaw) * 0.28];
           splashTo = loserPos;
           splashU = (su - 0.18) / 0.82;
@@ -744,7 +744,7 @@ export const OrangeWaiter = memo(function OrangeWaiter({ L, view, level }: { L: 
 
     if (rootRef.current) {
       rootRef.current.visible = true;
-      rootRef.current.position.set(pos[0], -0.34, pos[2]);
+      rootRef.current.position.set(pos[0], -0.20, pos[2]);
       rootRef.current.rotation.set(0, yaw, 0);
     }
     if (bodyRef.current) {
@@ -784,26 +784,26 @@ export const OrangeWaiter = memo(function OrangeWaiter({ L, view, level }: { L: 
       }
 
       const swing = gait.armSwing;
-      let tL: V3 = [-0.24, 0.28, 0.08 + swing], wL = 0.78, cL = 0.35;
-      let tR: V3 = [0.24, 0.28, 0.08 - swing], wR = 0.78, cR = 0.35;
+      let tL: V3 = [-0.28, 0.28, 0.08 + swing], wL = 0.78, cL = 0.35;
+      let tR: V3 = [0.28, 0.28, 0.08 - swing], wR = 0.78, cR = 0.35;
 
       if (job.kind === 'visit') {
         if (u >= 0.28 && u < 0.55) {
-          tR = [0.13, 0.45, 0.24]; wR = 0.95; cR = 0.55;
-          tL = [-0.18, 0.33, 0.16]; wL = 0.85; cL = 0.45;
+          tR = [0.22, 0.42, 0.24]; wR = 0.95; cR = 0.55;
+          tL = [-0.26, 0.31, 0.16]; wL = 0.85; cL = 0.45;
         } else if (u >= 0.55 && u < 0.78) {
           const wv = Math.sin((u - 0.55) * 58) * 0.085;
-          tR = [0.26 + wv, 0.60, 0.22]; wR = 1.0; cR = 0.12;
-          tL = [-0.22, 0.32, 0.12]; wL = 0.88; cL = 0.6;
+          tR = [0.30 + wv, 0.56, 0.22]; wR = 1.0; cR = 0.12;
+          tL = [-0.28, 0.30, 0.12]; wL = 0.88; cL = 0.6;
         }
       } else if (job.kind === 'refill') {
-        // Left hand holds the silver tray & folded towel steady in front-left
-        tL = [-0.22, 0.38, 0.22]; wL = 0.96; cL = 0.48;
+        // Left hand holds the silver tray & folded towel steady outside his left flank
+        tL = [-0.30, 0.35, 0.20]; wL = 0.96; cL = 0.48;
         if (pouring && pourCupWorld) {
-          // Right hand extends toward the player's teacup to pour
-          tR = [0.19, 0.44, 0.30]; wR = 1.0; cR = 0.92;
+          // Right hand extends forward-right outside his body toward the player's teacup to pour
+          tR = [0.28, 0.40, 0.28]; wR = 1.0; cR = 0.92;
         } else {
-          tR = [0.22, 0.39, 0.21 - swing * 0.5]; wR = 0.95; cR = 0.85;
+          tR = [0.29, 0.35, 0.20 - swing * 0.5]; wR = 0.95; cR = 0.85;
         }
       } else if (job.kind === 'shuffle') {
         if (flourish === 'gather') {
@@ -952,7 +952,7 @@ export const OrangeWaiter = memo(function OrangeWaiter({ L, view, level }: { L: 
 
   return (
     <group>
-      <group ref={rootRef} visible={flags.visible && !!job}>
+      <group ref={rootRef} scale={0.82} visible={flags.visible && !!job}>
         <mesh geometry={WG.shadow} material={shadowMat()} position={[0, 0.004, 0]} renderOrder={1} />
         <group ref={bodyRef}>
           <primitive object={model} />
