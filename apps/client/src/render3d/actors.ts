@@ -63,10 +63,10 @@ export function solveArm(c: ArmChain, t: THREE.Vector3, w: number, bodyCentre: T
     if (lat.lengthSq() < 1e-6) lat.set(1, 0, 0); else lat.normalize();
     const bindDir = vD.copy(E).sub(S);
     const wantUp = vE.copy(t).sub(S);
-    const minLatUp = Math.max(0.18, bindDir.dot(lat) * 0.94);
+    const minLatUp = Math.max(0.04, bindDir.dot(lat) * 0.35);
     const curLatUp = wantUp.dot(lat);
     if (curLatUp < minLatUp) wantUp.addScaledVector(lat, minLatUp - curLatUp);
-    aim(c.up, bindDir, wantUp, w * 0.24);
+    aim(c.up, bindDir, wantUp, w * 0.65);
     const E3 = c.fore.getWorldPosition(new THREE.Vector3()), H3 = (c.curl ?? c.hand).getWorldPosition(new THREE.Vector3());
     const fDir = vP.copy(t).sub(E3);
     const curLatF = fDir.dot(lat);
