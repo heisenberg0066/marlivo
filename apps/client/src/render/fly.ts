@@ -87,6 +87,8 @@ export interface FlyBackend {
   act?(kind: 'draw', p: { seat: number; face: CardFace | null }): Promise<void> | null;
   /** The seat's character lets go of whatever it holds (its drawn card left its hand). */
   release?(seat: number): void;
+  /** Optional: the seat's character peeks at its own card (does not block the caller). True when staged. */
+  peek?(seat: number, slot: string): boolean;
 }
 
 const domKey = (key: string) => {

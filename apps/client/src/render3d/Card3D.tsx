@@ -1,5 +1,6 @@
 // One real 3D card: two textured faces, a baked soft shadow and a glow for highlights. It eases towards its
 // target place every frame (move, flip with a little hop, peek lift), so view changes never pop.
+import { stagedHidden } from './actors';
 import { memo, useMemo, useRef } from 'react';
 import { useFrame, type ThreeEvent } from '@react-three/fiber';
 import * as THREE from 'three';
@@ -66,6 +67,7 @@ export const Card3D = memo(function Card3D(p: Card3DProps) {
 
   useFrame((state, dt) => {
     const s = st.current; const grp = g.current; const inn = inner.current; if (!grp || !inn) return;
+    grp.visible = !stagedHidden.has(p.id); // a character's hand is carrying this card right now
     const tp = p.place.p; const wantFlip = p.up ? Math.PI : 0;
     if (!s.init) { s.x = tp[0]; s.y = tp[1]; s.z = tp[2]; s.yaw = p.place.yaw; s.flip = wantFlip; s.init = true; }
     const k = 1 - Math.exp(-dt * 11), kf = 1 - Math.exp(-dt * 9);

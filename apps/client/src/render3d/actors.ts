@@ -10,6 +10,9 @@ export interface ArmCmd { target: THREE.Vector3; w: number; curl: number }
 export interface ActorCmd { arm: Partial<Record<Side, ArmCmd>>; look: THREE.Vector3 | null; lookW: number; lean: number; focus: number }
 export interface Actor { seat: number; root: THREE.Object3D; arms: Partial<Record<Side, ArmChain>>; head: THREE.Bone | null; cmd: ActorCmd; lowDetail: boolean }
 
+/** Table cards a staged action is carrying right now (the sprite in the hand stands in for them). */
+export const stagedHidden = new Set<string>();
+
 const reg = new Map<number, Actor>();
 export const actorFor = (seat: number) => reg.get(seat) ?? null;
 export function registerActor(a: Actor) { reg.set(a.seat, a); return () => { if (reg.get(a.seat) === a) reg.delete(a.seat); }; }

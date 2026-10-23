@@ -8,7 +8,7 @@ import { speedScale, getPrefs } from '../prefs';
 import { CARD_OPP, type Layout3, type Place3 } from './layout3d';
 import { PLANE, backMat, faceMat, shadowMat, GLOW_COLOR } from './Card3D';
 import { glowTexture } from './textures';
-import { actorFor, shoulderPos, handPos, armLength, easeInOut, easeOutBack, seg, type Side } from './actors';
+import { actorFor, stagedHidden, shoulderPos, handPos, armLength, easeInOut, easeOutBack, seg, type Side } from './actors';
 import { TABLE_R, CARD_T } from './layout3d';
 
 export interface Ctx3 { camera: THREE.Camera; el: HTMLElement; group: THREE.Group; layout: Layout3; view: PlayerView; four: boolean }
@@ -177,6 +177,55 @@ function releaseSeat(seat: number) {
 }
 function checkHolds() { if (!ctx) return; for (const seat of [...holds.keys()]) if (ctx.view.round?.drawn?.by !== seat || performance.now() > holds.get(seat)!.until) releaseSeat(seat); }
 
+// per-seat queue, so one character's actions never overlap while different characters act at the same time
+const seatQ = new Map<number, Promise<void>>();
+function queueSeat(seat: number, f: () => Promise<void>) { const prev = seatQ.get(seat) ?? Promise.resolve(); const next = prev.then(f, f).catch(() => {}); seatQ.set(seat, next); return next; }
+
+/** An opponent peeks at one of its own cards: leans in, reaches the slot, the paw closes, lifts the card close to its
+ *  face tilted towards itself (head down, focused look), then lays it back exactly in its slot. ~1 s at Normal. */
+async function stagePeek(seat: number, slotId: string): Promise<void> {
+  if (!ctx) return;
+  const a = actorFor(seat); const sl = ctx.layout.slots[slotId]; const ch = ctx.layout.chars[seat];
+  if (!a || !sl || !ch) return;
+  const slotP = new THREE.Vector3(...sl.p);
+  const side = (Object.keys(a.arms) as Side[]).sort((x, y) => shoulderPos(a.arms[x]!).distanceTo(slotP) - shoulderPos(a.arms[y]!).distanceTo(slotP))[0]!;
+  const arm = a.arms[side]!;
+  const c = new THREE.Vector3(...ch.p); const facing = slotP.clone().sub(c).setY(0).normalize();
+  const head = new THREE.Vector3(); (a.head ?? a.root).getWorldPosition(head);
+  const peekSpot = head.clone().addScaledVector(facing, 0.16); peekSpot.y -= 0.1;
+  const grab = slotP.clone(); grab.y += 0.01;
+  stagedHidden.add(slotId);
+  const s = new Sprite3D(boxOf(sl), null, false); live.add(s);
+  const start = handPos(arm); const cmd = { target: start.clone(), w: 0, curl: 0 };
+  a.cmd.arm[side] = cmd; a.cmd.look = slotP.clone(); a.cmd.lookW = 0;
+  const T = 1000 * speedScale(); const t0 = performance.now();
+  const hp = new THREE.Vector3(), cp = new THREE.Vector3();
+  try {
+    for (;;) {
+      const now = await frame(); const t = Math.min(1, (now - t0) / T);
+      a.cmd.lean = t < 0.1 ? -0.04 * easeInOut(t / 0.1) : t < 0.38 ? -0.04 + 0.36 * easeInOut(seg(t, 0.1, 0.38)) : t < 0.75 ? 0.32 - 0.2 * easeInOut(seg(t, 0.38, 0.6)) : 0.12 + 0.2 * easeInOut(seg(t, 0.75, 0.86)) - 0.32 * easeOutBack(seg(t, 0.86, 1), 1.1);
+      cmd.w = easeInOut(seg(t, 0.04, 0.24)) * (1 - easeInOut(seg(t, 0.9, 1)));
+      if (t < 0.4) cmd.target.lerpVectors(start, grab, easeInOut(seg(t, 0.06, 0.38))).y += Math.sin(Math.PI * seg(t, 0.06, 0.38)) * 0.04;
+      else if (t < 0.72) cmd.target.lerpVectors(grab, peekSpot, easeOutBack(seg(t, 0.42, 0.62), 1.2));
+      else cmd.target.lerpVectors(peekSpot, grab, easeInOut(seg(t, 0.72, 0.88)));
+      cmd.curl = easeInOut(seg(t, 0.34, 0.42)) * (1 - easeInOut(seg(t, 0.86, 0.94)));
+      a.cmd.lookW = easeInOut(seg(t, 0, 0.15)) * (1 - 0.6 * seg(t, 0.9, 1));
+      a.cmd.focus = easeInOut(seg(t, 0.45, 0.6)) * (1 - easeInOut(seg(t, 0.75, 0.88)));
+      // the card: still in its slot until the paw closes, then in the hand, then laid back exactly in the slot
+      const inHand = easeInOut(seg(t, 0.38, 0.46)) * (1 - easeInOut(seg(t, 0.84, 0.9)));
+      handPos(arm, hp);
+      const up = easeInOut(seg(t, 0.42, 0.6)) * (1 - easeInOut(seg(t, 0.72, 0.86)));
+      cp.copy(slotP).lerp(hp, inHand); cp.y += sl.h * 0.3 * up;
+      s.setPlace(cp, sl.yaw, (sl.tilt ?? 0) + 1.2 * up, sl.w, sl.h);
+      a.cmd.look!.copy(cp);
+      if (t >= 1) break;
+    }
+  } finally {
+    s.remove(); live.delete(s); stagedHidden.delete(slotId);
+    delete a.cmd.arm[side]; a.cmd.lean = 0; a.cmd.focus = 0; a.cmd.lookW = 0; a.cmd.look = null;
+  }
+}
+
 /** Draw by an opponent: the card slides low along the felt towards the seat, the character leans in and reaches
  *  (two-bone IK), the paw closes on it, the hand lifts it to the face (head follows, focused look), then lowers it to
  *  the hold spot where the held card rests until it is thrown or swapped. ~1.1 s at Normal speed. */
@@ -215,7 +264,7 @@ async function stageDraw(seat: number, face: CardFace | null): Promise<void> {
   for (;;) {
     const now = await frame(); const t = Math.min(1, (now - t0) / T);
     // body: anticipation back, lean in for the reach, settle back with a little overshoot
-    a.cmd.lean = t < 0.12 ? -0.06 * easeInOut(t / 0.12) : t < 0.45 ? -0.06 + 0.4 * easeInOut(seg(t, 0.12, 0.45)) : 0.34 - 0.34 * easeOutBack(seg(t, 0.45, 0.85), 1.2);
+    a.cmd.lean = t < 0.12 ? -0.06 * easeInOut(t / 0.12) : t < 0.45 ? -0.06 + 0.32 * easeInOut(seg(t, 0.12, 0.45)) : 0.26 - 0.26 * easeOutBack(seg(t, 0.45, 0.85), 1.2);
     // arm: rest -> pickup -> face -> hold
     const r1 = easeInOut(seg(t, 0.1, 0.44)), r2 = easeOutBack(seg(t, 0.47, 0.76), 1.3), r3 = easeInOut(seg(t, 0.84, 1));
     cmd.w = easeInOut(seg(t, 0.06, 0.3));
@@ -273,4 +322,5 @@ export const backend3d: FlyBackend = {
     return stageDraw(p.seat, p.face);
   },
   release: (seat) => releaseSeat(seat),
+  peek: (seat, slot) => { if (!ctx || getPrefs().reduced) return false; const a = actorFor(seat); if (!a || !Object.keys(a.arms).length || !ctx.layout.slots[slot]) return false; queueSeat(seat, () => stagePeek(seat, slot)); return true; },
 };

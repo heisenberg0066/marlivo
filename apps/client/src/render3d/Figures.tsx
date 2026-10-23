@@ -210,7 +210,7 @@ function applyActor(a: Actor | null, b: Record<string, BoneRig>, lk: { yaw: numb
     vT.copy(c.look); fr.worldToLocal(vT); const h0 = fr.worldToLocal(vH.clone());
     vT.sub(h0);
     wy = THREE.MathUtils.clamp(Math.atan2(vT.x, vT.z), -0.9, 0.9) * c.lookW;
-    wp = THREE.MathUtils.clamp(-Math.atan2(vT.y, Math.hypot(vT.x, vT.z)), -0.5, 0.6) * c.lookW;
+    wp = THREE.MathUtils.clamp(-Math.atan2(vT.y, Math.hypot(vT.x, vT.z)), -0.5, 0.42) * c.lookW;
   }
   const k = Math.min(1, dt * 9);
   lk.yaw += (wy - lk.yaw) * k; lk.pitch += (wp - lk.pitch) * k;

@@ -272,7 +272,7 @@ async function choreograph(prev: PlayerView, u: Update, apply: (ov: Overrides, b
         await wait(1300); delete ov.slot[p.slot]; apply(ov);
         break;
       }
-      case 'PEEK_PICKED': sfx('flip'); break;
+      case 'PEEK_PICKED': sfx('flip'); if (p.seat !== me) flyBackend().peek?.(p.seat, p.slot); break;
       case 'POWER_START': sfx('stinger'); break;
       case 'RESHUFFLED': {
         sfx('riffle');
