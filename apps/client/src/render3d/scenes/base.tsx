@@ -6,7 +6,9 @@
 import { memo, useEffect, useMemo, type ReactNode } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
+import type { PlayerView } from '@marlivo/engine';
 import type { Layout3 } from '../layout3d';
+import { OrangeWaiter } from './waiter';
 import { propLayout } from './propLayout';
 import { TeaCup, SugarCubes, TeaClock, Steam, ChocolateBar, type SceneKey } from './props';
 import { SkyDome, Ground, Court, Greenery, PAL } from './garden';
@@ -14,7 +16,7 @@ import { Badminton } from './badminton';
 import { FLOOR_Y } from '../sceneConfig';
 
 type V3 = [number, number, number];
-export interface SceneProps { L: Layout3; hi: boolean; level: 'high' | 'low'; portrait: boolean }
+export interface SceneProps { L: Layout3; view?: PlayerView; hi: boolean; level: 'high' | 'low'; portrait: boolean }
 /** where the court sits (world), shared by the court and the players */
 export const COURT_AT: Record<SceneKey, { p: V3; yaw: number }> = {
   golden: { p: [0.1, FLOOR_Y, -5.4], yaw: 0.32 },
@@ -43,7 +45,7 @@ function Env({ scene }: { scene: SceneKey }) {
   return null;
 }
 
-export const GardenBase = memo(function GardenBase({ scene, L, hi, level, portrait, steam = 1, children }: SceneProps & { scene: SceneKey; steam?: number; children?: ReactNode }) {
+export const GardenBase = memo(function GardenBase({ scene, L, view, hi, level, portrait, steam = 1, children }: SceneProps & { scene: SceneKey; steam?: number; children?: ReactNode }) {
   const props = useMemo(() => propLayout(L), [L]);
   const seats = useMemo(() => Object.keys(props.tea).map(Number), [props]);
   // phone portrait looks down more steeply: bring the court in so the players fill the top band (p07)
@@ -63,6 +65,7 @@ export const GardenBase = memo(function GardenBase({ scene, L, hi, level, portra
       <SugarCubes props={props} />
       {hi && <Steam props={props} strength={steam} />}
       {props.choco && <ChocolateBar at={props.choco.p} yaw={props.choco.yaw} />}
+      <OrangeWaiter L={L} view={view} level={level} />
     </group>
   );
 });

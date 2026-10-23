@@ -199,7 +199,7 @@ const Scene = memo(function Scene({ p, L, stage, points, els, portrait, scene }:
       <OverlaySync points={points} els={els} stage={stage} />
       <Stats />
       {hi && <Sharpen />}
-      <Suspense fallback={null}><SceneView L={L} hi={hi} level={hi ? 'high' : 'low'} portrait={portrait} /></Suspense>
+      <Suspense fallback={null}><SceneView L={L} view={v} hi={hi} level={hi ? 'high' : 'low'} portrait={portrait} /></Suspense>
       <group ref={group} />
       <Deck L={L} onDeck={p.onDeck} clickable={myTurnDraw} />
       {/* the discard pile, scattered inside the centre circle */}

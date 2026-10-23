@@ -59,3 +59,27 @@ Each cup drains on its own (a sip every 18–40 s, ~8 min full → dregs, `TEA_D
   steam and spoon. Badminton players always use the Low GLB (they are far away).
 - `window.__mlScene` = whole-frame draw calls / triangles / geometries / textures for perf checks.
 - `node scripts/scene-shots.mjs` (env `SCENES`, `PLAYERS`, `GFX`, `DEV`, `WAIT`, `BASE`, `OUT`) shoots every seat.
+
+## The Orange waiter (`scenes/waiter.tsx`, `scenes/waiterPath.ts`, sketch book v8 p22–27)
+A third Orange guy (`id: "tango"` GLB from the character manifest) who enters from `KITCHEN_DOOR` (`[-2.65, FLOOR_Y, 1.55]`)
+and walks clockwise along the safe terrace loop (`LOOP_R = 1.64`, stepping in to `STOP_R = 1.28` only at the four
+inter-seat gap stops `A, B, C, D`, never crossing onto the table or the badminton court `z < HEDGE_Z`).
+
+### Random outfits (`WAITER_OUTFITS`)
+Picked at random on each visit (`pickWaiterOutfit()`, unit-tested in `apps/client/test/waiter3d.test.ts`):
+- `full`: crisp white shirt bib, black waistcoat with gold buttons, white waist apron, black bow tie, folded towel on left arm
+- `suit`: navy-charcoal suit jacket with lapels, pocket square, white collar and crimson necktie
+- `tie`: normal orange body with white collar and red/gold striped necktie
+- `plain`: normal unadorned Orange guy (carries the white service towel when pouring tea)
+- `tuxedo`: formal black tuxedo with satin lapels, pleated shirt with black studs, black bow tie, folded towel on left arm
+
+### Sequences (`WaiterActionKind`)
+- `visit` (W1, p22): periodic table visit (~4–6 min when no `.fly-card` is active); inspects cards at stop `A`, turns to camera, winks and waves.
+- `refill` (W2, p23): triggers when at least half the cups drop below `0.42`; walks the full loop `A → D → C → B` with a white porcelain teapot + towel, pours an amber stream into each cup from the gap beside the seat, and calls `refillTea(seat)`.
+- `shuffle` (W3, p24): triggers when `roundNo` advances; stops at `A`, gathers/squares the deck, performs an 11-card rainbow bridge flourish between his hands, sets the pile, bows, and exits.
+- `roundEnd` (W4, p25): triggers when `view.round.result` arrives; walks to the stop beside the loser with a glass of water, winds up and splashes 18 chunky cartoon blue droplets onto the loser's face (cards stay dry), then turns to the winner with a happy clap + multi-colour confetti burst.
+- `medal` (W5, p26): triggers when `view.phase === 'MATCH_END'`; walks out with a red velvet cushion (gold corner tassels) carrying a gold star medal on a blue V-ribbon, bows to present it, and hangs the gold medal around the overall winner's neck with golden confetti.
+
+### Debug & test hook (`window.__mlWaiter`)
+- `__mlWaiter.trigger(kind, { outfit?, winner?, loser?, progress? })` starts any sequence (and optionally locks normalized progress `0..1` for deterministic frame inspection).
+- `__mlWaiter.setProgress(p)` / `__mlWaiter.stop()`.
