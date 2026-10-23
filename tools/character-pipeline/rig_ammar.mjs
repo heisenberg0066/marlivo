@@ -252,6 +252,5 @@ nextIdx.set(newIdx, oldIdx.length);
 prim.setIndices(doc.createAccessor().setType('SCALAR').setArray(nextIdx).setBuffer(IDX.getBuffer()));
 
 for (const a of root.listAccessors()) if (!a.listParents().some((p) => p !== root)) a.dispose();
-for (const ext of doc.getRoot().listExtensionsUsed()) if (ext.extensionName === 'EXT_meshopt_compression') ext.dispose();
 await io.write(outF, doc);
 console.log(JSON.stringify({ in: inF, out: outF, tucked, addedVerts: newPos.length / 3, joints: skin.listJoints().map((j) => j.getName()) }));
