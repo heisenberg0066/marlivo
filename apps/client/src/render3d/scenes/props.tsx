@@ -10,6 +10,7 @@ import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeom
 import type { PropLayout } from './propLayout';
 import { tickTea, teaLevel } from './tea';
 import { TEA, CHOCO, FLOOR_Y } from '../sceneConfig';
+import { seatCupBounce } from '../actors';
 import { foilTexture, blobShadow, glowDot } from './stex';
 
 export type SceneKey = 'golden' | 'picnic' | 'dusk';
@@ -49,13 +50,19 @@ const M = {
 
 export function TeaCup({ seat, at, yaw, hi }: { seat: number; at: [number, number, number]; yaw: number; hi: boolean }) {
   const surf = useRef<THREE.Mesh>(null);
-  useFrame(() => {
+  const grp = useRef<THREE.Group>(null);
+  useFrame((st) => {
     const s = surf.current; if (!s) return;
     const lv = teaLevel(seat), y = TEA_Y0 + lv * (TEA_Y1 - TEA_Y0), r = innerR(y) - 0.0004;
     s.position.y = y; s.scale.set(r, r, 1);
+    if (grp.current) {
+      const b = seatCupBounce(seat);
+      grp.current.position.set(at[0], at[1] + b, at[2]);
+      grp.current.rotation.set(b > 0.001 ? Math.sin(st.clock.elapsedTime * 45) * b * 3.5 : 0, yaw, 0);
+    }
   });
   return (
-    <group position={at} rotation={[0, yaw, 0]}>
+    <group ref={grp} position={at} rotation={[0, yaw, 0]}>
       <mesh geometry={G.plane} material={shadowMat()} position={[0.004, 0.0006, -0.004]} scale={[0.16, 1, 0.16]} renderOrder={1} />
       <mesh geometry={G.saucer} material={M.porcelain} />
       <mesh geometry={G.saucerRim} material={M.gold} position={[0, 0.0136, 0]} rotation={[Math.PI / 2, 0, 0]} />

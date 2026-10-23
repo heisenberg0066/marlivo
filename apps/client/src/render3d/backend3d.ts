@@ -8,7 +8,7 @@ import { speedScale, getPrefs } from '../prefs';
 import { CARD_OPP, type Layout3, type Place3 } from './layout3d';
 import { PLANE, backMat, faceMat, shadowMat, GLOW_COLOR } from './Card3D';
 import { glowTexture } from './textures';
-import { actorFor, stagedHidden, shoulderPos, handPos, armLength, easeInOut, easeOutBack, seg, type Side } from './actors';
+import { actorFor, stagedHidden, shoulderPos, handPos, armLength, easeInOut, easeOutBack, seg, activeEmoteFor, computeEmotePose, type Side } from './actors';
 import { TABLE_R, CARD_T } from './layout3d';
 
 export interface Ctx3 { camera: THREE.Camera; el: HTMLElement; group: THREE.Group; layout: Layout3; view: PlayerView; four: boolean }
@@ -261,6 +261,31 @@ export function updateMyPeekHand(cardPos: [number, number, number], lift: number
   peekHand.h.fingers.rotation.x = -0.65 * k;
 }
 
+
+let emoteHand: { charId: string; h: ReturnType<typeof createFpHand> } | null = null;
+/** Drives the local player's first-person hand during a HUD emote (wave, cheer, boo, slam). */
+export function updateMyEmoteHand() {
+  if (!ctx || getPrefs().reduced) { if (emoteHand) emoteHand.h.root.visible = false; return; }
+  const me = ctx.view.you;
+  const em = me !== null ? activeEmoteFor(me) : null;
+  if (!em) { if (emoteHand) emoteHand.h.root.visible = false; return; }
+  const charId = (me !== null ? ctx.view.seats[me]?.characterId : null) ?? getPrefs().characterId ?? 'ammar';
+  if (!emoteHand || emoteHand.charId !== charId) {
+    emoteHand?.h.dispose();
+    const h = createFpHand(charId);
+    ctx.group.add(h.root);
+    emoteHand = { charId, h };
+  }
+  const p = computeEmotePose(em.kind, em.u);
+  const tR = p.tR ?? [0.16, 0.25, 0.22];
+  // Map seat-local target to bottom-right first-person table view
+  const wx = tR[0] * 0.85, wy = Math.max(0.028, tR[1] * 0.55), wz = 0.88 - tR[2] * 0.45;
+  emoteHand.h.root.visible = true;
+  emoteHand.h.root.position.set(wx, wy, wz);
+  emoteHand.h.root.rotation.set(em.kind === 'slam' ? 0.35 : -0.35, -0.15 + p.shake * 0.6, em.kind === 'boo' ? Math.PI * 0.65 : 0);
+  emoteHand.h.fingers.rotation.x = -0.85 * p.cR;
+}
+
 const live = new Set<Sprite3D>();
 
 // ---- staged actions: the character's hand carries the card -------------------------------------------------
@@ -421,7 +446,7 @@ async function stageThrow(seat: number, face: CardFace | null, pileIdx: number):
   const s = new Sprite3D(boxOf(hold), face, false); live.add(s);
   const cmd = a.cmd.arm[side] ?? { target: handPos(arm), w: 1, curl: 1 };
   a.cmd.arm[side] = cmd; a.cmd.look = startH.clone(); a.cmd.lookW = 0.85;
-  const T = Math.min(380, Math.round(640 / Math.max(1, count))) * speedScale(); const t0 = performance.now();
+  const T = 420 * speedScale(); const t0 = performance.now();
   const hp = new THREE.Vector3(), cp = new THREE.Vector3();
   const yaw0 = hold.yaw; let dy = pilePl.yaw - yaw0; while (dy > Math.PI) dy -= 2 * Math.PI; while (dy < -Math.PI) dy += 2 * Math.PI;
   try {

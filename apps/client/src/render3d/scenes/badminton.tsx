@@ -8,6 +8,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { loadManifest, entryFor, loadModel, normalise } from '../registry';
+import { findArms, solveArm, curlArm, resetArm, handPos, type ArmChain, type Side } from '../actors';
 import { FLOOR_Y } from '../sceneConfig';
 import { COURT } from './garden';
 import { shadowMat } from './props';
@@ -39,7 +40,7 @@ function makeShuttle() {
   return g;
 }
 
-interface Player { root: THREE.Group; body: THREE.Group; pivot: THREE.Group; racket: THREE.Group; arm?: { bone: THREE.Bone; rest: THREE.Quaternion; ax: THREE.Vector3 }; side: number }
+interface Player { root: THREE.Group; body: THREE.Group; pivot: THREE.Group; racket: THREE.Group; arms?: Partial<Record<Side, ArmChain>>; side: number }
 
 /** one figure: GLB clone (or a plain orange egg while it loads / if it fails) + racket pivot at the right shoulder */
 function usePlayer(level: 'high' | 'low'): Player {
@@ -61,15 +62,14 @@ function usePlayer(level: 'high' | 'low'): Player {
       normalise(obj, { ...e, height: 1.0, baseY: 0 });
       const egg = p.body.getObjectByName('egg'); if (egg) p.body.remove(egg);
       p.body.add(obj);
-      // the right arm: find the shoulder side, put the racket pivot there and remember the bone's model-space axis
+      // 4-bone arm chains: attach the racket to armR_hand and solve two-bone IK every frame
       obj.updateMatrixWorld(true); p.body.updateMatrixWorld(true);
-      const bone = obj.getObjectByName('armR') as THREE.Bone | undefined;
+      p.arms = findArms(obj);
+      const bone = p.arms.R?.up;
       if (bone) {
         const wp = p.body.worldToLocal(bone.getWorldPosition(new THREE.Vector3()));
-        p.side = Math.sign(wp.x) || -1;
+        p.side = Math.sign(wp.x) || 1;
         p.pivot.position.set(wp.x + p.side * 0.1, wp.y, wp.z + 0.04);
-        const bq = p.body.getWorldQuaternion(new THREE.Quaternion()).invert().multiply(bone.getWorldQuaternion(new THREE.Quaternion())).invert();
-        p.arm = { bone, rest: bone.quaternion.clone(), ax: new THREE.Vector3(0, 0, 1).applyQuaternion(bq).normalize() };
       }
     })();
     return () => { alive = false; };
@@ -86,10 +86,40 @@ function swing(u: number, h: number, rest = 0.7) {
   if (d < 0.08) return lerp(2.9, 1.0, ease((d + 0.15) / 0.23)); // the hit
   return lerp(1.0, rest, ease((d - 0.08) / 0.42)); // follow through, settle
 }
+const vBodyC = new THREE.Vector3(), vTarget = new THREE.Vector3(), vHand = new THREE.Vector3();
 function poseArm(p: Player, ang: number) {
   // racket swings in the body's side plane, outward from the shoulder: ang 0 = hanging down, PI/2 = out, PI = up
+  const arms = p.arms;
+  if (arms?.R) {
+    p.root.updateMatrixWorld(true);
+    p.body.localToWorld(vBodyC.set(0, 0.42, -0.05));
+    // Map ang (0.7 low ready -> 2.9 overhead smash wind-up -> 1.0 hit -> 0.7 follow-through) to 3D hand target
+    const elev = ang - 1.15; // -0.45 low ready .. +1.75 overhead smash
+    const tx = p.side * (0.20 + 0.08 * Math.sin(elev * 0.8));
+    const ty = 0.48 + Math.sin(Math.min(1.55, elev)) * 0.34;
+    const tz = 0.16 + Math.cos(elev - 0.35) * 0.20;
+    const armR = arms.R;
+    armR.up.quaternion.copy(armR.restUp);
+    resetArm(armR);
+    p.body.localToWorld(vTarget.set(tx, ty, tz));
+    for (let k = 0; k < 2; k++) solveArm(armR, vTarget, 1, vBodyC);
+    curlArm(armR, 0.9);
+    // Parent the racket grip directly to armR_hand with wrist bend following the swing
+    p.body.worldToLocal(handPos(armR, vHand));
+    p.pivot.position.copy(vHand);
+    p.pivot.rotation.set(0.28 * Math.cos(elev), 0, -p.side * (Math.PI - ang) * 0.85);
+    if (arms.L) {
+      const armL = arms.L;
+      armL.up.quaternion.copy(armL.restUp);
+      resetArm(armL);
+      p.body.localToWorld(vTarget.set(-p.side * 0.22, 0.38 + Math.max(0, elev) * 0.08, 0.14));
+      for (let k = 0; k < 2; k++) solveArm(armL, vTarget, 0.82, vBodyC);
+      curlArm(armL, 0.45);
+    }
+    return;
+  }
   p.pivot.rotation.set(0, 0, -p.side * (Math.PI - ang));
-  if (p.arm) p.arm.bone.quaternion.copy(p.arm.rest).multiply(tq.setFromAxisAngle(p.arm.ax, p.side * clamp(ang - 0.5, 0, 2.4) * 0.65));
+  void tq;
 }
 
 export function Badminton({ at, yaw, level }: { at: [number, number, number]; yaw: number; level: 'high' | 'low' }) {

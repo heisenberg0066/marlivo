@@ -25,7 +25,8 @@ import { propLayout } from './scenes/propLayout';
 import { Card3D, PLANE, type Glow } from './Card3D';
 import { Figure, useCharacterEntry } from './Figures';
 import { Die3D } from './Die3D';
-import { backend3d, setCtx3, project } from './backend3d';
+import { backend3d, setCtx3, project, updateMyEmoteHand } from './backend3d';
+import { triggerEmote, activeEmoteFor, subscribeEmotes } from './actors';
 import { setMaxAnisotropy, glowTexture } from './textures';
 
 const RANKS = ['', 'A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
@@ -92,6 +93,7 @@ function CameraRig({ L, me, mode, portrait, outdoor }: { L: Layout3; me: number 
 
 function OverlaySync({ points, els, stage }: { points: React.MutableRefObject<OverlayPoints>; els: React.MutableRefObject<Map<string, HTMLElement>>; stage: React.RefObject<HTMLDivElement> }) {
   useFrame(() => {
+    updateMyEmoteHand();
     const st = stage.current; if (!st) return;
     const r = st.getBoundingClientRect();
     for (const [k, el] of els.current) {
@@ -186,6 +188,25 @@ const Scene = memo(function Scene({ p, L, stage, points, els, portrait, scene }:
   useLayoutEffect(() => { if (group.current) setCtx3({ camera, el: gl.domElement, group: group.current, layout: L, view: v, four }); });
   useEffect(() => { setMaxAnisotropy(gl.capabilities.getMaxAnisotropy()); }, [gl]);
   const seatsShown = r ? r.participants : v.players.length ? v.players : v.seats.map((s, i) => (s ? i : -1)).filter((i) => i >= 0);
+  const [, setEmoteTick] = useState(0);
+  useEffect(() => {
+    const un = subscribeEmotes(() => setEmoteTick((n) => n + 1));
+    const id = window.setInterval(() => setEmoteTick((n) => n + 1), 400);
+    return () => { un(); clearInterval(id); };
+  }, []);
+  const prevWinKey = useRef('');
+  useEffect(() => {
+    const rw = r?.result?.winner ?? null;
+    const mw = v.phase === 'MATCH_END' ? v.matchWinner : null;
+    const key = `${v.roundNo}:${rw ?? ''}:${mw ?? ''}`;
+    if (key === prevWinKey.current) return;
+    prevWinKey.current = key;
+    const w = mw ?? rw;
+    if (w !== null && (r?.result || v.phase === 'MATCH_END')) {
+      triggerEmote(w, 'win');
+      for (const s of seatsShown) if (s !== w) triggerEmote(s, 'slam');
+    }
+  }, [v.roundNo, r?.result?.winner, v.phase, v.matchWinner]);
   const active = r?.active;
   const discard = r?.discard ?? [];
   const pileStart = Math.max(0, discard.length - 14);
@@ -317,6 +338,7 @@ export const Table3D = memo(function Table3D(p: TableProps & { onFail?(why: stri
           return (
             <div key={seat} className="ov3d-item plate3d" ref={reg('plate' + seat, () => (Math.abs(Math.sin(L.seats[seat]?.a ?? 0)) > 0.9 ? [c[0] * 0.9, 0.66, c[2]] : [c[0], 0.74, c[2]]))}>
               {p.bubbles[seat] && Date.now() - p.bubbles[seat]!.at < 5000 && <div className="bubble">{p.bubbles[seat]!.text}</div>}
+              {(() => { const em = activeEmoteFor(seat); return em ? <div className="emote-pill in3d">{em.icon} {em.label}</div> : null; })()}
               {p.ov.badges[seat] && <div className="plus-badge in3d">{p.ov.badges[seat]}</div>}
               <div className={p.ov.pulse[seat] ?? ''}><NamePlate view={v} seat={seat} /></div>
             </div>

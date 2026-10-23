@@ -186,6 +186,31 @@ coming from another job), order = capture hook -> anim system -> re-rig + 2-bone
   - `pnpm test` (101/101), 3D E2E (`laptop` and `phone` `R3D=1 BOTS=3`), `monkey` (`R3D=1 N=4`): all pass with 0 failures.
   - Visual strip: `/workspace/sb/anim/waiter-ik-and-myseat-strip.jpg`.
 
+## Run 8 (2026-10-23) — Big Win/Lose Reactions, HUD Emotes, and Background Badminton 4-Bone Arm IK (LIVE on main)
+- **Big Win/Lose Character Reactions & Playful Emotes (`actors.ts`, `Figures.tsx`, `backend3d.ts`, `Table3D.tsx`, `director.ts`, `Game.tsx`, `props.tsx`, `waiter.tsx`):**
+  - Added pure, unit-tested `computeEmotePose(kind, u)` (`apps/client/test/emotes3d.test.ts`), `triggerEmote`, `activeEmoteFor`,
+    and `seatCupBounce` for `'wave'`, `'cheer'`, `'boo'`, `'slam'`, `'win'`, and `'sputter'`.
+  - **Round / Match Lose (`slam` = `sadSlump` + `tableSlam` + `sputter`):** Losers slump forward with droopy half-closed
+    eyelids (`0.55` blink) and perform 3 cartoon fist/paw slams onto the table rim in front of them (`y >= 0.025`, never
+    clipping through the tabletop `y = 0`), imparting a vertical bounce & rattle (`seatCupBounce`) to their porcelain
+    teacup and saucer (`props.tsx`). When the Orange waiter splashes the loser with water (`waiter.tsx`), the loser
+    triggers `'sputter'` (`💦 Brrr!`) with a rapid head/torso shake and eyelid flutter.
+  - **Round / Match Win (`win` = `celebrate` + playful `boo`):** The winner raises both arms in a bouncy victory pump and
+    overhead/chest clap (`0..50%`), then leans in with a cheeky cupping-hand by the mouth and playful thumbs-down wag
+    toward opponents (`50..100%`) with a happy squint (`0.48` blink).
+  - **Quick Emote Bar in HUD (`Game.tsx`, `styles.css`):** Added a compact, non-intrusive `.emote-bar` with 4 pill buttons
+    (`👋 Wave`, `🎉 Cheer`, `😜 Boo`, `💢 Slam`) in `.me-plate` (outside `.actions` so automated tap scripts never collide)
+    that triggers the player's first-person hand (`updateMyEmoteHand`), 3D character pose, and floating `.emote-pill` badge
+    without blocking or delaying card play.
+- **Background Badminton Players 4-Bone Arm IK (`render3d/scenes/badminton.tsx`):**
+  - Connected both background badminton Orange guys (`A` and `B`) to `findArms`, `solveArm`, `curlArm`, `resetArm`, and
+    `handPos` so their rackets are held in `armR_hand` and their overhead jump-smashes and underhand returns bend naturally
+    at the shoulder, elbow, and wrist while `armL` counter-balances.
+- **Verification:**
+  - `pnpm test` (105/105 passed, including 4 new unit tests in `apps/client/test/emotes3d.test.ts`), 3D E2E (`laptop` and
+    `phone` `R3D=1 BOTS=3`), `monkey` (`R3D=1 N=3`): all pass with 0 failures and 0 errors.
+  - Visual verification strip: `/workspace/sb/anim/reactions-and-badminton-strip.jpg`.
+
 ## Design (next runs)
 1. `render3d/anim/` — per-seat **actor registry**: each figure registers `{ handWorld(side), reach(target, w),
    look(target), lean(x), expr(kind) }`; backend3d resolves `hand-N` to the live hand bone instead of `L.hands`.

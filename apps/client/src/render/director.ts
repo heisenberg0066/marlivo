@@ -9,6 +9,7 @@ import { sprite, wait, clearFly, flyBackend, type Box, type SpriteLike as Sprite
 import { sfx } from './sound';
 import { confetti } from './confetti';
 import { getPrefs } from '../prefs';
+import { triggerEmote } from '../render3d/actors';
 
 type Ev = Update['events'][number];
 export interface DirectorState { display: PlayerView | null; ov: Overrides; busy: boolean; banner: { text: string; kind: string; key: number } | null }
@@ -234,7 +235,7 @@ async function choreograph(prev: PlayerView, u: Update, apply: (ov: Overrides, b
               ov.pileHide = Math.max(0, ov.pileHide - 1); apply(ov);
             } else { ov.pileHide = Math.max(0, ov.pileHide - 1); }
           }
-          if (!(p.penalty > 0)) sfx('chime');
+          if (!(p.penalty > 0)) { sfx('chime'); triggerEmote(p.seat, 'cheer'); }
           done();
         } else {
           for (const id of Object.keys(ov.slot)) if (ov.slot[id]?.cls === 'tentative') delete ov.slot[id];
@@ -244,7 +245,7 @@ async function choreograph(prev: PlayerView, u: Update, apply: (ov: Overrides, b
       }
       case 'PENALTY_DEALT': {
         sfx('whoosh');
-        ov.badges[p.seat] = `+${(p.slots as unknown[]).length}`; ov.moods[p.seat] = 'sad'; apply(ov);
+        ov.badges[p.seat] = `+${(p.slots as unknown[]).length}`; ov.moods[p.seat] = 'sad'; triggerEmote(p.seat, 'slam'); apply(ov);
         const deck = deckBox();
         for (const s0 of p.slots as { id: string }[]) {
           const staged = p.seat !== me ? flyBackend().act?.('penalty', { seat: p.seat, slot: s0.id, count: (p.slots as unknown[]).length }) : null;

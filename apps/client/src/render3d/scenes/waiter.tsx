@@ -14,7 +14,7 @@ import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeom
 import type { PlayerView } from '@marlivo/engine';
 import type { Layout3, V3 } from '../layout3d';
 import { loadManifest, entryFor, loadModel, normalise } from '../registry';
-import { findArms, solveArm, curlArm, resetArm, handPos, type ArmChain, type Side } from '../actors';
+import { findArms, solveArm, curlArm, resetArm, handPos, triggerEmote, activeEmoteFor, type ArmChain, type Side } from '../actors';
 import { attachBlinkShader } from '../Figures';
 import { propLayout } from './propLayout';
 import { refillTea, teaLevel } from './tea';
@@ -525,6 +525,8 @@ export const OrangeWaiter = memo(function OrangeWaiter({ L, view, level }: { L: 
           splashFrom = [pos[0] + Math.sin(yaw) * 0.28, pos[1] + 0.48, pos[2] + Math.cos(yaw) * 0.28];
           splashTo = loserPos;
           splashU = (su - 0.18) / 0.82;
+          const lSeat = job.loser ?? 1;
+          if (!activeEmoteFor(lSeat)) triggerEmote(lSeat, 'sputter');
         }
       } else if (u < 0.84) {
         pos = stWinner.standPos;

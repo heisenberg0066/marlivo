@@ -9,6 +9,7 @@ import { BackRoom } from '../render/BackRoom';
 import { useDirector } from '../render/director';
 import { setFlyLayer, clearFly } from '../render/fly';
 import { CharacterBust, SEAT_COLORS, Pumpkin } from '../render/characters';
+import { HUD_EMOTES, triggerEmote, activeEmoteFor, subscribeEmotes } from '../render3d/actors';
 import { sfx, unlock } from '../render/sound';
 import { t } from '../i18n';
 import { usePrefs, setPrefs, SCENES } from '../prefs';
@@ -253,7 +254,19 @@ export function Game({ session, onExit }: { session: Session; onExit(): void }) 
       <footer className="hud">
         <div className="me-plate">
           {me !== null && v.seats[me] && <CharacterBust id={v.seats[me]!.characterId} size={44} color={SEAT_COLORS[me]} mood={r?.result?.winner === me ? 'happy' : 'idle'} />}
-          <div><b>{v.seats[me ?? -1]?.name ?? ''}</b><span>★ {myScore}/{v.settings.targetPoints}{iAmIn && r ? ` · 🂠 ${r.counts[me!]}` : ''}</span></div>
+          <div>
+            <b>{v.seats[me ?? -1]?.name ?? ''}</b>
+            <span>★ {myScore}/{v.settings.targetPoints}{iAmIn && r ? ` · 🂠 ${r.counts[me!]}` : ''}</span>
+            {me !== null && (() => { const em = activeEmoteFor(me); return em ? <span className="emote-pill me">{em.icon} {em.label}</span> : null; })()}
+          </div>
+          {me !== null && (
+            <div className="emote-bar" role="group" aria-label="Emotes">
+              {HUD_EMOTES.map((em) => (
+                <button key={em.kind} type="button" className="emote-btn" title={em.label} aria-label={em.label}
+                  onClick={() => { sfx('tick'); triggerEmote(me, em.kind); }}>{em.icon}</button>
+              ))}
+            </div>
+          )}
         </div>
         <div className="status-line" aria-live="polite">{status}</div>
         <div className="actions">

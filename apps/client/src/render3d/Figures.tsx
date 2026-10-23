@@ -9,7 +9,7 @@ import { useRigMotion, type Rig } from './rig';
 import { OrangeGuy, AmmarFigure } from './Hero';
 import { usePrefs, graphicsLevel } from '../prefs';
 import { loadManifest, entryFor, loadModel, normalise, clipFor, type CharacterEntry, type Placeholder } from './registry';
-import { registerActor, findArms, newCmd, solveArm, curlArm, resetArm, type Actor } from './actors';
+import { registerActor, findArms, newCmd, solveArm, curlArm, resetArm, activeEmoteFor, computeEmotePose, type Actor, type EmotePose } from './actors';
 import { getCtx3 } from './backend3d';
 
 const G = {
@@ -240,7 +240,11 @@ function ModelFigure({ e, id, mood, seed, pose: stance, fallback, onFail }: { e:
       twist: happy ? Math.sin(t * 3) * 0.18 : think ? Math.sin(t * 0.5) * 0.08 : 0,
     };
     for (const key of Object.keys(T) as (keyof typeof T)[]) s[key] += (T[key] - s[key]) * (key === 'hop' || key === 'tilt' || key === 'arm' ? Math.min(1, dt * 12) : k);
-    obj.root.position.y = obj.y0 + s.hop + Math.sin(t * 1.6) * 0.006;
+    const now = performance.now();
+    const em = activeEmoteFor(seed, now);
+    const busyArms = !!(actor.current && Object.keys(actor.current.cmd.arm).length);
+    const ep = em && !busyArms ? computeEmotePose(em.kind, em.u) : null;
+    obj.root.position.y = obj.y0 + (ep ? ep.hop : s.hop) + Math.sin(t * 1.6) * 0.006;
     if (e.motion === 'creature') {
       pose(b.body, s.nod * 0.6, s.twist, s.tilt * 0.8);
       pose(b.armL, 0, 0, -s.arm); pose(b.armR, 0, 0, s.arm * (think ? 0.2 : 1));
@@ -253,27 +257,28 @@ function ModelFigure({ e, id, mood, seed, pose: stance, fallback, onFail }: { e:
       pose(b.head, s.nod, s.twist * 0.6, s.tilt);
       pose(b.armL, 0, 0, -s.arm * 0.8); pose(b.armR, 0, 0, s.arm * (think ? 0.2 : 0.8));
     }
-    // organic blink (3.4-4.6 s cycle, occasional double-blink, surprised flutter, and focused peek squint)
+    // organic blink (3.4-4.6 s cycle, occasional double-blink, surprised flutter, focused peek squint, and emote eyelids)
     if (obj.blinkU.length) {
       const period = 3.5 + (seed % 3) * 0.55;
       const ph = t % period;
       let bl = ph < 0.15 ? Math.sin((ph / 0.15) * Math.PI) : ((Math.floor(t / period) % 3 === 1) && ph > 0.22 && ph < 0.36) ? Math.sin(((ph - 0.22) / 0.14) * Math.PI) : 0;
-      const now = performance.now();
       if (surp || (actor.current?.cmd.blinkUntil && now < actor.current.cmd.blinkUntil)) {
         bl = Math.max(bl, Math.abs(Math.sin(now * 0.022)));
       }
+      if (sad) bl = Math.max(bl, 0.55);
       if (away) bl = Math.max(bl, 0.88);
       if (actor.current && actor.current.cmd.focus > 0.05) bl = Math.max(bl, actor.current.cmd.focus * 0.32);
+      if (ep) bl = Math.max(bl, ep.blink);
       for (const u of obj.blinkU) u.value = bl;
     }
-    applyActor(actor.current, obj.bones, lk.current, dt, t);
+    applyActor(actor.current, obj.bones, lk.current, dt, t, ep);
   });
   return obj ? <primitive object={obj.root} /> : <>{fallback}</>;
 }
 
 /** Layers the card-action commands on top of the mood pose: lean, head look-at, arm IK and paw curl. */
 const vT = new THREE.Vector3(), vH = new THREE.Vector3(), vC0 = new THREE.Vector3(), vIdle = new THREE.Vector3(), qT = new THREE.Quaternion(), X1 = new THREE.Vector3(1, 0, 0);
-function applyActor(a: Actor | null, b: Record<string, BoneRig>, lk: { yaw: number; pitch: number }, dt: number, t: number) {
+function applyActor(a: Actor | null, b: Record<string, BoneRig>, lk: { yaw: number; pitch: number }, dt: number, t: number, ep: EmotePose | null = null) {
   if (!a) return;
   const c = a.cmd;
   for (const arm of Object.values(a.arms)) if (arm) resetArm(arm);
@@ -286,7 +291,7 @@ function applyActor(a: Actor | null, b: Record<string, BoneRig>, lk: { yaw: numb
   const isCreature = a.motion === 'creature' || !b.spine;
   const isBlocky = a.id === 'choco' || a.id === 'sugar';
   const leanScale = isCreature ? 0.28 : isBlocky ? 0.42 : 0.48;
-  const leanEff = c.lean * leanScale;
+  const leanEff = (c.lean + (ep ? ep.lean : 0)) * leanScale;
   if (spine && Math.abs(leanEff) > 1e-3) spine.bone.quaternion.multiply(qT.setFromAxisAngle(spine.ax[0], leanEff));
   const hb = b.head ?? b.body;
   // head look: yaw/pitch towards the action target, or in idle towards the active player / card on the table
@@ -321,25 +326,37 @@ function applyActor(a: Actor | null, b: Record<string, BoneRig>, lk: { yaw: numb
   }
   const k = Math.min(1, dt * 9);
   lk.yaw += (wy - lk.yaw) * k; lk.pitch += (wp - lk.pitch) * k;
-  if (hb && (Math.abs(lk.yaw) > 1e-3 || Math.abs(lk.pitch) > 1e-3 || Math.abs(leanEff) > 1e-3)) {
+  const yawEff = lk.yaw + (ep ? ep.shake : 0);
+  if (hb && (Math.abs(yawEff) > 1e-3 || Math.abs(lk.pitch) > 1e-3 || Math.abs(leanEff) > 1e-3)) {
     if (hb === spine) {
       // creature without a separate head: gentle yaw + tiny pitch cap so it never compounds with leanEff
       const pCap = THREE.MathUtils.clamp((lk.pitch + c.focus * 0.06) * 0.2, -0.08, 0.08);
-      hb.bone.quaternion.multiply(qT.setFromAxisAngle(hb.ax[1], lk.yaw * 0.4)).multiply(qT.setFromAxisAngle(hb.ax[0], pCap));
+      hb.bone.quaternion.multiply(qT.setFromAxisAngle(hb.ax[1], yawEff * 0.45)).multiply(qT.setFromAxisAngle(hb.ax[0], pCap));
     } else {
       // separate head: counter-rotate part of the spine lean so the crown doesn't dip and the face stays upright
       const localPitch = THREE.MathUtils.clamp(lk.pitch + c.focus * 0.05 - leanEff * 0.9, -0.28, 0.1);
-      hb.bone.quaternion.multiply(qT.setFromAxisAngle(hb.ax[1], lk.yaw)).multiply(qT.setFromAxisAngle(hb.ax[0], localPitch));
+      hb.bone.quaternion.multiply(qT.setFromAxisAngle(hb.ax[1], yawEff)).multiply(qT.setFromAxisAngle(hb.ax[0], localPitch));
     }
   }
-  a.root.updateMatrixWorld(true);
+  const fr = a.root.parent ?? a.root;
+  fr.updateMatrixWorld(true);
   a.root.getWorldPosition(vC0); vC0.y += 0.25;
   for (const sd of ['L', 'R'] as const) {
     const arm = a.arms[sd], cmd = c.arm[sd];
-    if (!arm || !cmd || cmd.w <= 0.001) continue;
-    solveArm(arm, cmd.target, cmd.w, vC0);
-    if (!a.lowDetail) curlArm(arm, cmd.curl * cmd.w);
-    else curlArm(arm, cmd.curl * cmd.w * 0.5);
+    if (arm && cmd && cmd.w > 0.001) {
+      solveArm(arm, cmd.target, cmd.w, vC0);
+      curlArm(arm, cmd.curl * cmd.w * (a.lowDetail ? 0.5 : 1));
+    } else if (arm && ep) {
+      const tLoc = sd === 'L' ? ep.tL : ep.tR;
+      const w = sd === 'L' ? ep.wL : ep.wR;
+      const curl = sd === 'L' ? ep.cL : ep.cR;
+      if (tLoc && w > 0.001) {
+        vT.set(tLoc[0], tLoc[1], tLoc[2]);
+        fr.localToWorld(vT);
+        for (let k = 0; k < 2; k++) solveArm(arm, vT, w, vC0);
+        curlArm(arm, curl * w * (a.lowDetail ? 0.5 : 1));
+      }
+    }
   }
 }
 
