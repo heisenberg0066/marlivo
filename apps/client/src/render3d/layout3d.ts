@@ -93,8 +93,9 @@ export function layout3(view: PlayerView, large = false, portrait = false): Layo
     // opponents hold a drawn card at chest height in front of them, angled slightly toward the camera so it never reads edge-on
     const handD = sp === 'bottom' ? TABLE_R - 0.05 : SEAT_DIST - 0.15;
     const handYaw = sp === 'bottom' ? a : a - Math.sin(a) * 0.45 + (Math.cos(a) < -0.5 ? 0.24 : 0);
-    out.hands[seat] = { p: [dx * handD, sp === 'bottom' ? 0.2 : 0.25, dz * handD], yaw: handYaw, ...card, tilt: sp === 'bottom' ? 0.5 : 1.08 };
-    out.chars[seat] = { p: [dx * SEAT_DIST, 0, dz * SEAT_DIST], yaw: a + Math.PI };
+    out.hands[seat] = { p: [dx * handD, sp === 'bottom' ? 0.2 : 0.19, dz * handD], yaw: handYaw, ...card, tilt: sp === 'bottom' ? 0.5 : 1.08 };
+    const camTurn = Math.abs(Math.sin(a)) > 0.85 ? Math.sin(a) * 0.38 : 0;
+    out.chars[seat] = { p: [dx * SEAT_DIST, 0, dz * SEAT_DIST], yaw: a + Math.PI + camTurn };
     out.dice[seat] = [dx * 0.34, 0, dz * 0.34];
   }
   const count = r?.deckCount ?? 0;

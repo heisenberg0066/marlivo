@@ -234,6 +234,31 @@ coming from another job), order = capture hook -> anim system -> re-rig + 2-bone
   - Golden garden 3D table sheet (Laptop High/Low, Phone High/Low + zoomed top/side seat close-ups): `/workspace/sb/anim/ammar-skintone-table.jpg`.
   - `pnpm test` (105/105), 3D E2E (`laptop` and `phone` `R3D=1 BOTS=3`), `monkey` (`R3D=1 N=3`): all pass with 0 failures.
 
+## Run 11 (2026-10-23) — Cascaded Quaternion Bone Smoothing, Living Relaxed Idle with Radial Body Clearance, and Animated Cartoon Mouth Shader (LIVE on main)
+- **Continuous Quaternion Slerp Bone Smoothing (`actors.ts`, `Figures.tsx`, `scenes/waiter.tsx`):**
+  - Replaced hard per-frame `resetArm()` snapping with `stepArmSmoothing(arm, dt)`: exponential quaternion `slerp` with
+    overlapping joint hierarchy lag (`shoulder lambda=16 -> elbow lambda=12.5 -> wrist/hand lambda=9.5 -> curl lambda=14`)
+    plus torso/head quaternion damping (`lambda=11.5`) so every transition between idle, reach, hold, and release flows
+    with follow-through and zero snapping.
+  - Auto-decays stale post-draw arm holds in `applyActor` when `drawn.by !== seat` and clears `a.cmd.arm` on action completion.
+- **Natural Relaxed Idle & Radial Body Clearance for Orange Guy (`fix_orange_rig.mjs`, `actors.ts`, `Figures.tsx`, `layout3d.ts`):**
+  - Moved `orange-guy.glb` & `orange-guy-low.glb` shoulder joints (`armL`/`armR`) from `|x| = 0.245` (11 cm inside the egg
+    torso) out to the true shoulder exit surface (`|x| = 0.340, y = 0.512`) and weighted 100% of the egg torso (`|x| < 0.338`)
+    to `body`/`root` so the torso never caves in when the arms move.
+  - Added `computeIdlePose` and `clampArmTarget` with radial clearance (`|x| >= 0.49..0.52` and outward forearm slope
+    `fDir.x >= 1.2 * hypot(dy, dz)` in `solveArm`) so Orange guy's elbows, wrists, and fingers stay 40–50 px clear of his
+    round egg body while cycling through relaxed side/table-rim rest, finger taps, torso sway, and casual gestures.
+  - Angled side-seat characters `~22°` toward the camera in `layout3d.ts` so their faces, mouths, and both arms read clearly.
+- **Procedural 2D SDF Cartoon Mouth Shader (`attachBlinkShader` in `Figures.tsx`, `computeMouthTarget` in `actors.ts`):**
+  - Added `uMouth = vec4(open, smile, width, cover)` in unit-height bind coordinates (`vBindP`) that masks over the static
+    baked mouth line with the surrounding skin colour and draws a cartoon mouth cavity (`#2e0a0d`), pink tongue crescent
+    (`#eb5c5c`), upper teeth rim, and dark outline across relaxed smiles, curious `"O"` peeks, big laughing grins
+    (`cheer`/`win`/`matchThrow`), and shocked/groaning reactions (`slam`/`sputter`/`penalty`).
+- **Verification & Visual Evidence:**
+  - `orange-relaxed-and-mouth-sheet.jpg`: 6-panel Before vs After sheet with verified 40–50 px radial arm-to-body air gap.
+  - `smooth-motion-overlap-strip.jpg` & `orange-living-showcase.mp4`: 140-frame (`7.0 s @ 20 fps`) Golden garden showcase.
+  - Client & unit tests (`vitest run`): 107/107 passed.
+
 ## Design (next runs)
 1. `render3d/anim/` — per-seat **actor registry**: each figure registers `{ handWorld(side), reach(target, w),
    look(target), lean(x), expr(kind) }`; backend3d resolves `hand-N` to the live hand bone instead of `L.hands`.

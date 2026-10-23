@@ -348,7 +348,7 @@ async function stagePeek(seat: number, slotId: string): Promise<void> {
     }
   } finally {
     s.remove(); live.delete(s); stagedHidden.delete(slotId);
-    delete a.cmd.arm[side]; a.cmd.lean = 0; a.cmd.focus = 0; a.cmd.lookW = 0; a.cmd.look = null;
+    a.cmd.arm = {}; holds.delete(seat); a.cmd.lean = 0; a.cmd.focus = 0; a.cmd.lookW = 0; a.cmd.look = null;
   }
 }
 
@@ -425,6 +425,7 @@ async function stageDraw(seat: number, face: CardFace | null): Promise<void> {
     if (t >= 1) break;
   }
   s.remove(); live.delete(s);
+  (cmd as { hold?: boolean }).hold = true;
   holds.set(seat, { side, target: cmd.target, until: performance.now() + 30000 });
   a.cmd.lookW = 0.5; a.cmd.focus = 0;
 }
@@ -470,7 +471,7 @@ async function stageThrow(seat: number, face: CardFace | null, pileIdx: number):
     }
   } finally {
     s.remove(); live.delete(s);
-    delete a.cmd.arm[side]; a.cmd.lean = 0; a.cmd.lookW = 0; a.cmd.look = null;
+    a.cmd.arm = {}; holds.delete(seat); a.cmd.lean = 0; a.cmd.lookW = 0; a.cmd.look = null;
   }
 }
 
@@ -510,7 +511,7 @@ async function stageSwap(seat: number, slotId: string, outFace: CardFace | null,
     }
   } finally {
     sIn.remove(); sOut.remove(); live.delete(sIn); live.delete(sOut);
-    delete a.cmd.arm[side]; a.cmd.lean = 0; a.cmd.lookW = 0; a.cmd.look = null;
+    a.cmd.arm = {}; holds.delete(seat); a.cmd.lean = 0; a.cmd.lookW = 0; a.cmd.look = null;
   }
 }
 
@@ -528,7 +529,7 @@ async function stageMatchThrow(seat: number, slotId: string, face: CardFace, pil
   stagedHidden.add(slotId);
   const s = new Sprite3D(boxOf(sl), face, true); live.add(s);
   const start = handPos(arm); const cmd = { target: start.clone(), w: 0, curl: 0 };
-  a.cmd.arm[side] = cmd; a.cmd.look = slotP.clone(); a.cmd.lookW = 0.85;
+  a.cmd.arm[side] = cmd; a.cmd.look = slotP.clone(); a.cmd.lookW = 0.85; a.cmd.mouthOpen = 0.82; a.cmd.mouthSmile = 0.42; a.cmd.mouthWidth = 1.12;
   const T = 380 * speedScale(); const t0 = performance.now();
   const cp = new THREE.Vector3();
   try {
@@ -547,7 +548,7 @@ async function stageMatchThrow(seat: number, slotId: string, face: CardFace, pil
     }
   } finally {
     s.remove(); live.delete(s); stagedHidden.delete(slotId);
-    delete a.cmd.arm[side]; a.cmd.lean = 0; a.cmd.lookW = 0; a.cmd.look = null;
+    a.cmd.arm = {}; holds.delete(seat); a.cmd.lean = 0; a.cmd.lookW = 0; a.cmd.look = null; a.cmd.mouthOpen = 0;
   }
 }
 
@@ -588,7 +589,7 @@ async function stageQueenPeek(owner: number, slotId: string): Promise<void> {
     }
   } finally {
     s.remove(); live.delete(s); stagedHidden.delete(slotId);
-    delete a.cmd.arm[side]; a.cmd.lean = 0; a.cmd.focus = 0; a.cmd.lookW = 0; a.cmd.look = null;
+    a.cmd.arm = {}; holds.delete(owner); a.cmd.lean = 0; a.cmd.focus = 0; a.cmd.lookW = 0; a.cmd.look = null;
   }
 }
 
@@ -654,7 +655,7 @@ async function stagePenaltyCard(giver: number | null, toSeat: number, slotId: st
   }
   if (aR && sideR) {
     aR.cmd.arm[sideR] = { target: slotP.clone().setY(0.03), w: 0, curl: 0.5 };
-    aR.cmd.look = deckP.clone(); aR.cmd.lookW = 0.9; aR.cmd.blinkUntil = performance.now() + 520;
+    aR.cmd.look = deckP.clone(); aR.cmd.lookW = 0.9; aR.cmd.blinkUntil = performance.now() + 520; aR.cmd.mouthOpen = 0.78; aR.cmd.mouthSmile = -0.34; aR.cmd.mouthWidth = 0.88;
   }
   const T = Math.min(380, Math.round(640 / Math.max(1, count))) * speedScale(); const t0 = performance.now();
   const cp = new THREE.Vector3();
@@ -679,7 +680,7 @@ async function stagePenaltyCard(giver: number | null, toSeat: number, slotId: st
   } finally {
     s.remove(); live.delete(s);
     if (aG && sideG) { delete aG.cmd.arm[sideG]; aG.cmd.lean = 0; aG.cmd.lookW = 0; aG.cmd.look = null; }
-    if (aR && sideR) { delete aR.cmd.arm[sideR]; aR.cmd.lean = 0; aR.cmd.lookW = 0; aR.cmd.look = null; }
+    if (aR && sideR) { delete aR.cmd.arm[sideR]; aR.cmd.lean = 0; aR.cmd.lookW = 0; aR.cmd.look = null; aR.cmd.mouthOpen = 0; }
   }
 }
 

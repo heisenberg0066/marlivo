@@ -9,7 +9,7 @@ import { useRigMotion, type Rig } from './rig';
 import { OrangeGuy, AmmarFigure } from './Hero';
 import { usePrefs, graphicsLevel } from '../prefs';
 import { loadManifest, entryFor, loadModel, normalise, clipFor, type CharacterEntry, type Placeholder } from './registry';
-import { registerActor, findArms, newCmd, solveArm, curlArm, resetArm, activeEmoteFor, computeEmotePose, type Actor, type EmotePose } from './actors';
+import { registerActor, findArms, newCmd, solveArm, curlArm, resetArm, stepArmSmoothing, clampArmTarget, activeEmoteFor, computeEmotePose, computeIdlePose, computeMouthTarget, type Actor, type EmotePose, type IdlePose } from './actors';
 import { getCtx3 } from './backend3d';
 
 const G = {
@@ -113,17 +113,18 @@ function pose(r: BoneRig | undefined, x: number, y: number, z: number) {
 
 /** A GLB figure from the manifest: normalised to the seat, animated by its clips or, for rigged figures, by bones.
  *  While the file loads the built-in procedural figure stands in. */
-/** Per-character eye placement in unit-height bind space (y in 0..1, +z forward) and eyelid colour for blinking. */
-const EYE_SPEC: Record<string, { ey: number; eh: number; ex: number; ew: number; col: string }> = {
-  ammar:   { ey: 0.806, eh: 0.025, ex: 0.044, ew: 0.032, col: '#e6a87e' },
-  biscuit: { ey: 0.758, eh: 0.034, ex: 0.072, ew: 0.044, col: '#9b643b' },
-  mint:    { ey: 0.725, eh: 0.044, ex: 0.076, ew: 0.052, col: '#9ab8a0' },
-  pepper:  { ey: 0.752, eh: 0.048, ex: 0.082, ew: 0.056, col: '#d89a62' },
-  tango:   { ey: 0.675, eh: 0.052, ex: 0.076, ew: 0.055, col: '#e4832c' },
-  choco:   { ey: 0.692, eh: 0.035, ex: 0.068, ew: 0.042, col: '#5a321e' },
-  sugar:   { ey: 0.680, eh: 0.040, ex: 0.072, ew: 0.046, col: '#ebe5dc' },
+/** Per-character eye & mouth placement in unit-height bind space (y in 0..1, +z forward) for blinking and animated mouths. */
+export interface FaceShaderUniform { value: number; mouth: THREE.Vector4 }
+const EYE_SPEC: Record<string, { ey: number; eh: number; ex: number; ew: number; col: string; my: number; mh: number; mw: number; mcol: string }> = {
+  ammar:   { ey: 0.806, eh: 0.025, ex: 0.044, ew: 0.032, col: '#e6a87e', my: 0.745, mh: 0.020, mw: 0.028, mcol: '#e6a87e' },
+  biscuit: { ey: 0.758, eh: 0.034, ex: 0.072, ew: 0.044, col: '#9b643b', my: 0.640, mh: 0.032, mw: 0.046, mcol: '#c28c5c' },
+  mint:    { ey: 0.725, eh: 0.044, ex: 0.076, ew: 0.052, col: '#9ab8a0', my: 0.645, mh: 0.028, mw: 0.042, mcol: '#b8bfa2' },
+  pepper:  { ey: 0.752, eh: 0.048, ex: 0.082, ew: 0.056, col: '#d89a62', my: 0.000, mh: 0.000, mw: 0.000, mcol: '#d89a62' },
+  tango:   { ey: 0.675, eh: 0.052, ex: 0.076, ew: 0.055, col: '#e4832c', my: 0.500, mh: 0.068, mw: 0.112, mcol: '#e28040' },
+  choco:   { ey: 0.692, eh: 0.035, ex: 0.068, ew: 0.042, col: '#5a321e', my: 0.602, mh: 0.038, mw: 0.062, mcol: '#603420' },
+  sugar:   { ey: 0.680, eh: 0.040, ex: 0.072, ew: 0.046, col: '#ebe5dc', my: 0.552, mh: 0.038, mw: 0.058, mcol: '#ede6dc' },
 };
-export function attachBlinkShader(root: THREE.Object3D, id: string, ryDeg: number): { value: number }[] {
+export function attachBlinkShader(root: THREE.Object3D, id: string, ryDeg: number): FaceShaderUniform[] {
   const spec = EYE_SPEC[id]; if (!spec) return [];
   root.updateMatrixWorld(true);
   let skinned = false;
@@ -135,24 +136,30 @@ export function attachBlinkShader(root: THREE.Object3D, id: string, ryDeg: numbe
     .makeRotationY((ryDeg * Math.PI) / 180)
     .multiply(new THREE.Matrix4().makeTranslation(-ctr.x * sc, -box.min.y * sc, -ctr.z * sc))
     .multiply(new THREE.Matrix4().makeScale(sc, sc, sc));
-  const out: { value: number }[] = [];
+  const out: FaceShaderUniform[] = [];
   root.traverse((o) => {
     const m = o as THREE.SkinnedMesh; if (!m.isSkinnedMesh) return;
     const mt = (m.material as THREE.MeshStandardMaterial).clone();
-    const uBlink = { value: 0 }; out.push(uBlink);
+    const uMouth = new THREE.Vector4(0, 0.25, 1, 0);
+    const uFace: FaceShaderUniform = { value: 0, mouth: uMouth }; out.push(uFace);
     const bindMat = unitRoot.clone().multiply(m.matrixWorld);
     const uEye = new THREE.Vector4(spec.ey, spec.eh, spec.ex, spec.ew);
     const uLidCol = new THREE.Color(spec.col);
+    const uMouthSpec = new THREE.Vector3(spec.my, spec.mh, spec.mw);
+    const uMouthCol = new THREE.Color(spec.mcol);
     mt.onBeforeCompile = (sh) => {
       sh.uniforms.uBindMat = { value: bindMat };
-      sh.uniforms.uBlink = uBlink;
+      sh.uniforms.uBlink = uFace;
       sh.uniforms.uEye = { value: uEye };
       sh.uniforms.uLidCol = { value: uLidCol };
+      sh.uniforms.uMouth = { value: uMouth };
+      sh.uniforms.uMouthSpec = { value: uMouthSpec };
+      sh.uniforms.uMouthCol = { value: uMouthCol };
       sh.vertexShader = 'uniform mat4 uBindMat;\nvarying vec3 vBindP;\n' + sh.vertexShader.replace(
         '#include <begin_vertex>',
         '#include <begin_vertex>\nvBindP = (uBindMat * vec4(transformed, 1.0)).xyz;'
       );
-      sh.fragmentShader = 'uniform float uBlink;\nuniform vec4 uEye;\nuniform vec3 uLidCol;\nvarying vec3 vBindP;\n' + sh.fragmentShader.replace(
+      sh.fragmentShader = 'uniform float uBlink;\nuniform vec4 uEye;\nuniform vec3 uLidCol;\nuniform vec4 uMouth;\nuniform vec3 uMouthSpec;\nuniform vec3 uMouthCol;\nvarying vec3 vBindP;\n' + sh.fragmentShader.replace(
         '#include <emissivemap_fragment>',
         `#include <emissivemap_fragment>
         if (uBlink > 0.01 && vBindP.z > 0.02) {
@@ -168,6 +175,41 @@ export function attachBlinkShader(root: THREE.Object3D, id: string, ryDeg: numbe
             diffuseColor.rgb = mix(diffuseColor.rgb, lid, cov);
             totalEmissiveRadiance = mix(totalEmissiveRadiance, lid * 0.22, cov);
           }
+        }
+        if (uMouth.w > 0.01 && uMouthSpec.y > 0.001 && vBindP.z > 0.04) {
+          float cx = vBindP.x / (uMouthSpec.z * 1.12);
+          float cy = (vBindP.y - uMouthSpec.x) / (uMouthSpec.y * 0.72);
+          float cr2 = cx * cx + cy * cy;
+          if (cr2 < 1.0) {
+            float cMask = (1.0 - smoothstep(0.42, 1.0, cr2)) * uMouth.w;
+            diffuseColor.rgb = mix(diffuseColor.rgb, uMouthCol, cMask * 0.90);
+            totalEmissiveRadiance = mix(totalEmissiveRadiance, uMouthCol * 0.18, cMask * 0.90);
+          }
+          float mx = vBindP.x / (uMouthSpec.z * max(0.38, uMouth.z));
+          float my0 = (vBindP.y - uMouthSpec.x) / uMouthSpec.y;
+          float bend = uMouth.y * (mx * mx - 0.28);
+          float yRel = my0 - bend;
+          float openH = max(0.08, uMouth.x);
+          float topSc = uMouth.y > 0.0 ? mix(1.0, 0.46, clamp(uMouth.y * 1.6, 0.0, 1.0)) : 1.0;
+          float botSc = uMouth.y < 0.0 ? mix(1.0, 0.52, clamp(-uMouth.y * 1.6, 0.0, 1.0)) : 1.08;
+          float ey = yRel > 0.0 ? yRel / (openH * topSc) : yRel / (openH * botSc);
+          float mr = sqrt(mx * mx + ey * ey);
+          if (mr < 1.08) {
+            float outerA = (1.0 - smoothstep(0.92, 1.08, mr)) * uMouth.w;
+            float innerA = 1.0 - smoothstep(0.75, 0.91, mr);
+            vec3 cav = vec3(0.18, 0.04, 0.05);
+            float tx = mx * 1.05;
+            float ty = (ey + 0.56) * 1.35;
+            float tMask = (1.0 - smoothstep(0.40, 0.65, tx * tx + ty * ty)) * step(-0.08, -ey);
+            cav = mix(cav, vec3(0.92, 0.36, 0.36), tMask);
+            float teethLine = 0.56 - 0.12 * mx * mx;
+            float teethMask = smoothstep(teethLine - 0.12, teethLine + 0.06, ey) * step(0.28, uMouth.x) * step(-0.15, uMouth.y);
+            cav = mix(cav, vec3(0.98, 0.96, 0.92), teethMask * 0.95);
+            vec3 lipCol = uMouthCol * 0.24;
+            vec3 mFinal = mix(lipCol, cav, innerA);
+            diffuseColor.rgb = mix(diffuseColor.rgb, mFinal, outerA);
+            totalEmissiveRadiance = mix(totalEmissiveRadiance, mFinal * 0.22, outerA);
+          }
         }`
       );
     };
@@ -179,7 +221,7 @@ export function attachBlinkShader(root: THREE.Object3D, id: string, ryDeg: numbe
 function ModelFigure({ e, id, mood, seed, pose: stance, fallback, onFail }: { e: CharacterEntry; id: string; mood: Mood; seed: number; pose: 'sit' | 'stand'; fallback: ReactNode; onFail(): void }) {
   const level = usePrefs().graphics && graphicsLevel();
   const gl = useThree((st) => st.gl);
-  const [obj, setObj] = useState<{ root: THREE.Object3D; mixer: THREE.AnimationMixer; clips: THREE.AnimationClip[]; bones: Record<string, BoneRig>; y0: number; blinkU: { value: number }[] } | null>(null);
+  const [obj, setObj] = useState<{ root: THREE.Object3D; mixer: THREE.AnimationMixer; clips: THREE.AnimationClip[]; bones: Record<string, BoneRig>; y0: number; blinkU: FaceShaderUniform[] } | null>(null);
   const action = useRef<THREE.AnimationAction | null>(null);
   useEffect(() => {
     let alive = true;
@@ -224,41 +266,41 @@ function ModelFigure({ e, id, mood, seed, pose: stance, fallback, onFail }: { e:
     const un = registerActor(a);
     return () => { un(); actor.current = null; };
   }, [obj, seed, level]);
-  const lk = useRef({ yaw: 0, pitch: 0 });
+  const lk = useRef({ yaw: 0, pitch: 0, lean: 0, mouthOpen: 0, mouthSmile: 0.25, mouthWidth: 0.95, bodyQ: new Map<string, THREE.Quaternion>() });
   const sm = useRef({ hop: 0, tilt: 0, nod: 0, arm: 0, twist: 0 });
   useFrame((st, dt) => {
     if (!obj) return;
-    obj.mixer.update(dt);
+    const d = dt > 0 && dt < 0.25 ? dt : 1 / 60;
+    obj.mixer.update(d);
     if (obj.clips.length) return;
-    const t = st.clock.elapsedTime + seed * 1.7, b = obj.bones, k = Math.min(1, dt * 5), s = sm.current;
+    const t = st.clock.elapsedTime + seed * 1.7, b = obj.bones, k = 1 - Math.exp(-d * 6), s = sm.current;
     // targets per mood, eased so mood changes blend
     const happy = mood === 'happy', think = mood === 'think', sad = mood === 'sad', away = mood === 'away', surp = mood === 'surprised';
     const T = {
       hop: happy ? Math.abs(Math.sin(t * 6)) * 0.07 : surp ? 0.03 : 0,
-      tilt: think ? 0.16 + Math.sin(t * 0.9) * 0.04 : happy ? Math.sin(t * 6) * 0.12 : Math.sin(t * 0.7) * 0.03,
-      nod: sad ? 0.22 : away ? 0.38 : think ? -0.06 + Math.sin(t * 1.3) * 0.03 : surp ? -0.12 : Math.sin(t * 1.1) * 0.015,
+      tilt: think ? 0.14 + Math.sin(t * 0.9) * 0.04 : happy ? Math.sin(t * 6) * 0.12 : Math.sin(t * 0.7) * 0.03,
+      nod: sad ? 0.20 : away ? 0.35 : think ? -0.05 + Math.sin(t * 1.3) * 0.03 : surp ? -0.10 : Math.sin(t * 1.1) * 0.015,
       arm: happy ? 1.15 + Math.sin(t * 6) * 0.25 : think ? 0.35 : sad ? -0.08 : surp ? 0.5 : Math.sin(t * 1.4) * 0.05,
       twist: happy ? Math.sin(t * 3) * 0.18 : think ? Math.sin(t * 0.5) * 0.08 : 0,
     };
-    for (const key of Object.keys(T) as (keyof typeof T)[]) s[key] += (T[key] - s[key]) * (key === 'hop' || key === 'tilt' || key === 'arm' ? Math.min(1, dt * 12) : k);
+    for (const key of Object.keys(T) as (keyof typeof T)[]) s[key] += (T[key] - s[key]) * (key === 'hop' || key === 'tilt' || key === 'arm' ? 1 - Math.exp(-d * 10) : k);
     const now = performance.now();
     const em = activeEmoteFor(seed, now);
-    const busyArms = !!(actor.current && Object.keys(actor.current.cmd.arm).length);
+    const busyArms = !!(actor.current && Object.values(actor.current.cmd.arm).some((x) => x && !x.hold && x.w > 0.05));
     const ep = em && !busyArms ? computeEmotePose(em.kind, em.u) : null;
-    obj.root.position.y = obj.y0 + (ep ? ep.hop : s.hop) + Math.sin(t * 1.6) * 0.006;
+    const idle = computeIdlePose(id, seed, st.clock.elapsedTime, mood, lk.current.yaw);
+    obj.root.position.y = obj.y0 + (ep ? ep.hop : s.hop) + Math.sin(t * 1.6) * 0.008;
+    // Reset torso/head bones to rest before computing this frame's target pose (smoothed afterwards)
+    for (const [kBone, br] of Object.entries(b)) if (kBone !== 'armL' && kBone !== 'armR' && br) br.bone.quaternion.copy(br.rest);
     if (e.motion === 'creature') {
-      pose(b.body, s.nod * 0.6, s.twist, s.tilt * 0.8);
-      pose(b.armL, 0, 0, -s.arm); pose(b.armR, 0, 0, s.arm * (think ? 0.2 : 1));
-    } else if (e.motion === 'person') {
-      pose(b.spine, s.nod * 0.3, s.twist, s.tilt * 0.35);
-      pose(b.head, s.nod, s.twist * 0.6, s.tilt);
-      pose(b.armL, 0, 0, -s.arm * 0.55); pose(b.armR, 0, 0, s.arm * (think ? 0.2 : 0.55));
-    } else if (e.motion === 'animal') { // bear / cat / owl: body sway + head + waving arms (wings)
-      pose(b.spine, s.nod * 0.3, s.twist * 0.6, s.tilt * 0.35);
-      pose(b.head, s.nod, s.twist * 0.6, s.tilt);
-      pose(b.armL, 0, 0, -s.arm * 0.8); pose(b.armR, 0, 0, s.arm * (think ? 0.2 : 0.8));
+      pose(b.root, 0, 0, idle.hipsRoll);
+      pose(b.body, s.nod * 0.5 + idle.spinePitch, s.twist + idle.spineYaw, s.tilt * 0.55 + idle.spineRoll);
+    } else {
+      pose(b.hips, 0, 0, idle.hipsRoll);
+      pose(b.spine, s.nod * 0.3 + idle.spinePitch, s.twist * 0.6 + idle.spineYaw, s.tilt * 0.35 + idle.spineRoll);
+      pose(b.head, s.nod, s.twist * 0.5, s.tilt * 0.6 + idle.headRoll);
     }
-    // organic blink (3.4-4.6 s cycle, occasional double-blink, surprised flutter, focused peek squint, and emote eyelids)
+    // organic blink + animated cartoon mouth (open, smile, width, cover)
     if (obj.blinkU.length) {
       const period = 3.5 + (seed % 3) * 0.55;
       const ph = t % period;
@@ -270,29 +312,42 @@ function ModelFigure({ e, id, mood, seed, pose: stance, fallback, onFail }: { e:
       if (away) bl = Math.max(bl, 0.88);
       if (actor.current && actor.current.cmd.focus > 0.05) bl = Math.max(bl, actor.current.cmd.focus * 0.32);
       if (ep) bl = Math.max(bl, ep.blink);
-      for (const u of obj.blinkU) u.value = bl;
+      const mt = computeMouthTarget(id, mood, st.clock.elapsedTime, idle, actor.current?.cmd ?? null, em);
+      const km = 1 - Math.exp(-d * 12);
+      lk.current.mouthOpen += (mt.open - lk.current.mouthOpen) * km;
+      lk.current.mouthSmile += (mt.smile - lk.current.mouthSmile) * km;
+      lk.current.mouthWidth += (mt.width - lk.current.mouthWidth) * km;
+      const cov = THREE.MathUtils.smoothstep(lk.current.mouthOpen, 0.02, 0.14);
+      for (const u of obj.blinkU) {
+        u.value = bl;
+        u.mouth.set(lk.current.mouthOpen, lk.current.mouthSmile, lk.current.mouthWidth, cov);
+      }
     }
-    applyActor(actor.current, obj.bones, lk.current, dt, t, ep);
+    applyActor(actor.current, obj.bones, lk.current, d, t, ep, idle);
   });
   return obj ? <primitive object={obj.root} /> : <>{fallback}</>;
 }
 
-/** Layers the card-action commands on top of the mood pose: lean, head look-at, arm IK and paw curl. */
-const vT = new THREE.Vector3(), vH = new THREE.Vector3(), vC0 = new THREE.Vector3(), vIdle = new THREE.Vector3(), qT = new THREE.Quaternion(), X1 = new THREE.Vector3(1, 0, 0);
-function applyActor(a: Actor | null, b: Record<string, BoneRig>, lk: { yaw: number; pitch: number }, dt: number, t: number, ep: EmotePose | null = null) {
+/** Layers the card-action commands on top of the living idle pose with exponential quaternion damping and overlapping arm motion. */
+const vT = new THREE.Vector3(), vIdleArm = new THREE.Vector3(), vH = new THREE.Vector3(), vC0 = new THREE.Vector3(), vIdle = new THREE.Vector3(), qT = new THREE.Quaternion();
+function applyActor(
+  a: Actor | null,
+  b: Record<string, BoneRig>,
+  lk: { yaw: number; pitch: number; lean: number; bodyQ: Map<string, THREE.Quaternion> },
+  dt: number,
+  t: number,
+  ep: EmotePose | null = null,
+  idle?: IdlePose,
+) {
   if (!a) return;
   const c = a.cmd;
-  for (const arm of Object.values(a.arms)) if (arm) resetArm(arm);
   const spine = b.spine ?? b.body;
-  // idle breathing: the chest rises and settles (~3.7 s cycle), the arms follow a touch
-  const br = Math.sin(t * 1.7);
-  if (spine) spine.bone.quaternion.multiply(qT.setFromAxisAngle(spine.ax[0], -0.012 * br));
-  for (const arm of Object.values(a.arms)) if (arm) arm.fore.quaternion.multiply(qT.setFromAxisAngle(X1, 0.02 * br));
-  // one-bone creatures (Orange guy) and blocky bodies (Choco, Sparkle) lean much less so the whole body doesn't tip
   const isCreature = a.motion === 'creature' || !b.spine;
   const isBlocky = a.id === 'choco' || a.id === 'sugar';
   const leanScale = isCreature ? 0.28 : isBlocky ? 0.42 : 0.48;
-  const leanEff = (c.lean + (ep ? ep.lean : 0)) * leanScale;
+  const wantLean = (c.lean + (ep ? ep.lean : 0)) * leanScale;
+  lk.lean += (wantLean - lk.lean) * (1 - Math.exp(-dt * 10));
+  const leanEff = lk.lean;
   if (spine && Math.abs(leanEff) > 1e-3) spine.bone.quaternion.multiply(qT.setFromAxisAngle(spine.ax[0], leanEff));
   const hb = b.head ?? b.body;
   // head look: yaw/pitch towards the action target, or in idle towards the active player / card on the table
@@ -309,10 +364,10 @@ function applyActor(a: Actor | null, b: Record<string, BoneRig>, lk: { yaw: numb
         const hp = r.drawn?.by === actSeat ? L.hands[actSeat]?.p : null;
         const ap = L.areas[actSeat]?.p ?? L.chars[actSeat]?.p;
         const pt = hp ?? (ap ? [ap[0] * 0.75, 0.14, ap[2] * 0.75] : null);
-        if (pt) { lookTarget = vIdle.set(pt[0], pt[1], pt[2]); lookWeight = 0.42; }
+        if (pt) { lookTarget = vIdle.set(pt[0], pt[1], pt[2]); lookWeight = 0.46; }
       } else if (actSeat === a.seat && L.areas[a.seat]) {
         const ap = L.areas[a.seat]!.p;
-        lookTarget = vIdle.set(ap[0], 0.05, ap[2]); lookWeight = 0.3;
+        lookTarget = vIdle.set(ap[0], 0.05, ap[2]); lookWeight = 0.34;
       }
     }
   }
@@ -325,40 +380,79 @@ function applyActor(a: Actor | null, b: Record<string, BoneRig>, lk: { yaw: numb
     wy = THREE.MathUtils.clamp(Math.atan2(vT.x, vT.z), -0.75, 0.75) * lookWeight;
     wp = THREE.MathUtils.clamp(-Math.atan2(vT.y, Math.hypot(vT.x, vT.z)), -0.3, 0.2) * lookWeight;
   }
-  const k = Math.min(1, dt * 9);
-  lk.yaw += (wy - lk.yaw) * k; lk.pitch += (wp - lk.pitch) * k;
+  const kLook = 1 - Math.exp(-dt * 8.5);
+  lk.yaw += (wy - lk.yaw) * kLook; lk.pitch += (wp - lk.pitch) * kLook;
   const yawEff = lk.yaw + (ep ? ep.shake : 0);
   if (hb && (Math.abs(yawEff) > 1e-3 || Math.abs(lk.pitch) > 1e-3 || Math.abs(leanEff) > 1e-3)) {
     if (hb === spine) {
-      // creature without a separate head: gentle yaw + tiny pitch cap so it never compounds with leanEff
       const pCap = THREE.MathUtils.clamp((lk.pitch + c.focus * 0.06) * 0.2, -0.08, 0.08);
-      hb.bone.quaternion.multiply(qT.setFromAxisAngle(hb.ax[1], yawEff * 0.45)).multiply(qT.setFromAxisAngle(hb.ax[0], pCap));
+      hb.bone.quaternion.multiply(qT.setFromAxisAngle(hb.ax[1], yawEff * 0.48)).multiply(qT.setFromAxisAngle(hb.ax[0], pCap));
     } else {
-      // separate head: counter-rotate part of the spine lean so the crown doesn't dip and the face stays upright
       const localPitch = THREE.MathUtils.clamp(lk.pitch + c.focus * 0.05 - leanEff * 0.9, -0.28, 0.1);
       hb.bone.quaternion.multiply(qT.setFromAxisAngle(hb.ax[1], yawEff)).multiply(qT.setFromAxisAngle(hb.ax[0], localPitch));
     }
   }
+  // Smooth torso & head bones with exponential quaternion slerp so body motion never snaps
+  const kBody = 1 - Math.exp(-dt * 11.5);
+  for (const kName of ['root', 'hips', 'body', 'spine', 'head']) {
+    const br = b[kName]; if (!br) continue;
+    let sq = lk.bodyQ.get(kName);
+    if (!sq) { sq = br.bone.quaternion.clone(); lk.bodyQ.set(kName, sq); }
+    else { sq.slerp(br.bone.quaternion, kBody); br.bone.quaternion.copy(sq); }
+  }
+
   const fr = a.root.parent ?? a.root;
   fr.updateMatrixWorld(true);
   a.root.getWorldPosition(vC0); vC0.y += 0.25;
   for (const sd of ['L', 'R'] as const) {
-    const arm = a.arms[sd], cmd = c.arm[sd];
-    if (arm && cmd && cmd.w > 0.001) {
-      solveArm(arm, cmd.target, cmd.w, vC0);
-      curlArm(arm, cmd.curl * cmd.w * (a.lowDetail ? 0.5 : 1));
-    } else if (arm && ep) {
+    const arm = a.arms[sd]; if (!arm) continue;
+    // Start IK solve from clean rest pose, then smooth via stepArmSmoothing for overlapping shoulder->elbow->wrist lag
+    arm.up.quaternion.copy(arm.restUp);
+    resetArm(arm);
+
+    const idleLoc = idle ? (sd === 'L' ? idle.tL : idle.tR) : [sd === 'L' ? -0.19 : 0.19, 0.05, 0.18];
+    const idleCurl = idle ? (sd === 'L' ? idle.cL : idle.cR) : 0.35;
+    vIdleArm.set(idleLoc[0], idleLoc[1], idleLoc[2]);
+    fr.localToWorld(vIdleArm);
+
+    const cmd = c.arm[sd];
+    if (cmd?.hold) {
+      const stillHolding = getCtx3()?.view.round?.drawn?.by === a.seat && !ep;
+      if (!stillHolding) {
+        cmd.w = Math.max(0, cmd.w - dt * 4.5);
+        if (cmd.w <= 0.01) delete c.arm[sd];
+      }
+    }
+    let curl = idleCurl;
+    if (cmd && cmd.w > 0.001 && !ep) {
+      vT.lerpVectors(vIdleArm, cmd.target, cmd.w);
+      if (cmd.hold) { vT.y += Math.sin(t * 2.4) * 0.015; vT.x += Math.cos(t * 1.8) * 0.012; }
+      curl = THREE.MathUtils.lerp(idleCurl, cmd.curl, cmd.w);
+    } else if (ep) {
       const tLoc = sd === 'L' ? ep.tL : ep.tR;
       const w = sd === 'L' ? ep.wL : ep.wR;
-      const curl = sd === 'L' ? ep.cL : ep.cR;
+      const eCurl = sd === 'L' ? ep.cL : ep.cR;
       if (tLoc && w > 0.001) {
         vT.set(tLoc[0], tLoc[1], tLoc[2]);
         fr.localToWorld(vT);
-        for (let k = 0; k < 2; k++) solveArm(arm, vT, w, vC0);
-        curlArm(arm, curl * w * (a.lowDetail ? 0.5 : 1));
+        vT.lerpVectors(vIdleArm, vT, w);
+        curl = THREE.MathUtils.lerp(idleCurl, eCurl, w);
+      } else {
+        vT.copy(vIdleArm);
       }
+    } else {
+      vT.copy(vIdleArm);
     }
+
+    fr.worldToLocal(vT);
+    const clamped = clampArmTarget([vT.x, vT.y, vT.z], sd, a.id);
+    vT.set(clamped[0], clamped[1], clamped[2]);
+    fr.localToWorld(vT);
+    for (let k = 0; k < 2; k++) solveArm(arm, vT, 1.0, vC0);
+    curlArm(arm, curl * (a.lowDetail ? 0.5 : 1));
+    stepArmSmoothing(arm, dt);
   }
+  void t;
 }
 
 /** The manifest entry for a character id (null until the manifest has loaded). */

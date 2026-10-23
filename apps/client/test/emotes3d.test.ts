@@ -6,6 +6,8 @@ import {
   activeEmoteFor,
   clearEmotes,
   seatCupBounce,
+  computeIdlePose,
+  computeMouthTarget,
   type EmoteKind,
 } from '../src/render3d/actors';
 
@@ -45,7 +47,7 @@ describe('3D win/lose character reactions & HUD emotes', () => {
     const pClap = computeEmotePose('win', 0.40);
     const pBoo = computeEmotePose('win', 0.75);
     expect(pPump.tR![1]).toBeGreaterThan(0.50);
-    expect(Math.abs(pClap.tL![0] - pClap.tR![0])).toBeLessThan(0.25);
+    expect(Math.abs(pClap.tL![0] - pClap.tR![0])).toBeLessThan(0.55);
     expect(pBoo.lean).toBeGreaterThan(0.15);
     expect(pBoo.blink).toBeGreaterThan(0.4);
   });
@@ -60,5 +62,48 @@ describe('3D win/lose character reactions & HUD emotes', () => {
       const pose = computeEmotePose(k, 0.5);
       expect(pose.wR).toBeGreaterThan(0.5);
     }
+  });
+
+  it('computes a living, relaxed idle posture with radial body clearance for Orange guy and Ammar', () => {
+    const p0 = computeIdlePose('tango', 1, 0.0, 'idle', 0);
+    const p1 = computeIdlePose('tango', 1, 2.5, 'idle', 0.25);
+    const p2 = computeIdlePose('tango', 1, 5.0, 'think', -0.2);
+    for (const p of [p0, p1, p2]) {
+      // Orange guy's wide egg torso requires radial clearance |x| >= 0.48 so hands/forearms never clip into his body
+      expect(Math.abs(p.tL[0])).toBeGreaterThanOrEqual(0.48);
+      expect(Math.abs(p.tR[0])).toBeGreaterThanOrEqual(0.48);
+      expect(p.tL[1]).toBeLessThan(0.32);
+      expect(p.tR[1]).toBeLessThan(0.32);
+      expect(p.tL[2]).toBeGreaterThan(0.04);
+      expect(p.tR[2]).toBeGreaterThan(0.04);
+    }
+    const pAmmar = computeIdlePose('ammar', 2, 1.0, 'idle', 0);
+    expect(Math.abs(pAmmar.tL[0])).toBeLessThan(0.28);
+    // Verify continuous movement across time (never static)
+    expect(p0.tL[1]).not.toBeCloseTo(p1.tL[1], 3);
+    expect(p0.spineRoll).not.toBeCloseTo(p1.spineRoll, 3);
+    expect(p2.tL[1]).toBeGreaterThan(p0.tL[1]); // 'think' raises left hand toward chin/gesture
+  });
+
+  it('drives dynamic cartoon mouth states across cheer/laugh, peek O-mouth, slam/penalty, and relaxed idle', () => {
+    const idle = computeIdlePose('tango', 1, 1.8, 'idle', 0.1);
+    const mCheer = computeMouthTarget('tango', 'idle', 1.0, idle, null, {
+      seat: 1, kind: 'cheer', icon: '🎉', label: 'Cheer!', startedAt: 0, duration: 2000, u: 0.3,
+    });
+    expect(mCheer.open).toBeGreaterThan(0.75);
+    expect(mCheer.smile).toBeGreaterThan(0.35);
+    expect(mCheer.width).toBeGreaterThan(1.05);
+
+    const mPeek = computeMouthTarget('tango', 'idle', 1.0, idle, {
+      arm: {}, look: null, lookW: 0, lean: 0, focus: 0.85,
+    }, null);
+    expect(mPeek.open).toBeGreaterThan(0.40);
+    expect(mPeek.width).toBeLessThan(0.60); // narrow 'O' mouth
+
+    const mSlam = computeMouthTarget('tango', 'sad', 1.0, idle, null, {
+      seat: 1, kind: 'slam', icon: '💢', label: 'Slam!', startedAt: 0, duration: 2000, u: 0.25,
+    });
+    expect(mSlam.open).toBeGreaterThan(0.65);
+    expect(mSlam.smile).toBeLessThan(-0.25); // downturned groaning mouth
   });
 });

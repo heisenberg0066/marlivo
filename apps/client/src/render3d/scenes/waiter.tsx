@@ -14,7 +14,8 @@ import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeom
 import type { PlayerView } from '@marlivo/engine';
 import type { Layout3, V3 } from '../layout3d';
 import { loadManifest, entryFor, loadModel, normalise } from '../registry';
-import { findArms, solveArm, curlArm, resetArm, handPos, triggerEmote, activeEmoteFor, type ArmChain, type Side } from '../actors';
+import { findArms, solveArm, curlArm, resetArm, stepArmSmoothing, handPos, triggerEmote, activeEmoteFor, type ArmChain, type Side } from '../actors';
+import type { FaceShaderUniform } from '../Figures';
 import { attachBlinkShader } from '../Figures';
 import { propLayout } from './propLayout';
 import { refillTea, teaLevel } from './tea';
@@ -384,7 +385,7 @@ export const OrangeWaiter = memo(function OrangeWaiter({ L, view, level }: { L: 
     });
   }, []);
 
-  useFrame((st) => {
+  useFrame((st, dt) => {
     const now = st.clock.elapsedTime;
     clockRef.current = now;
 
@@ -574,11 +575,17 @@ export const OrangeWaiter = memo(function OrangeWaiter({ L, view, level }: { L: 
     }
 
     // Solve 4-bone arm IK (shoulder -> elbow -> wrist -> curl) and parent/follow waiter props
-    const rig = model.userData.waiterRig as { arms: Partial<Record<Side, ArmChain>>; blinkU: { value: number }[] } | undefined;
+    const rig = model.userData.waiterRig as { arms: Partial<Record<Side, ArmChain>>; blinkU: FaceShaderUniform[] } | undefined;
     if (rig && bodyRef.current && rootRef.current) {
       const ph = (now + 1.1) % 3.8;
       const bl = wink ? 0 : ph < 0.14 ? Math.sin((ph / 0.14) * Math.PI) : 0;
-      for (const bu of rig.blinkU) bu.value = bl;
+      const mOpen = wink ? 0.65 : job.kind === 'roundEnd' && u >= 0.52 ? 0.80 : job.kind === 'medal' ? 0.55 : pouring ? 0.35 : 0.25;
+      const mSmile = wink || (job.kind === 'roundEnd' && u >= 0.52) || job.kind === 'medal' ? 0.42 : 0.28;
+      const mCov = THREE.MathUtils.smoothstep(mOpen, 0.02, 0.14);
+      for (const bu of rig.blinkU) {
+        bu.value = bl;
+        bu.mouth?.set(mOpen, mSmile, 1.02, mCov);
+      }
 
       const swing = Math.sin(u * 42) * 0.085;
       let tL: V3 = [-0.24, 0.28, 0.08 + swing], wL = 0.72, cL = 0.3;
@@ -655,6 +662,7 @@ export const OrangeWaiter = memo(function OrangeWaiter({ L, view, level }: { L: 
         if (sd === 'R' && wink) {
           arm.hand.quaternion.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), Math.sin((u - 0.55) * 58) * 0.35));
         }
+        stepArmSmoothing(arm, dt);
       }
 
       if (rig.arms.L && towelRef.current) {
