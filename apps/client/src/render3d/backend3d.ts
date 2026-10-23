@@ -248,7 +248,7 @@ async function stageDraw(seat: number, face: CardFace | null): Promise<void> {
   const reachH = Math.sqrt(Math.max(0, (len * 1.12) ** 2 - (sh.y - tableY) ** 2));
   const shAlong = sh.clone().sub(c).dot(dirIn);
   // just inside the rim at least (the current casino room seats are far from the table: the hand meets the card there)
-  const along = Math.max(c.length() - TABLE_R + 0.035, Math.min(shAlong + reachH * 0.92, c.length() - 0.25));
+  const along = Math.max(c.length() - TABLE_R + 0.06, Math.min(shAlong + reachH * 0.96, c.length() - 0.22));
   const P = c.clone().addScaledVector(dirIn, along); P.y = tableY;
   // a little to the reaching arm's side
   const lat = sh.clone().sub(c); lat.y = 0; lat.addScaledVector(dirIn, -lat.dot(dirIn)); P.addScaledVector(lat, 0.6);

@@ -134,6 +134,32 @@ coming from another job), order = capture hook -> anim system -> re-rig + 2-bone
      forearms/hands in sleeve + skin colours, pixel-by-pixel check on head/face/glasses).
   2. Per-character eyelid meshes or scale/UV blink.
 
+## Run 6 (2026-10-23) — Ammar's 4-bone arms (0 face pixel diff), all-character eyelid blink, and garden terrace reach tuning (LIVE on main)
+- **Ammar's arms (`tools/character-pipeline/rig_ammar.mjs`, `ammar.glb`, `ammar-low.glb`):**
+  - Tucked the old fused bare forearms (`y in [0.365, 0.615]`) flush into a smooth closed trouser-pocket and shirt
+    flank contour (`|x| ≈ 0.098`) and reassigned the old forearm skin UVs on the flank to his black cloth UV (`[412.5, 174.5]`
+    at flat normal `[128, 128, 255]`), weighted 100% to `spine`/`hips` so his shirt, backpack straps, and trousers never
+    stretch when his arms move.
+  - Modelled stylised short-sleeved arms + bare forearms + rounded hands with thumbs in his exact sleeve (`RGB [26,25,26]`)
+    and warm tan skin (`RGB [192,126,87]`) atlas texels, rigged with the same 4-bone chain (`armL/R -> _fore -> _hand -> _curl`).
+  - Kept every vertex with `y >= 0.615` (neck, head, face, hair, ears), all 8 glasses/chain meshes, and both textures
+    100% bit-for-bit identical. Verified in neutral before/after renders (`/workspace/sb/anim/ammar-arms-before-after.jpg`):
+    **0 pixel difference (`maxDiff = 0, pixels > 0 = 0`)** across his face, hair, and glasses.
+- **Blink support across all 7 characters (`Figures.tsx`, `actors.ts`, `backend3d.ts`):**
+  - Added `attachBlinkShader` (`onBeforeCompile` on `MeshStandardMaterial`) using rest-pose unit-height bind coordinates
+    (`vBindP`, computed before `#include <skinning_vertex>` so eyelids stay locked to the face as the head turns/nods)
+    and modifying both `diffuseColor.rgb` and `totalEmissiveRadiance` (`#include <emissivemap_fragment>`) so eyelids are
+    100% opaque with a curved dark lash line and never clip through 3D glasses.
+  - Organic `3.5–4.6 s` blink cycle with occasional double-blinks, surprised flutter on `surprised` mood or penalty card
+    reception (`blinkUntil`), and a subtle `0.32` focused squint during card peeks.
+  - Visual proof across all 7 characters (open vs closed): `/workspace/sb/anim/blink-all-characters.jpg`.
+- **Garden terrace integration (`TABLE_R = 0.98`, `SEAT_DIST = 1.20`):**
+  - Rebased onto `359eb42` (Golden garden, Sunny picnic, Lantern dusk, Classic room + 3D Orange waiter).
+  - Updated `layout3d.ts` opponent held-card distance to `SEAT_DIST - 0.15` (`1.05 m`) and `backend3d.ts` draw pickup
+    reach so seated characters reach further onto the table cloth without clipping their bodies.
+  - Verified with `pnpm test` (101/101), 3D E2E (`laptop` and `phone` `R3D=1 BOTS=3`), `monkey` (`R3D=1`), and the 12-way
+    every-seat check with Ammar at opponent seats (`/workspace/sb/anim/seatcheck-ammar-sheet.jpg`).
+
 ## Design (next runs)
 1. `render3d/anim/` — per-seat **actor registry**: each figure registers `{ handWorld(side), reach(target, w),
    look(target), lean(x), expr(kind) }`; backend3d resolves `hand-N` to the live hand bone instead of `L.hands`.
