@@ -531,7 +531,7 @@ async function stagePenaltyCard(giver: number | null, toSeat: number, slotId: st
   }
   if (aR && sideR) {
     aR.cmd.arm[sideR] = { target: slotP.clone().setY(0.03), w: 0, curl: 0.5 };
-    aR.cmd.look = deckP.clone(); aR.cmd.lookW = 0.9;
+    aR.cmd.look = deckP.clone(); aR.cmd.lookW = 0.9; aR.cmd.blinkUntil = performance.now() + 520;
   }
   const T = 420 * speedScale(); const t0 = performance.now();
   const cp = new THREE.Vector3();

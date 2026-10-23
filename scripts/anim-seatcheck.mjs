@@ -10,7 +10,7 @@ const errs = [];
 for (const gfx of ['high', 'low']) {
   await Promise.all([1, 2, 3].map(async (bots) => {
     const ctx = await b.newContext(sizes[which]);
-    await ctx.addInitScript((g) => { localStorage.setItem('marlivo.prefs', JSON.stringify({ name: 'Ammar', characterId: 'ammar', speed: 'normal', sound: false, renderer: '3d', graphics: g })); localStorage.setItem('marlivo.lang', 'en'); }, gfx);
+    await ctx.addInitScript((g) => { localStorage.setItem('marlivo.prefs', JSON.stringify({ name: 'Ammar', characterId: 'biscuit', speed: 'normal', sound: false, renderer: '3d', graphics: g })); localStorage.setItem('marlivo.lang', 'en'); }, gfx);
     const p = await ctx.newPage(); p.on('pageerror', (e) => errs.push(`${gfx}/${bots}: ${e.message}`));
     await p.goto(base + '#/practice'); await p.waitForTimeout(800);
     await p.locator('.seg').nth(0).locator('button').nth(bots - 1).click();

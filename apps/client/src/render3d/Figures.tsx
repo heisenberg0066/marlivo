@@ -113,10 +113,73 @@ function pose(r: BoneRig | undefined, x: number, y: number, z: number) {
 
 /** A GLB figure from the manifest: normalised to the seat, animated by its clips or, for rigged figures, by bones.
  *  While the file loads the built-in procedural figure stands in. */
+/** Per-character eye placement in unit-height bind space (y in 0..1, +z forward) and eyelid colour for blinking. */
+const EYE_SPEC: Record<string, { ey: number; eh: number; ex: number; ew: number; col: string }> = {
+  ammar:   { ey: 0.806, eh: 0.025, ex: 0.044, ew: 0.032, col: '#c07e56' },
+  biscuit: { ey: 0.758, eh: 0.034, ex: 0.072, ew: 0.044, col: '#9b643b' },
+  mint:    { ey: 0.725, eh: 0.044, ex: 0.076, ew: 0.052, col: '#9ab8a0' },
+  pepper:  { ey: 0.752, eh: 0.048, ex: 0.082, ew: 0.056, col: '#d89a62' },
+  tango:   { ey: 0.675, eh: 0.052, ex: 0.076, ew: 0.055, col: '#e4832c' },
+  choco:   { ey: 0.692, eh: 0.035, ex: 0.068, ew: 0.042, col: '#5a321e' },
+  sugar:   { ey: 0.680, eh: 0.040, ex: 0.072, ew: 0.046, col: '#ebe5dc' },
+};
+function attachBlinkShader(root: THREE.Object3D, id: string, ryDeg: number): { value: number }[] {
+  const spec = EYE_SPEC[id]; if (!spec) return [];
+  root.updateMatrixWorld(true);
+  let skinned = false;
+  root.traverse((o) => { const m = o as THREE.SkinnedMesh; if (m.isSkinnedMesh) { skinned = true; m.skeleton.update(); } });
+  const box = new THREE.Box3().setFromObject(root, skinned);
+  const sz = box.getSize(new THREE.Vector3()), ctr = box.getCenter(new THREE.Vector3());
+  const sc = sz.y > 0 ? 1 / sz.y : 1;
+  const unitRoot = new THREE.Matrix4()
+    .makeRotationY((ryDeg * Math.PI) / 180)
+    .multiply(new THREE.Matrix4().makeTranslation(-ctr.x * sc, -box.min.y * sc, -ctr.z * sc))
+    .multiply(new THREE.Matrix4().makeScale(sc, sc, sc));
+  const out: { value: number }[] = [];
+  root.traverse((o) => {
+    const m = o as THREE.SkinnedMesh; if (!m.isSkinnedMesh) return;
+    const mt = (m.material as THREE.MeshStandardMaterial).clone();
+    const uBlink = { value: 0 }; out.push(uBlink);
+    const bindMat = unitRoot.clone().multiply(m.matrixWorld);
+    const uEye = new THREE.Vector4(spec.ey, spec.eh, spec.ex, spec.ew);
+    const uLidCol = new THREE.Color(spec.col);
+    mt.onBeforeCompile = (sh) => {
+      sh.uniforms.uBindMat = { value: bindMat };
+      sh.uniforms.uBlink = uBlink;
+      sh.uniforms.uEye = { value: uEye };
+      sh.uniforms.uLidCol = { value: uLidCol };
+      sh.vertexShader = 'uniform mat4 uBindMat;\nvarying vec3 vBindP;\n' + sh.vertexShader.replace(
+        '#include <begin_vertex>',
+        '#include <begin_vertex>\nvBindP = (uBindMat * vec4(transformed, 1.0)).xyz;'
+      );
+      sh.fragmentShader = 'uniform float uBlink;\nuniform vec4 uEye;\nuniform vec3 uLidCol;\nvarying vec3 vBindP;\n' + sh.fragmentShader.replace(
+        '#include <emissivemap_fragment>',
+        `#include <emissivemap_fragment>
+        if (uBlink > 0.01 && vBindP.z > 0.02) {
+          float dx = (abs(vBindP.x) - uEye.z) / uEye.w;
+          float dy = (vBindP.y - uEye.x) / uEye.y;
+          float r2 = dx * dx + dy * dy;
+          if (r2 < 1.0) {
+            float edge = 1.0 - smoothstep(0.72, 1.0, r2);
+            float lidLine = 1.0 - 2.0 * uBlink - 0.15 * (1.0 - dx * dx);
+            float cov = smoothstep(lidLine - 0.15, lidLine + 0.12, dy) * edge;
+            float lash = smoothstep(0.18, 0.0, abs(dy - lidLine)) * edge * step(0.2, uBlink);
+            vec3 lid = mix(uLidCol, uLidCol * 0.22, lash * 0.85);
+            diffuseColor.rgb = mix(diffuseColor.rgb, lid, cov);
+            totalEmissiveRadiance = mix(totalEmissiveRadiance, lid * 0.22, cov);
+          }
+        }`
+      );
+    };
+    m.material = mt;
+  });
+  return out;
+}
+
 function ModelFigure({ e, id, mood, seed, pose: stance, fallback, onFail }: { e: CharacterEntry; id: string; mood: Mood; seed: number; pose: 'sit' | 'stand'; fallback: ReactNode; onFail(): void }) {
   const level = usePrefs().graphics && graphicsLevel();
   const gl = useThree((st) => st.gl);
-  const [obj, setObj] = useState<{ root: THREE.Object3D; mixer: THREE.AnimationMixer; clips: THREE.AnimationClip[]; bones: Record<string, BoneRig>; y0: number } | null>(null);
+  const [obj, setObj] = useState<{ root: THREE.Object3D; mixer: THREE.AnimationMixer; clips: THREE.AnimationClip[]; bones: Record<string, BoneRig>; y0: number; blinkU: { value: number }[] } | null>(null);
   const action = useRef<THREE.AnimationAction | null>(null);
   useEffect(() => {
     let alive = true;
@@ -135,8 +198,9 @@ function ModelFigure({ e, id, mood, seed, pose: stance, fallback, onFail }: { e:
         mt.metalness = 0; // no environment map in the room: metals would render black
         for (const tx of [mt.map, mt.normalMap, mt.emissiveMap]) if (tx && tx.anisotropy !== aniso) { tx.anisotropy = aniso; tx.needsUpdate = true; }
       });
+      const blinkU = attachBlinkShader(root, id, e.rotationY ?? 0);
       normalise(root, stance === 'stand' && e.chair !== false ? { ...e, baseY: -0.12 } : e);
-      setObj({ root, mixer: new THREE.AnimationMixer(root), clips: gltf.animations, bones: rigBones(root, ['body', 'armL', 'armR', 'root', 'hips', 'spine', 'head']), y0: root.position.y });
+      setObj({ root, mixer: new THREE.AnimationMixer(root), clips: gltf.animations, bones: rigBones(root, ['body', 'armL', 'armR', 'root', 'hips', 'spine', 'head']), y0: root.position.y, blinkU });
     });
     return () => { alive = false; };
   }, [e, level, stance, gl]);
@@ -183,10 +247,24 @@ function ModelFigure({ e, id, mood, seed, pose: stance, fallback, onFail }: { e:
     } else if (e.motion === 'person') {
       pose(b.spine, s.nod * 0.3, s.twist, s.tilt * 0.35);
       pose(b.head, s.nod, s.twist * 0.6, s.tilt);
+      pose(b.armL, 0, 0, -s.arm * 0.55); pose(b.armR, 0, 0, s.arm * (think ? 0.2 : 0.55));
     } else if (e.motion === 'animal') { // bear / cat / owl: body sway + head + waving arms (wings)
       pose(b.spine, s.nod * 0.3, s.twist * 0.6, s.tilt * 0.35);
       pose(b.head, s.nod, s.twist * 0.6, s.tilt);
       pose(b.armL, 0, 0, -s.arm * 0.8); pose(b.armR, 0, 0, s.arm * (think ? 0.2 : 0.8));
+    }
+    // organic blink (3.4-4.6 s cycle, occasional double-blink, surprised flutter, and focused peek squint)
+    if (obj.blinkU.length) {
+      const period = 3.5 + (seed % 3) * 0.55;
+      const ph = t % period;
+      let bl = ph < 0.15 ? Math.sin((ph / 0.15) * Math.PI) : ((Math.floor(t / period) % 3 === 1) && ph > 0.22 && ph < 0.36) ? Math.sin(((ph - 0.22) / 0.14) * Math.PI) : 0;
+      const now = performance.now();
+      if (surp || (actor.current?.cmd.blinkUntil && now < actor.current.cmd.blinkUntil)) {
+        bl = Math.max(bl, Math.abs(Math.sin(now * 0.022)));
+      }
+      if (away) bl = Math.max(bl, 0.88);
+      if (actor.current && actor.current.cmd.focus > 0.05) bl = Math.max(bl, actor.current.cmd.focus * 0.32);
+      for (const u of obj.blinkU) u.value = bl;
     }
     applyActor(actor.current, obj.bones, lk.current, dt, t);
   });
