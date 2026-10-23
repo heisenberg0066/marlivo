@@ -1,6 +1,7 @@
 // One real 3D card: two textured faces, a baked soft shadow and a glow for highlights. It eases towards its
 // target place every frame (move, flip with a little hop, peek lift), so view changes never pop.
 import { stagedHidden } from './actors';
+import { updateMyPeekHand } from './backend3d';
 import { memo, useMemo, useRef } from 'react';
 import { useFrame, type ThreeEvent } from '@react-three/fiber';
 import * as THREE from 'three';
@@ -70,15 +71,20 @@ export const Card3D = memo(function Card3D(p: Card3DProps) {
     grp.visible = !stagedHidden.has(p.id); // a character's hand is carrying this card right now
     const tp = p.place.p; const wantFlip = p.up ? Math.PI : 0;
     if (!s.init) { s.x = tp[0]; s.y = tp[1]; s.z = tp[2]; s.yaw = p.place.yaw; s.flip = wantFlip; s.init = true; }
-    const k = 1 - Math.exp(-dt * 11), kf = 1 - Math.exp(-dt * 9);
-    s.x = damp(s.x, tp[0], k); s.y = damp(s.y, tp[1], k); s.z = damp(s.z, tp[2], k);
+    const isMySlot = tp[2] > 0.4;
+    const wantLift = (p.lift ?? 0) > 0.02 && isMySlot ? 0.078 : (p.lift ?? 0);
+    const wantTilt = (p.tilt ?? 0) > 0.1 && isMySlot ? 0.86 : (p.tilt ?? 0);
+    const k = 1 - Math.exp(-dt * 11), kf = 1 - Math.exp(-dt * 10);
+    s.x = damp(s.x, tp[0], k); s.y = damp(s.y, tp[1], k); s.z = damp(s.z, tp[2] + (wantLift > 0.02 && isMySlot ? 0.032 : 0), k);
     s.yaw = angDamp(s.yaw, p.place.yaw, k);
     s.flip = damp(s.flip, wantFlip, kf);
-    s.lift = damp(s.lift, p.lift ?? 0, kf); s.tilt = damp(s.tilt, p.tilt ?? 0, kf);
-    const hop = Math.sin(Math.min(Math.PI, Math.max(0, s.flip))) * 0.07; // a little hop while turning over
-    grp.position.set(s.x, s.y + s.lift + hop, s.z);
+    s.lift = damp(s.lift, wantLift, kf); s.tilt = damp(s.tilt, wantTilt, kf);
+    const hover = wantLift > 0.02 ? Math.sin(state.clock.elapsedTime * 3.8) * 0.0045 : 0;
+    const hop = Math.sin(Math.min(Math.PI, Math.max(0, s.flip))) * 0.085; // Pixar-like hop while turning over
+    grp.position.set(s.x, s.y + s.lift + hover + hop, s.z);
     grp.rotation.set(0, s.yaw, 0);
     inn.rotation.set(s.tilt, 0, s.flip);
+    if (isMySlot && (s.lift > 0.008 || wantLift > 0.008)) updateMyPeekHand(tp, s.lift);
     inn.scale.set(p.place.w, 1, p.place.h);
     const gm = glowRef.current;
     if (gm) {

@@ -160,6 +160,32 @@ coming from another job), order = capture hook -> anim system -> re-rig + 2-bone
   - Verified with `pnpm test` (101/101), 3D E2E (`laptop` and `phone` `R3D=1 BOTS=3`), `monkey` (`R3D=1`), and the 12-way
     every-seat check with Ammar at opponent seats (`/workspace/sb/anim/seatcheck-ammar-sheet.jpg`).
 
+## Run 7 (2026-10-23) — Orange waiter 4-bone arm IK & prop parenting + first-person mySeat hand & Pixar card polish (LIVE on main)
+- **Orange waiter 4-bone arm IK & prop parenting (`render3d/scenes/waiter.tsx`):**
+  - Connected `useWaiterModel` (`tango` / `orange-guy.glb` & `orange-guy-low.glb`) to `findArms`, `solveArm`, `curlArm`,
+    `resetArm`, `handPos`, and `attachBlinkShader`.
+  - **W1 (`visit`):** raises his right hand to his chin while inspecting the cards, then raises `armR` high with elbow
+    and wrist bend to wave at the camera while winking.
+  - **W2 (`refill`):** `armL` bends to carry the folded waiter towel (`towelRef` parented to the forearm/wrist midpoint)
+    while `armR` grips the porcelain teapot handle (`teapotRef` parented to `handPos(arms.R)`) and tilts to pour the amber tea stream.
+  - **W3 (`shuffle`):** brings both hands forward with bent elbows to gather/square the deck, holds both ends of the
+    card-bridge flourish (`±0.18` m), and sets the deck down while bowing.
+  - **W4 (`roundEnd`):** `armR` carries the water glass (`glassRef` parented to `handPos(arms.R)`), winds back and swings
+    forward to splash water droplets on the loser, then claps both hands together in front of his chest while cheering the winner.
+  - **W5 (`medal`):** carries the red velvet cushion (`cushionRef` parented between `handPos(arms.L)` and `handPos(arms.R)`)
+    with both hands, then reaches both hands forward and up to drape the gold medal around the match winner's neck.
+- **Player's own seat (`mySeat`) card handling (`backend3d.ts`, `Card3D.tsx`):**
+  - Added `createFpHand` & `updateMyPeekHand`: a stylised first-person forearm, sleeve cuff, palm, thumb, and curling
+    fingers (matching all 7 characters' exact sleeve and paw/skin palettes, with `raycast = () => {}` so it never intercepts clicks)
+    that reaches in from the bottom edge of the camera view to hold the local player's peeked card and accompany single-card
+    draws, throws, and swaps on the player's half of the table.
+  - Upgraded `Sprite3D.move` and `Card3D` with Pixar-like anticipation (`0..10%` pull-back), `easeOutBack` overshoot settle,
+    banking roll along lateral velocity, and gentle breathing hover on lifted peek cards.
+  - Scaled multi-card penalty duration (`Math.min(380, 640 / count)`) so rapid 4-card penalties never lag behind monkey taps.
+- **Verification:**
+  - `pnpm test` (101/101), 3D E2E (`laptop` and `phone` `R3D=1 BOTS=3`), `monkey` (`R3D=1 N=4`): all pass with 0 failures.
+  - Visual strip: `/workspace/sb/anim/waiter-ik-and-myseat-strip.jpg`.
+
 ## Design (next runs)
 1. `render3d/anim/` — per-seat **actor registry**: each figure registers `{ handWorld(side), reach(target, w),
    look(target), lean(x), expr(kind) }`; backend3d resolves `hand-N` to the live hand bone instead of `L.hands`.

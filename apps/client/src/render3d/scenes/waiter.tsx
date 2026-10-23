@@ -14,6 +14,8 @@ import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeom
 import type { PlayerView } from '@marlivo/engine';
 import type { Layout3, V3 } from '../layout3d';
 import { loadManifest, entryFor, loadModel, normalise } from '../registry';
+import { findArms, solveArm, curlArm, resetArm, handPos, type ArmChain, type Side } from '../actors';
+import { attachBlinkShader } from '../Figures';
 import { propLayout } from './propLayout';
 import { refillTea, teaLevel } from './tea';
 import { shadowMat } from './props';
@@ -80,7 +82,7 @@ const WM = {
 };
 
 /** Procedural outfit pieces attached to the Orange guy's body group. */
-function OutfitMeshes({ outfit, showTowel }: { outfit: WaiterOutfit; showTowel: boolean }) {
+function OutfitMeshes({ outfit, showTowel, towelRef }: { outfit: WaiterOutfit; showTowel: boolean; towelRef?: React.RefObject<THREE.Group> }) {
   const hasBowTie = outfit === 'full' || outfit === 'tuxedo';
   const hasNeckTie = outfit === 'suit' || outfit === 'tie';
   const hasShirt = outfit === 'full' || outfit === 'suit' || outfit === 'tuxedo';
@@ -143,7 +145,7 @@ function OutfitMeshes({ outfit, showTowel }: { outfit: WaiterOutfit; showTowel: 
         </group>
       )}
       {(showTowel || outfit === 'full' || outfit === 'tuxedo') && (
-        <group position={[-0.24, 0.33, 0.11]} rotation={[0.15, 0.1, -0.1]}>
+        <group ref={towelRef} position={[-0.24, 0.33, 0.11]} rotation={[0.15, 0.1, -0.1]}>
           <mesh geometry={WG.rbox} material={WM.towel} scale={[0.055, 0.15, 0.09]} />
           <mesh geometry={WG.box} material={WM.gold} position={[0, -0.06, 0.046]} scale={[0.056, 0.008, 0.005]} />
         </group>
@@ -152,9 +154,9 @@ function OutfitMeshes({ outfit, showTowel }: { outfit: WaiterOutfit; showTowel: 
   );
 }
 
-function TeapotProp({ pouring }: { pouring: boolean }) {
+function TeapotProp({ pouring, propRef }: { pouring: boolean; propRef?: React.RefObject<THREE.Group> }) {
   return (
-    <group position={[0.25, 0.37, 0.16]} rotation={[pouring ? 0.68 : 0.1, -0.25, pouring ? -0.35 : 0]}>
+    <group ref={propRef} position={[0.25, 0.37, 0.16]} rotation={[pouring ? 0.68 : 0.1, -0.25, pouring ? -0.35 : 0]}>
       <mesh geometry={WG.sph} material={WM.porcelain} scale={[0.075, 0.068, 0.075]} />
       <mesh geometry={WG.torus} material={WM.gold} position={[0, 0.052, 0]} rotation={[Math.PI / 2, 0, 0]} scale={0.045} />
       <mesh geometry={WG.sph} material={WM.porcelain} position={[0, 0.06, 0]} scale={[0.042, 0.02, 0.042]} />
@@ -192,9 +194,9 @@ function CardFlourishProp({ phase }: { phase: 'gather' | 'bridge' | 'set' }) {
   );
 }
 
-function CushionAndMedal({ hasMedal }: { hasMedal: boolean }) {
+function CushionAndMedal({ hasMedal, propRef }: { hasMedal: boolean; propRef?: React.RefObject<THREE.Group> }) {
   return (
-    <group position={[0, 0.35, 0.26]} rotation={[0.18, 0, 0]}>
+    <group ref={propRef} position={[0, 0.35, 0.26]} rotation={[0.18, 0, 0]}>
       <mesh geometry={WG.rbox} material={WM.velvet} scale={[0.22, 0.055, 0.18]} />
       {[[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([sx, sz], i) => (
         <mesh key={i} geometry={WG.sph} material={WM.gold} position={[sx! * 0.105, -0.005, sz! * 0.085]} scale={[0.018, 0.026, 0.018]} />
@@ -254,9 +256,12 @@ function useWaiterModel(level: 'high' | 'low') {
           if (mt?.isMeshStandardMaterial) mt.metalness = 0;
         }
       });
+      const blinkU = attachBlinkShader(obj, 'tango', e.rotationY ?? 0);
       normalise(obj, { ...e, height: 0.92, baseY: 0 });
+      const arms = findArms(obj);
       const fb = container.getObjectByName('fallback-egg');
       if (fb) container.remove(fb);
+      container.userData.waiterRig = { arms, blinkU };
       container.add(obj);
     })();
     return () => { alive = false; };
@@ -271,6 +276,10 @@ export const OrangeWaiter = memo(function OrangeWaiter({ L, view, level }: { L: 
   const bodyRef = useRef<THREE.Group>(null);
   const splashRef = useRef<THREE.Group>(null);
   const confettiRef = useRef<THREE.Group>(null);
+  const towelRef = useRef<THREE.Group>(null);
+  const teapotRef = useRef<THREE.Group>(null);
+  const cushionRef = useRef<THREE.Group>(null);
+  const glassRef = useRef<THREE.Mesh>(null);
 
   const stops = useMemo(() => computeWaiterStops(L), [L]);
   const props = useMemo(() => propLayout(L), [L]);
@@ -562,6 +571,116 @@ export const OrangeWaiter = memo(function OrangeWaiter({ L, view, level }: { L: 
       bodyRef.current.rotation.x = lean;
     }
 
+    // Solve 4-bone arm IK (shoulder -> elbow -> wrist -> curl) and parent/follow waiter props
+    const rig = model.userData.waiterRig as { arms: Partial<Record<Side, ArmChain>>; blinkU: { value: number }[] } | undefined;
+    if (rig && bodyRef.current && rootRef.current) {
+      const ph = (now + 1.1) % 3.8;
+      const bl = wink ? 0 : ph < 0.14 ? Math.sin((ph / 0.14) * Math.PI) : 0;
+      for (const bu of rig.blinkU) bu.value = bl;
+
+      const swing = Math.sin(u * 42) * 0.085;
+      let tL: V3 = [-0.24, 0.28, 0.08 + swing], wL = 0.72, cL = 0.3;
+      let tR: V3 = [0.24, 0.28, 0.08 - swing], wR = 0.72, cR = 0.3;
+
+      if (job.kind === 'visit') {
+        if (u >= 0.28 && u < 0.55) {
+          tR = [0.13, 0.45, 0.24]; wR = 0.95; cR = 0.55;
+          tL = [-0.18, 0.33, 0.16]; wL = 0.85; cL = 0.45;
+        } else if (u >= 0.55 && u < 0.78) {
+          const wv = Math.sin((u - 0.55) * 58) * 0.085;
+          tR = [0.26 + wv, 0.60, 0.22]; wR = 1.0; cR = 0.12;
+          tL = [-0.22, 0.32, 0.12]; wL = 0.88; cL = 0.6;
+        }
+      } else if (job.kind === 'refill') {
+        tL = [-0.19, 0.37, 0.21]; wL = 0.95; cL = 0.45;
+        if (pouring) {
+          tR = [0.18, 0.43, 0.27]; wR = 1.0; cR = 0.9;
+        } else {
+          tR = [0.21, 0.39, 0.20]; wR = 0.95; cR = 0.85;
+        }
+      } else if (job.kind === 'shuffle') {
+        if (flourish === 'gather') {
+          const g = Math.sin((u - 0.24) * 45) * 0.03;
+          tL = [-0.09 - g, 0.38, 0.26]; tR = [0.09 + g, 0.38, 0.26];
+          wL = wR = 1.0; cL = cR = 0.75;
+        } else if (flourish === 'bridge') {
+          tL = [-0.18, 0.41, 0.26]; tR = [0.18, 0.41, 0.26];
+          wL = wR = 1.0; cL = cR = 0.85;
+        } else if (flourish === 'set') {
+          tL = [-0.11, 0.31, 0.28]; tR = [0.11, 0.31, 0.28];
+          wL = wR = 0.95; cL = cR = 0.4;
+        }
+      } else if (job.kind === 'roundEnd') {
+        if (u < 0.2) {
+          tR = [0.21, 0.40, 0.20]; wR = 0.95; cR = 0.85;
+        } else if (u < 0.52) {
+          const su = (u - 0.2) / 0.32;
+          tR = su < 0.22 ? [0.26, 0.48, 0.06] : [0.15, 0.48, 0.31];
+          wR = 1.0; cR = su < 0.22 ? 0.9 : 0.45;
+          tL = [-0.20, 0.35, 0.14]; wL = 0.85; cL = 0.4;
+        } else if (u < 0.84) {
+          const clap = Math.abs(Math.sin((u - 0.52) * 75)) * 0.075;
+          tL = [-0.045 - clap, 0.45, 0.25]; tR = [0.045 + clap, 0.45, 0.25];
+          wL = wR = 1.0; cL = cR = 0.25;
+        }
+      } else if (job.kind === 'medal') {
+        if (u < 0.46) {
+          tL = [-0.12, 0.35, 0.25]; tR = [0.12, 0.35, 0.25];
+          wL = wR = 1.0; cL = cR = 0.55;
+        } else if (u < 0.62) {
+          tL = [-0.11, 0.48, 0.31]; tR = [0.11, 0.48, 0.31];
+          wL = wR = 1.0; cL = cR = 0.4;
+        } else if (u < 0.85) {
+          tL = [-0.15, 0.34, 0.23]; wL = 0.95; cL = 0.55;
+          tR = [0.22, 0.52, 0.22]; wR = 0.95; cR = 0.3;
+        } else {
+          tL = [-0.15, 0.34, 0.22]; wL = 0.9; cL = 0.55;
+        }
+      } else if (job.outfit === 'full' || job.outfit === 'tuxedo') {
+        tL = [-0.19, 0.35, 0.18]; wL = 0.9; cL = 0.45;
+      }
+
+      rootRef.current.updateMatrixWorld(true);
+      const bodyCentre = bodyRef.current.localToWorld(new THREE.Vector3(0, 0.38, -0.06));
+      for (const [sd, tLoc, w, curl] of [['L', tL, wL, cL], ['R', tR, wR, cR]] as const) {
+        const arm = rig.arms[sd];
+        if (!arm) continue;
+        arm.up.quaternion.copy(arm.restUp);
+        resetArm(arm);
+        const tWorld = bodyRef.current.localToWorld(new THREE.Vector3(tLoc[0], tLoc[1], tLoc[2]));
+        for (let k = 0; k < 2; k++) solveArm(arm, tWorld, w, bodyCentre);
+        curlArm(arm, curl * w);
+        if (sd === 'R' && wink) {
+          arm.hand.quaternion.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), Math.sin((u - 0.55) * 58) * 0.35));
+        }
+      }
+
+      if (rig.arms.L && towelRef.current) {
+        const fPos = bodyRef.current.worldToLocal(rig.arms.L.fore.getWorldPosition(new THREE.Vector3()));
+        const hPos = bodyRef.current.worldToLocal(handPos(rig.arms.L, new THREE.Vector3()));
+        towelRef.current.position.lerpVectors(fPos, hPos, 0.65).add(new THREE.Vector3(-0.01, -0.02, 0.02));
+      }
+      if (rig.arms.R && teapotRef.current) {
+        const hPos = bodyRef.current.worldToLocal(handPos(rig.arms.R, new THREE.Vector3()));
+        teapotRef.current.position.copy(hPos).add(new THREE.Vector3(0.065, -0.005, 0.015));
+      }
+      if (rig.arms.R && glassRef.current) {
+        const hPos = bodyRef.current.worldToLocal(handPos(rig.arms.R, new THREE.Vector3()));
+        glassRef.current.position.copy(hPos).add(new THREE.Vector3(0.01, 0.01, 0.02));
+        const su = job.kind === 'roundEnd' ? (u - 0.2) / 0.32 : 0;
+        glassRef.current.rotation.set(su >= 0.18 && su <= 1 ? 1.15 : 0.12, 0, 0);
+      }
+      if (rig.arms.L && rig.arms.R && cushionRef.current) {
+        const hL = bodyRef.current.worldToLocal(handPos(rig.arms.L, new THREE.Vector3()));
+        const hR = bodyRef.current.worldToLocal(handPos(rig.arms.R, new THREE.Vector3()));
+        if (u >= 0.46 && u < 0.85) {
+          cushionRef.current.position.copy(hL).add(new THREE.Vector3(0.08, 0.01, 0.02));
+        } else {
+          cushionRef.current.position.lerpVectors(hL, hR, 0.5).add(new THREE.Vector3(0, 0.015, 0.02));
+        }
+      }
+    }
+
     // Update splash droplet meshes directly
     if (showSplash && splashRef.current) {
       splashRef.current.children.forEach((ch, i) => {
@@ -631,15 +750,15 @@ export const OrangeWaiter = memo(function OrangeWaiter({ L, view, level }: { L: 
         <mesh geometry={WG.shadow} material={shadowMat()} position={[0, 0.004, 0]} renderOrder={1} />
         <group ref={bodyRef}>
           <primitive object={model} />
-          {job && <OutfitMeshes outfit={job.outfit} showTowel={job.kind === 'refill'} />}
+          {job && <OutfitMeshes outfit={job.outfit} showTowel={job.kind === 'refill'} towelRef={towelRef} />}
           {flags.wink && (
             <mesh geometry={WG.sph} material={WM.wink} position={[0.055, 0.55, 0.195]} scale={[0.028, 0.012, 0.015]} />
           )}
-          {job?.kind === 'refill' && <TeapotProp pouring={flags.pouring} />}
+          {job?.kind === 'refill' && <TeapotProp pouring={flags.pouring} propRef={teapotRef} />}
           {flags.flourish && <CardFlourishProp phase={flags.flourish} />}
-          {flags.cushionMedal !== 'none' && <CushionAndMedal hasMedal={flags.cushionMedal === 'with'} />}
+          {flags.cushionMedal !== 'none' && <CushionAndMedal hasMedal={flags.cushionMedal === 'with'} propRef={cushionRef} />}
           {flags.glass && (
-            <mesh geometry={WG.cyl} material={WM.glass} position={[0.24, 0.4, 0.16]} scale={[0.028, 0.075, 0.028]} />
+            <mesh ref={glassRef} geometry={WG.cyl} material={WM.glass} position={[0.24, 0.4, 0.16]} scale={[0.028, 0.075, 0.028]} />
           )}
         </group>
       </group>

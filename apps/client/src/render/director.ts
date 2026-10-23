@@ -247,16 +247,16 @@ async function choreograph(prev: PlayerView, u: Update, apply: (ov: Overrides, b
         ov.badges[p.seat] = `+${(p.slots as unknown[]).length}`; ov.moods[p.seat] = 'sad'; apply(ov);
         const deck = deckBox();
         for (const s0 of p.slots as { id: string }[]) {
-          const staged = p.seat !== me ? flyBackend().act?.('penalty', { seat: p.seat, slot: s0.id }) : null;
+          const staged = p.seat !== me ? flyBackend().act?.('penalty', { seat: p.seat, slot: s0.id, count: (p.slots as unknown[]).length }) : null;
           if (staged) { await staged; sfx('plop'); }
           else {
             const to = slotBox(s0.id);
-            if (deck && to) { const s = sprite({ ...deck, w: to.w, h: to.h }); sprites.push(s); await s.move(to, { ms: 420, lift: 60, spin: 360, bounce: true }); sfx('plop'); }
+            if (deck && to) { const s = sprite({ ...deck, w: to.w, h: to.h }); sprites.push(s); await s.move(to, { ms: Math.min(360, Math.round(640 / Math.max(1, (p.slots as unknown[]).length))), lift: 60, spin: 360, bounce: true }); sfx('plop'); }
           }
           delete ov.slot[s0.id]; apply(ov);
         }
         done();
-        await wait(500); delete ov.badges[p.seat]; delete ov.moods[p.seat]; apply(ov);
+        await wait(240); delete ov.badges[p.seat]; delete ov.moods[p.seat]; apply(ov);
         break;
       }
       case 'TEN_GIVEN': {

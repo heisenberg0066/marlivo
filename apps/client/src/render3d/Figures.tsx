@@ -123,7 +123,7 @@ const EYE_SPEC: Record<string, { ey: number; eh: number; ex: number; ew: number;
   choco:   { ey: 0.692, eh: 0.035, ex: 0.068, ew: 0.042, col: '#5a321e' },
   sugar:   { ey: 0.680, eh: 0.040, ex: 0.072, ew: 0.046, col: '#ebe5dc' },
 };
-function attachBlinkShader(root: THREE.Object3D, id: string, ryDeg: number): { value: number }[] {
+export function attachBlinkShader(root: THREE.Object3D, id: string, ryDeg: number): { value: number }[] {
   const spec = EYE_SPEC[id]; if (!spec) return [];
   root.updateMatrixWorld(true);
   let skinned = false;

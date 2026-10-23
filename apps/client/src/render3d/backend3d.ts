@@ -135,32 +135,130 @@ class Sprite3D implements SpriteLike {
     const reduced = getPrefs().reduced;
     const from = { ...this.cur, p: [...this.cur.p] as [number, number, number] };
     const dest = worldOf(to);
-    const lift = reduced ? 0.02 : ((opts.lift ?? 40) / 400) * 1.1 + 0.03;
+    const lift = reduced ? 0.02 : ((opts.lift ?? 40) / 400) * 1.15 + 0.035;
     const spin = reduced ? 0 : ((opts.spin ?? 0) * Math.PI) / 180;
     let dyaw = dest.yaw - from.yaw; while (dyaw > Math.PI) dyaw -= 2 * Math.PI; while (dyaw < -Math.PI) dyaw += 2 * Math.PI;
     if (opts.flipAt) setTimeout(() => this.flip(opts.flipAt!.up), ms * opts.flipAt.at);
     this.moving = true;
+    // If this is a single-card action for the local player's seat (z > 0.45), accompany it with a first-person hand
+    const isMyAction = !reduced && ctx && live.size <= 2 && (from.p[2] > 0.45 || dest.p[2] > 0.45);
+    const me = ctx?.view.you ?? null;
+    const charId = (me !== null ? ctx?.view.seats[me]?.characterId : null) ?? getPrefs().characterId ?? 'ammar';
+    const fp = isMyAction && ctx ? createFpHand(charId) : null;
+    if (fp && ctx) ctx.group.add(fp.root);
+    const dx = dest.p[0] - from.p[0], dz = dest.p[2] - from.p[2];
+    const bankMax = reduced ? 0 : THREE.MathUtils.clamp(dx * 0.36, -0.22, 0.22);
     return new Promise<void>((res) => {
       const t0 = performance.now();
       const frame = () => {
-        if (this.dead) { res(); return; }
+        if (this.dead) { fp?.dispose(); res(); return; }
         const raw = Math.min(1, (performance.now() - t0) / ms);
-        const t = ease(raw);
+        // Pixar-like anticipation (0..0.1) -> smooth easeOutBack curve (0.1..1.0)
+        const t = reduced ? ease(raw) : raw < 0.10 ? -0.035 * Math.sin((raw / 0.10) * Math.PI) : easeOutBack((raw - 0.10) / 0.90, 1.06);
         const c = this.cur;
-        c.p = [lerp(from.p[0], dest.p[0], t), lerp(from.p[1], dest.p[1], t), lerp(from.p[2], dest.p[2], t)];
-        c.yaw = from.yaw + dyaw * t; c.spin = from.spin + spin * t;
-        c.w = lerp(from.w, dest.w, t); c.h = lerp(from.h, dest.h, t);
-        c.tilt = lerp(from.tilt ?? 0, dest.tilt ?? 0, t);
+        c.p = [lerp(from.p[0], dest.p[0], t), lerp(from.p[1], dest.p[1], ease(raw)), lerp(from.p[2], dest.p[2], t)];
+        c.yaw = from.yaw + dyaw * ease(raw); c.spin = from.spin + spin * ease(raw);
+        c.w = lerp(from.w, dest.w, ease(raw)); c.h = lerp(from.h, dest.h, ease(raw));
+        const pitchWave = reduced ? 0 : Math.sin(Math.PI * raw) * 0.12;
+        c.tilt = lerp(from.tilt ?? 0, dest.tilt ?? 0, ease(raw)) + pitchWave;
+        c.roll = bankMax * Math.sin(Math.PI * raw);
         let arc = Math.sin(Math.PI * raw) * lift;
-        if (opts.bounce && raw > 0.85) arc += Math.sin(((raw - 0.85) / 0.15) * Math.PI) * 0.012;
+        if (opts.bounce && raw > 0.82) arc += Math.sin(((raw - 0.82) / 0.18) * Math.PI) * 0.016;
         this.apply(arc);
+        if (fp) {
+          // Hand reaches from bottom edge while the card is on the player's side of the table
+          const nearMe = THREE.MathUtils.clamp((c.p[2] - 0.18) / 0.55, 0, 1) * Math.sin(Math.PI * Math.min(1, raw * 1.15));
+          const hx = c.p[0] + 0.04, hy = c.p[1] + arc - 0.01, hz = c.p[2] + 0.075;
+          fp.root.position.set(lerp(0.18, hx, nearMe), lerp(-0.08, hy, nearMe), lerp(1.08, hz, nearMe));
+          fp.root.rotation.set(0.22 * nearMe, -0.15, c.roll * 0.5);
+          fp.fingers.rotation.x = -0.7 * nearMe;
+          void dz;
+        }
         if (raw < 1) requestAnimationFrame(frame);
-        else { this.moving = false; c.spin = 0; c.yaw = from.yaw + dyaw + spin; res(); }
+        else { fp?.dispose(); this.moving = false; c.spin = 0; c.roll = 0; c.yaw = from.yaw + dyaw + spin; res(); }
       };
       requestAnimationFrame(frame);
     });
   }
   remove() { this.dead = true; cancelAnimationFrame(this.raf); this.root.removeFromParent(); }
+}
+
+
+// ---- First-person hand for the local player's seat (mySeat) ------------------------------------------------
+const FP_PALETTE: Record<string, { paw: string; sleeve: string }> = {
+  ammar:   { paw: '#c07e56', sleeve: '#1e1d20' },
+  biscuit: { paw: '#9b643b', sleeve: '#3b6fb0' },
+  mint:    { paw: '#9ab8a0', sleeve: '#3f8a5a' },
+  pepper:  { paw: '#d87a2e', sleeve: '#a52d26' },
+  tango:   { paw: '#f39a2e', sleeve: '#d97828' },
+  choco:   { paw: '#5a321e', sleeve: '#d4a638' },
+  sugar:   { paw: '#f2ece2', sleeve: '#d8d0c5' },
+};
+const FP_GEO = {
+  sph: new THREE.SphereGeometry(1, 14, 10),
+  cyl: new THREE.CylinderGeometry(1, 1, 1, 12),
+};
+const noRay = () => {};
+function createFpHand(charId: string): { root: THREE.Group; fingers: THREE.Group; dispose(): void } {
+  const pal = FP_PALETTE[charId] ?? FP_PALETTE.ammar!;
+  const pawMat = new THREE.MeshLambertMaterial({ color: pal.paw, emissive: '#180e08' });
+  const sleeveMat = new THREE.MeshLambertMaterial({ color: pal.sleeve, emissive: '#0a0808' });
+  const root = new THREE.Group();
+  root.renderOrder = 6;
+  // Forearm + sleeve cuff extending toward the bottom-right of the camera
+  const sleeve = new THREE.Mesh(FP_GEO.cyl, sleeveMat);
+  sleeve.scale.set(0.036, 0.18, 0.038);
+  sleeve.position.set(0.025, -0.035, 0.14);
+  sleeve.rotation.set(Math.PI * 0.42, 0, -0.18);
+  const forearm = new THREE.Mesh(FP_GEO.cyl, pawMat);
+  forearm.scale.set(0.028, 0.10, 0.030);
+  forearm.position.set(0.012, -0.015, 0.065);
+  forearm.rotation.set(Math.PI * 0.42, 0, -0.18);
+  const palm = new THREE.Mesh(FP_GEO.sph, pawMat);
+  palm.scale.set(0.034, 0.020, 0.040);
+  const thumb = new THREE.Mesh(FP_GEO.sph, pawMat);
+  thumb.scale.set(0.016, 0.013, 0.024);
+  thumb.position.set(-0.028, 0.004, -0.005);
+  thumb.rotation.set(0, 0.45, 0);
+  const fingers = new THREE.Group();
+  fingers.position.set(0, 0.002, -0.028);
+  const tip = new THREE.Mesh(FP_GEO.sph, pawMat);
+  tip.scale.set(0.030, 0.015, 0.024);
+  tip.position.set(0, 0, -0.012);
+  fingers.add(tip);
+  root.add(sleeve, forearm, palm, thumb, fingers);
+  root.traverse((o) => { o.raycast = noRay; });
+  return {
+    root,
+    fingers,
+    dispose: () => { root.removeFromParent(); pawMat.dispose(); sleeveMat.dispose(); },
+  };
+}
+
+let peekHand: { charId: string; h: ReturnType<typeof createFpHand>; lastAt: number } | null = null;
+/** Drives a subtle first-person hand holding the bottom edge of the local player's peeked card. */
+export function updateMyPeekHand(cardPos: [number, number, number], lift: number) {
+  if (!ctx || getPrefs().reduced) return;
+  const me = ctx.view.you;
+  const charId = (me !== null ? ctx.view.seats[me]?.characterId : null) ?? getPrefs().characterId ?? 'ammar';
+  if (lift <= 0.008) {
+    if (peekHand && performance.now() - peekHand.lastAt > 40) { peekHand.h.root.visible = false; }
+    return;
+  }
+  if (!peekHand || peekHand.charId !== charId) {
+    peekHand?.h.dispose();
+    const h = createFpHand(charId);
+    ctx.group.add(h.root);
+    peekHand = { charId, h, lastAt: 0 };
+  }
+  peekHand.lastAt = performance.now();
+  const k = Math.min(1, lift / 0.065);
+  const restX = cardPos[0] + 0.05, restY = -0.04, restZ = cardPos[2] + 0.22;
+  const holdX = cardPos[0] + 0.035, holdY = cardPos[1] + lift * 0.72, holdZ = cardPos[2] + 0.075;
+  peekHand.h.root.visible = true;
+  peekHand.h.root.position.set(lerp(restX, holdX, k), lerp(restY, holdY, k), lerp(restZ, holdZ, k));
+  peekHand.h.root.rotation.set(0.25 * k, -0.15, 0.1 * k);
+  peekHand.h.fingers.rotation.x = -0.65 * k;
 }
 
 const live = new Set<Sprite3D>();
@@ -323,7 +421,7 @@ async function stageThrow(seat: number, face: CardFace | null, pileIdx: number):
   const s = new Sprite3D(boxOf(hold), face, false); live.add(s);
   const cmd = a.cmd.arm[side] ?? { target: handPos(arm), w: 1, curl: 1 };
   a.cmd.arm[side] = cmd; a.cmd.look = startH.clone(); a.cmd.lookW = 0.85;
-  const T = 420 * speedScale(); const t0 = performance.now();
+  const T = Math.min(380, Math.round(640 / Math.max(1, count))) * speedScale(); const t0 = performance.now();
   const hp = new THREE.Vector3(), cp = new THREE.Vector3();
   const yaw0 = hold.yaw; let dy = pilePl.yaw - yaw0; while (dy > Math.PI) dy -= 2 * Math.PI; while (dy < -Math.PI) dy += 2 * Math.PI;
   try {
@@ -513,7 +611,7 @@ async function stageJackSwap(owner: number, slotA: string, slotB: string): Promi
 
 /** 10 give / receive penalty: the card slides from the deck to the target slot; the giver reaches to push it and the
  *  receiver reacts with a surprised lean-back and reaches to take it into the slot. */
-async function stagePenaltyCard(giver: number | null, toSeat: number, slotId: string): Promise<void> {
+async function stagePenaltyCard(giver: number | null, toSeat: number, slotId: string, count = 1): Promise<void> {
   if (!ctx) return;
   const L = ctx.layout; const sl = L.slots[slotId]; const deckPl = placeFor('deck');
   if (!sl || !deckPl) return;
@@ -533,7 +631,7 @@ async function stagePenaltyCard(giver: number | null, toSeat: number, slotId: st
     aR.cmd.arm[sideR] = { target: slotP.clone().setY(0.03), w: 0, curl: 0.5 };
     aR.cmd.look = deckP.clone(); aR.cmd.lookW = 0.9; aR.cmd.blinkUntil = performance.now() + 520;
   }
-  const T = 420 * speedScale(); const t0 = performance.now();
+  const T = Math.min(380, Math.round(640 / Math.max(1, count))) * speedScale(); const t0 = performance.now();
   const cp = new THREE.Vector3();
   try {
     for (;;) {
@@ -590,7 +688,7 @@ export const backend3d: FlyBackend = {
     if (kind === 'queenPeek') return has(p.owner) ? stageQueenPeek(p.owner, p.slot) : null;
     if (kind === 'jackSwap') return has(p.owner) ? stageJackSwap(p.owner, p.a, p.b) : null;
     if (kind === 'tenGive') return has(p.owner) || has(p.to) ? stagePenaltyCard(p.owner, p.to, p.slot) : null;
-    if (kind === 'penalty') return has(p.seat) ? stagePenaltyCard(null, p.seat, p.slot) : null;
+    if (kind === 'penalty') return has(p.seat) ? stagePenaltyCard(null, p.seat, p.slot, p.count ?? 1) : null;
     return null;
   },
   release: (seat) => releaseSeat(seat),
