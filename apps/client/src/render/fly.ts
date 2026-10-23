@@ -84,7 +84,10 @@ export interface FlyBackend {
   clear(): void;
   /** Optional: a renderer that can stage a whole action itself (3D: a character's hand carries the card).
    *  Returns null when it cannot (no rigged character there), and the caller falls back to plain flights. */
-  act?(kind: 'draw', p: { seat: number; face: CardFace | null }): Promise<void> | null;
+  act?(
+    kind: 'draw' | 'throw' | 'swap' | 'matchThrow' | 'queenPeek' | 'jackSwap' | 'tenGive' | 'penalty',
+    p: Record<string, any>,
+  ): Promise<void> | null;
   /** The seat's character lets go of whatever it holds (its drawn card left its hand). */
   release?(seat: number): void;
   /** Optional: the seat's character peeks at its own card (does not block the caller). True when staged. */

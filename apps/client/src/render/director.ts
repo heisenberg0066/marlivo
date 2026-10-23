@@ -113,7 +113,7 @@ async function choreograph(prev: PlayerView, u: Update, apply: (ov: Overrides, b
     const p = e.p as Record<string, any>;
     const pv = e.priv as Record<string, any> | undefined;
     const b = bannerFor(e, next); if (b) banner(b);
-    captureHook(e.t, (p.seat ?? p.by ?? p.to) as number | undefined, me);
+    captureHook(e.t, (p.seat ?? p.owner ?? p.by ?? p.to) as number | undefined, me);
     switch (e.t) {
       case 'DICE_ROLLED': {
         sfx('dice');
@@ -168,9 +168,11 @@ async function choreograph(prev: PlayerView, u: Update, apply: (ov: Overrides, b
         break;
       }
       case 'THROWN': {
+        const i = nextPileIndex();
+        const staged = p.seat !== me ? flyBackend().act?.('throw', { seat: p.seat, face: p.card, pileIdx: i }) : null;
+        if (staged) { await staged; sfx('slap'); ov.pileHide = Math.max(0, ov.pileHide - 1); apply(ov); done(); break; }
         flyBackend().release?.(p.seat);
         const from = pre.get(p.seat === me ? 'hand-me' : `hand-${p.seat}`) ?? handBox(p.seat, me);
-        const i = nextPileIndex();
         const to = pileBox(i);
         if (from && to) {
           const s = sprite(from, p.card, p.seat === me); sprites.push(s);
@@ -181,10 +183,13 @@ async function choreograph(prev: PlayerView, u: Update, apply: (ov: Overrides, b
         break;
       }
       case 'SWAPPED': {
+        const i = nextPileIndex();
+        const staged = p.seat !== me ? flyBackend().act?.('swap', { seat: p.seat, slot: p.slot, out: p.out, pileIdx: i }) : null;
+        if (staged) { sfx('slide'); await staged; sfx('slap'); delete ov.slot[p.slot]; ov.pileHide = Math.max(0, ov.pileHide - 1); apply(ov); done(); break; }
         flyBackend().release?.(p.seat);
         const fromHand = pre.get(p.seat === me ? 'hand-me' : `hand-${p.seat}`) ?? handBox(p.seat, me);
         const slot = pre.get('slot:' + p.slot) ?? slotBox(p.slot);
-        const i = nextPileIndex(); const pile = pileBox(i);
+        const pile = pileBox(i);
         const ps: Promise<void>[] = [];
         if (slot && pile) {
           const out = sprite(slot, p.out, false); sprites.push(out);
@@ -219,8 +224,12 @@ async function choreograph(prev: PlayerView, u: Update, apply: (ov: Overrides, b
             const f = ov.slot[id]?.show;
             delete ov.slot[id]; apply(ov);
             if (from && to && f && f !== 'back') {
-              const s = sprite(from, f, true); sprites.push(s);
-              await s.move(to, { ms: 360, lift: 70, spin: (Math.random() - 0.5) * 90, bounce: true });
+              const staged = p.seat !== me ? flyBackend().act?.('matchThrow', { seat: p.seat, slot: id, face: f, pileIdx: i }) : null;
+              if (staged) { await staged; }
+              else {
+                const s = sprite(from, f, true); sprites.push(s);
+                await s.move(to, { ms: 360, lift: 70, spin: (Math.random() - 0.5) * 90, bounce: true });
+              }
               sfx('slap');
               ov.pileHide = Math.max(0, ov.pileHide - 1); apply(ov);
             } else { ov.pileHide = Math.max(0, ov.pileHide - 1); }
@@ -238,8 +247,12 @@ async function choreograph(prev: PlayerView, u: Update, apply: (ov: Overrides, b
         ov.badges[p.seat] = `+${(p.slots as unknown[]).length}`; ov.moods[p.seat] = 'sad'; apply(ov);
         const deck = deckBox();
         for (const s0 of p.slots as { id: string }[]) {
-          const to = slotBox(s0.id);
-          if (deck && to) { const s = sprite({ ...deck, w: to.w, h: to.h }); sprites.push(s); await s.move(to, { ms: 420, lift: 60, spin: 360, bounce: true }); sfx('plop'); }
+          const staged = p.seat !== me ? flyBackend().act?.('penalty', { seat: p.seat, slot: s0.id }) : null;
+          if (staged) { await staged; sfx('plop'); }
+          else {
+            const to = slotBox(s0.id);
+            if (deck && to) { const s = sprite({ ...deck, w: to.w, h: to.h }); sprites.push(s); await s.move(to, { ms: 420, lift: 60, spin: 360, bounce: true }); sfx('plop'); }
+          }
           delete ov.slot[s0.id]; apply(ov);
         }
         done();
@@ -248,20 +261,28 @@ async function choreograph(prev: PlayerView, u: Update, apply: (ov: Overrides, b
       }
       case 'TEN_GIVEN': {
         sfx('whoosh');
-        const deck = deckBox(); const to = slotBox(p.slot);
-        if (deck && to) { const s = sprite({ ...deck, w: to.w, h: to.h }); sprites.push(s); await s.move(to, { ms: 620, lift: 25, spin: 720 }); sfx('plop'); }
+        const staged = flyBackend().act?.('tenGive', { owner: p.owner, to: p.to, slot: p.slot });
+        if (staged) { await staged; sfx('plop'); }
+        else {
+          const deck = deckBox(); const to = slotBox(p.slot);
+          if (deck && to) { const s = sprite({ ...deck, w: to.w, h: to.h }); sprites.push(s); await s.move(to, { ms: 620, lift: 25, spin: 720 }); sfx('plop'); }
+        }
         ov.moods[p.to] = 'surprised'; delete ov.slot[p.slot]; apply(ov); done();
         await wait(400); delete ov.moods[p.to]; apply(ov);
         break;
       }
       case 'JACK_SWAPPED': {
         sfx('whoosh');
-        const A = pre.get('slot:' + p.a) ?? slotBox(p.a), B = pre.get('slot:' + p.b) ?? slotBox(p.b);
-        const A2 = slotBox(p.a), B2 = slotBox(p.b);
-        if (A && B && A2 && B2) {
-          const sa = sprite(A), sb = sprite(B); sa.addClass('gold-trail'); sb.addClass('gold-trail'); sprites.push(sa, sb);
-          await Promise.all([sa.move(sizeLike(B2, B2), { ms: 720, lift: 70 }), sb.move(sizeLike(A2, A2), { ms: 720, lift: 20 })]);
-          sfx('slide');
+        const staged = p.owner !== me ? flyBackend().act?.('jackSwap', { owner: p.owner, a: p.a, b: p.b }) : null;
+        if (staged) { await staged; sfx('slide'); }
+        else {
+          const A = pre.get('slot:' + p.a) ?? slotBox(p.a), B = pre.get('slot:' + p.b) ?? slotBox(p.b);
+          const A2 = slotBox(p.a), B2 = slotBox(p.b);
+          if (A && B && A2 && B2) {
+            const sa = sprite(A), sb = sprite(B); sa.addClass('gold-trail'); sb.addClass('gold-trail'); sprites.push(sa, sb);
+            await Promise.all([sa.move(sizeLike(B2, B2), { ms: 720, lift: 70 }), sb.move(sizeLike(A2, A2), { ms: 720, lift: 20 })]);
+            sfx('slide');
+          }
         }
         delete ov.slot[p.a]; delete ov.slot[p.b]; apply(ov); done();
         break;
@@ -269,7 +290,9 @@ async function choreograph(prev: PlayerView, u: Update, apply: (ov: Overrides, b
       case 'QUEEN_PEEKED': {
         sfx('shh');
         ov.slot[p.slot] = { ...(ov.slot[p.slot] ?? {}), cls: 'queen-glow' }; apply(ov);
-        await wait(1300); delete ov.slot[p.slot]; apply(ov);
+        const staged = p.owner !== me ? flyBackend().act?.('queenPeek', { owner: p.owner, slot: p.slot }) : null;
+        if (staged) await staged; else await wait(1300);
+        delete ov.slot[p.slot]; apply(ov);
         break;
       }
       case 'PEEK_PICKED': sfx('flip'); if (p.seat !== me) flyBackend().peek?.(p.seat, p.slot); break;

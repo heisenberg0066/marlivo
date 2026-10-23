@@ -121,7 +121,7 @@ class Sprite3D implements SpriteLike {
   }
   private moving = false;
   /** Puts the card at an exact world placement (used while a hand carries it). */
-  setPlace(p: THREE.Vector3, yaw: number, tilt: number, w: number, h: number, roll = 0) { const c = this.cur; c.p = [p.x, p.y, p.z]; c.yaw = yaw; c.tilt = tilt; c.w = w; c.h = h; c.roll = roll; c.flip = 0; c.spin = 0; this.apply(); }
+  setPlace(p: THREE.Vector3, yaw: number, tilt: number, w: number, h: number, roll = 0, flip = 0) { const c = this.cur; c.p = [p.x, p.y, p.z]; c.yaw = yaw; c.tilt = tilt; c.w = w; c.h = h; c.roll = roll; c.flip = flip; c.spin = 0; this.apply(); }
   flip(up: boolean, ms = 260) { this.flipAnim = { from: this.cur.flip, to: up ? Math.PI : 0, t0: performance.now(), ms: Math.max(1, ms * speedScale()) }; }
   setFace(f: CardFace) { this.face.material = faceMat(f, ctx?.four ?? false); this.face.visible = true; }
   addClass(c: string) {
@@ -305,6 +305,261 @@ async function stageDraw(seat: number, face: CardFace | null): Promise<void> {
   holds.set(seat, { side, target: cmd.target, until: performance.now() + 30000 });
   a.cmd.lookW = 0.5; a.cmd.focus = 0;
 }
+
+/** Throw a held card to the discard pile: the holding hand swings forward to the rim, opens its paw, and releases
+ *  the card onto the pile as it flips face-up. */
+async function stageThrow(seat: number, face: CardFace | null, pileIdx: number): Promise<void> {
+  if (!ctx) return;
+  const L = ctx.layout; const a = actorFor(seat); const hold = L.hands[seat]; const ch = L.chars[seat];
+  const pilePl = placeFor('pile:' + pileIdx) ?? placeFor('pile-next');
+  if (!a || !hold || !ch || !pilePl) return;
+  const h = holds.get(seat); holds.delete(seat);
+  const pileP = new THREE.Vector3(...pilePl.p);
+  const side: Side = h?.side ?? (Object.keys(a.arms) as Side[]).sort((x, y) => shoulderPos(a.arms[x]!).distanceTo(pileP) - shoulderPos(a.arms[y]!).distanceTo(pileP))[0]!;
+  const arm = a.arms[side]!;
+  const c = new THREE.Vector3(...ch.p); const dir = pileP.clone().sub(c).setY(0).normalize();
+  const relP = c.clone().addScaledVector(dir, Math.max(c.length() - TABLE_R + 0.05, 0.24)); relP.y = 0.08;
+  const startH = new THREE.Vector3(...hold.p);
+  const s = new Sprite3D(boxOf(hold), face, false); live.add(s);
+  const cmd = a.cmd.arm[side] ?? { target: handPos(arm), w: 1, curl: 1 };
+  a.cmd.arm[side] = cmd; a.cmd.look = startH.clone(); a.cmd.lookW = 0.85;
+  const T = 420 * speedScale(); const t0 = performance.now();
+  const hp = new THREE.Vector3(), cp = new THREE.Vector3();
+  const yaw0 = hold.yaw; let dy = pilePl.yaw - yaw0; while (dy > Math.PI) dy -= 2 * Math.PI; while (dy < -Math.PI) dy += 2 * Math.PI;
+  try {
+    for (;;) {
+      const now = await frame(); const t = Math.min(1, (now - t0) / T);
+      a.cmd.lean = 0.22 * Math.sin(Math.PI * seg(t, 0, 0.85));
+      if (t < 0.48) {
+        const k = easeInOut(t / 0.48);
+        cmd.target.lerpVectors(startH, relP, k); cmd.w = 1; cmd.curl = 1 - easeInOut(seg(t, 0.32, 0.48));
+        handPos(arm, hp); cp.copy(startH).lerp(hp, 0.85);
+        s.setPlace(cp, yaw0 + dy * k * 0.3, (hold.tilt ?? 1.08) * (1 - k * 0.7), hold.w, hold.h, 0, Math.PI * easeInOut(seg(t, 0.2, 0.55)));
+      } else {
+        const k = easeOutBack(seg(t, 0.45, 1), 1.08);
+        const kLin = easeInOut(seg(t, 0.45, 1));
+        cmd.w = 1 - kLin; cmd.curl = 0;
+        cp.lerpVectors(relP, pileP, k); cp.y = THREE.MathUtils.lerp(relP.y, pileP.y, kLin) + Math.sin(Math.PI * kLin) * 0.04;
+        s.setPlace(cp, yaw0 + dy * (0.3 + 0.7 * kLin), (hold.tilt ?? 1.08) * 0.3 * (1 - kLin), hold.w + (pilePl.w - hold.w) * kLin, hold.h + (pilePl.h - hold.h) * kLin, 0, Math.PI);
+      }
+      a.cmd.look!.copy(cp);
+      if (t >= 1) break;
+    }
+  } finally {
+    s.remove(); live.delete(s);
+    delete a.cmd.arm[side]; a.cmd.lean = 0; a.cmd.lookW = 0; a.cmd.look = null;
+  }
+}
+
+/** Swap the held drawn card into a slot and flick the slot's old card onto the pile. */
+async function stageSwap(seat: number, slotId: string, outFace: CardFace | null, pileIdx: number): Promise<void> {
+  if (!ctx) return;
+  const L = ctx.layout; const a = actorFor(seat); const hold = L.hands[seat]; const sl = L.slots[slotId]; const ch = L.chars[seat];
+  const pilePl = placeFor('pile:' + pileIdx) ?? placeFor('pile-next');
+  if (!a || !hold || !sl || !ch || !pilePl) return;
+  const h = holds.get(seat); holds.delete(seat);
+  const slotP = new THREE.Vector3(...sl.p), pileP = new THREE.Vector3(...pilePl.p), holdP = new THREE.Vector3(...hold.p);
+  const side: Side = h?.side ?? (Object.keys(a.arms) as Side[]).sort((x, y) => shoulderPos(a.arms[x]!).distanceTo(slotP) - shoulderPos(a.arms[y]!).distanceTo(slotP))[0]!;
+  const arm = a.arms[side]!;
+  const sIn = new Sprite3D(boxOf(hold), null, false); live.add(sIn);
+  const sOut = new Sprite3D(boxOf(sl), outFace, false); live.add(sOut);
+  const cmd = a.cmd.arm[side] ?? { target: handPos(arm), w: 1, curl: 1 };
+  a.cmd.arm[side] = cmd; a.cmd.look = slotP.clone(); a.cmd.lookW = 0.85;
+  const T = 580 * speedScale(); const t0 = performance.now();
+  const hp = new THREE.Vector3(), cpIn = new THREE.Vector3(), cpOut = new THREE.Vector3();
+  try {
+    for (;;) {
+      const now = await frame(); const t = Math.min(1, (now - t0) / T);
+      a.cmd.lean = 0.25 * Math.sin(Math.PI * seg(t, 0, 0.9));
+      const toSlot = easeInOut(seg(t, 0, 0.55));
+      cmd.target.lerpVectors(holdP, slotP, toSlot);
+      cmd.w = 1 - easeInOut(seg(t, 0.65, 1));
+      cmd.curl = 1 - easeInOut(seg(t, 0.48, 0.65));
+      handPos(arm, hp);
+      cpIn.copy(holdP).lerp(slotP, toSlot); cpIn.lerp(hp, 0.6 * (1 - seg(t, 0.45, 0.6)));
+      cpIn.y += Math.sin(Math.PI * toSlot) * 0.03;
+      sIn.setPlace(cpIn, THREE.MathUtils.lerp(hold.yaw, sl.yaw, toSlot), (hold.tilt ?? 1.08) * (1 - toSlot), sl.w, sl.h);
+      const toPile = easeInOut(seg(t, 0.28, 0.95));
+      cpOut.lerpVectors(slotP, pileP, toPile); cpOut.y += Math.sin(Math.PI * toPile) * 0.05;
+      sOut.setPlace(cpOut, THREE.MathUtils.lerp(sl.yaw, pilePl.yaw, toPile), 0, sl.w, sl.h, 0, Math.PI * easeInOut(seg(t, 0.35, 0.7)));
+      a.cmd.look!.copy(t < 0.5 ? cpIn : cpOut);
+      if (t >= 1) break;
+    }
+  } finally {
+    sIn.remove(); sOut.remove(); live.delete(sIn); live.delete(sOut);
+    delete a.cmd.arm[side]; a.cmd.lean = 0; a.cmd.lookW = 0; a.cmd.look = null;
+  }
+}
+
+/** Throw a matched slot card onto the pile: the character reaches its slot, grabs the card, and flicks it onto the pile. */
+async function stageMatchThrow(seat: number, slotId: string, face: CardFace, pileIdx: number): Promise<void> {
+  if (!ctx) return;
+  const L = ctx.layout; const a = actorFor(seat); const sl = L.slots[slotId]; const ch = L.chars[seat];
+  const pilePl = placeFor('pile:' + pileIdx) ?? placeFor('pile-next');
+  if (!a || !sl || !ch || !pilePl) return;
+  const slotP = new THREE.Vector3(...sl.p), pileP = new THREE.Vector3(...pilePl.p);
+  const side = (Object.keys(a.arms) as Side[]).sort((x, y) => shoulderPos(a.arms[x]!).distanceTo(slotP) - shoulderPos(a.arms[y]!).distanceTo(slotP))[0]!;
+  const arm = a.arms[side]!;
+  const c = new THREE.Vector3(...ch.p); const dir = pileP.clone().sub(c).setY(0).normalize();
+  const relP = slotP.clone().addScaledVector(dir, 0.14); relP.y = 0.06;
+  stagedHidden.add(slotId);
+  const s = new Sprite3D(boxOf(sl), face, true); live.add(s);
+  const start = handPos(arm); const cmd = { target: start.clone(), w: 0, curl: 0 };
+  a.cmd.arm[side] = cmd; a.cmd.look = slotP.clone(); a.cmd.lookW = 0.85;
+  const T = 380 * speedScale(); const t0 = performance.now();
+  const cp = new THREE.Vector3();
+  try {
+    for (;;) {
+      const now = await frame(); const t = Math.min(1, (now - t0) / T);
+      a.cmd.lean = 0.24 * Math.sin(Math.PI * t);
+      cmd.w = easeInOut(seg(t, 0, 0.25)) * (1 - easeInOut(seg(t, 0.65, 1)));
+      if (t < 0.35) cmd.target.lerpVectors(start, slotP, easeInOut(t / 0.35));
+      else cmd.target.lerpVectors(slotP, relP, easeInOut(seg(t, 0.35, 0.7)));
+      cmd.curl = easeInOut(seg(t, 0.25, 0.38)) * (1 - easeInOut(seg(t, 0.55, 0.7)));
+      const fly = easeInOut(seg(t, 0.32, 1));
+      cp.lerpVectors(slotP, pileP, fly); cp.y += Math.sin(Math.PI * fly) * 0.055;
+      s.setPlace(cp, THREE.MathUtils.lerp(sl.yaw, pilePl.yaw, fly), 0, sl.w, sl.h, 0, Math.PI);
+      a.cmd.look!.copy(cp);
+      if (t >= 1) break;
+    }
+  } finally {
+    s.remove(); live.delete(s); stagedHidden.delete(slotId);
+    delete a.cmd.arm[side]; a.cmd.lean = 0; a.cmd.lookW = 0; a.cmd.look = null;
+  }
+}
+
+/** Queen peek: if the card is the owner's own slot, use stagePeek; if it's an opponent's slot, lean + reach toward it
+ *  while the card slides slightly toward the peeking player, lifts for a look, and slides back. */
+async function stageQueenPeek(owner: number, slotId: string): Promise<void> {
+  if (!ctx) return;
+  const sl = ctx.layout.slots[slotId]; if (!sl) return;
+  if (sl.owner === owner) { await stagePeek(owner, slotId); return; }
+  const a = actorFor(owner); const ch = ctx.layout.chars[owner]; if (!a || !ch) return;
+  const slotP = new THREE.Vector3(...sl.p), c = new THREE.Vector3(...ch.p);
+  const side = (Object.keys(a.arms) as Side[]).sort((x, y) => shoulderPos(a.arms[x]!).distanceTo(slotP) - shoulderPos(a.arms[y]!).distanceTo(slotP))[0]!;
+  const arm = a.arms[side]!;
+  const dir = slotP.clone().sub(c).setY(0).normalize();
+  const reachP = c.clone().addScaledVector(dir, Math.max(c.length() - TABLE_R + 0.04, 0.25)); reachP.y = 0.06;
+  const head = new THREE.Vector3(); (a.head ?? a.root).getWorldPosition(head);
+  const lookSpot = reachP.clone().lerp(head, 0.35); lookSpot.y = 0.18;
+  stagedHidden.add(slotId);
+  const s = new Sprite3D(boxOf(sl), null, false); s.addClass('gold-trail'); live.add(s);
+  const start = handPos(arm); const cmd = { target: start.clone(), w: 0, curl: 0 };
+  a.cmd.arm[side] = cmd; a.cmd.look = slotP.clone(); a.cmd.lookW = 0.9;
+  const T = 1150 * speedScale(); const t0 = performance.now();
+  const cp = new THREE.Vector3();
+  const yawOwner = ctx.layout.seats[owner]?.a ?? sl.yaw;
+  try {
+    for (;;) {
+      const now = await frame(); const t = Math.min(1, (now - t0) / T);
+      const io = easeInOut(seg(t, 0, 0.35)) * (1 - easeInOut(seg(t, 0.72, 1)));
+      a.cmd.lean = 0.28 * io; a.cmd.focus = io;
+      cmd.w = easeInOut(seg(t, 0.04, 0.25)) * (1 - easeInOut(seg(t, 0.82, 1)));
+      cmd.target.lerpVectors(start, reachP, io);
+      cmd.curl = 0.85 * io;
+      cp.lerpVectors(slotP, lookSpot, io);
+      const camYaw = yawOwner - Math.sin(yawOwner) * 0.42;
+      s.setPlace(cp, THREE.MathUtils.lerp(sl.yaw, camYaw, io), 1.02 * io, sl.w, sl.h, (side === 'L' ? -0.14 : 0.14) * io);
+      a.cmd.look!.copy(cp);
+      if (t >= 1) break;
+    }
+  } finally {
+    s.remove(); live.delete(s); stagedHidden.delete(slotId);
+    delete a.cmd.arm[side]; a.cmd.lean = 0; a.cmd.focus = 0; a.cmd.lookW = 0; a.cmd.look = null;
+  }
+}
+
+/** Jack swap: the owner reaches out with both hands (or its reaching hand) while the two cards slide low across the table. */
+async function stageJackSwap(owner: number, slotA: string, slotB: string): Promise<void> {
+  if (!ctx) return;
+  const L = ctx.layout; const slA = L.slots[slotA], slB = L.slots[slotB]; if (!slA || !slB) return;
+  const a = actorFor(owner); const ch = L.chars[owner];
+  const pA = new THREE.Vector3(...slA.p), pB = new THREE.Vector3(...slB.p);
+  stagedHidden.add(slotA); stagedHidden.add(slotB);
+  const sA = new Sprite3D(boxOf(slA), null, false), sB = new Sprite3D(boxOf(slB), null, false);
+  sA.addClass('gold-trail'); sB.addClass('gold-trail'); live.add(sA); live.add(sB);
+  const c = ch ? new THREE.Vector3(...ch.p) : new THREE.Vector3();
+  if (a && ch) {
+    for (const [sd, targetP] of [['L', pA], ['R', pB]] as [Side, THREE.Vector3][]) {
+      const arm = a.arms[sd]; if (!arm) continue;
+      const d = targetP.clone().sub(c).setY(0).normalize();
+      const rp = c.clone().addScaledVector(d, Math.max(c.length() - TABLE_R + 0.04, 0.24)); rp.y = 0.05;
+      a.cmd.arm[sd] = { target: rp, w: 0, curl: 0.6 };
+    }
+    a.cmd.look = pA.clone().add(pB).multiplyScalar(0.5); a.cmd.lookW = 0.85;
+  }
+  const T = 820 * speedScale(); const t0 = performance.now();
+  const cA = new THREE.Vector3(), cB = new THREE.Vector3();
+  try {
+    for (;;) {
+      const now = await frame(); const t = Math.min(1, (now - t0) / T);
+      const k = easeInOut(t), arch = Math.sin(Math.PI * t);
+      if (a) {
+        a.cmd.lean = 0.24 * arch;
+        for (const cmd of Object.values(a.cmd.arm)) if (cmd) cmd.w = arch * 0.9;
+      }
+      cA.lerpVectors(pA, pB, k); cA.z += arch * 0.05; cA.y = CARD_T * 2 + arch * 0.035;
+      cB.lerpVectors(pB, pA, k); cB.z -= arch * 0.05; cB.y = CARD_T * 2 + arch * 0.015;
+      sA.setPlace(cA, THREE.MathUtils.lerp(slA.yaw, slB.yaw, k), 0, slB.w, slB.h);
+      sB.setPlace(cB, THREE.MathUtils.lerp(slB.yaw, slA.yaw, k), 0, slA.w, slA.h);
+      if (t >= 1) break;
+    }
+  } finally {
+    sA.remove(); sB.remove(); live.delete(sA); live.delete(sB);
+    stagedHidden.delete(slotA); stagedHidden.delete(slotB);
+    if (a) { a.cmd.arm = {}; a.cmd.lean = 0; a.cmd.lookW = 0; a.cmd.look = null; }
+  }
+}
+
+/** 10 give / receive penalty: the card slides from the deck to the target slot; the giver reaches to push it and the
+ *  receiver reacts with a surprised lean-back and reaches to take it into the slot. */
+async function stagePenaltyCard(giver: number | null, toSeat: number, slotId: string): Promise<void> {
+  if (!ctx) return;
+  const L = ctx.layout; const sl = L.slots[slotId]; const deckPl = placeFor('deck');
+  if (!sl || !deckPl) return;
+  const aG = giver != null ? actorFor(giver) : null;
+  const aR = actorFor(toSeat);
+  const deckP = new THREE.Vector3(...deckPl.p), slotP = new THREE.Vector3(...sl.p);
+  const s = new Sprite3D(boxOf(deckPl), null, false); live.add(s);
+  const sideG = aG ? (Object.keys(aG.arms) as Side[])[0] : undefined;
+  const sideR = aR ? (Object.keys(aR.arms) as Side[]).sort((x, y) => shoulderPos(aR.arms[x]!).distanceTo(slotP) - shoulderPos(aR.arms[y]!).distanceTo(slotP))[0] : undefined;
+  if (aG && sideG && L.chars[giver!]) {
+    const cG = new THREE.Vector3(...L.chars[giver!]!.p);
+    const dG = deckP.clone().sub(cG).setY(0).normalize();
+    aG.cmd.arm[sideG] = { target: cG.clone().addScaledVector(dG, Math.max(cG.length() - TABLE_R + 0.04, 0.24)).setY(0.05), w: 0, curl: 0.5 };
+    aG.cmd.look = slotP.clone(); aG.cmd.lookW = 0.8;
+  }
+  if (aR && sideR) {
+    aR.cmd.arm[sideR] = { target: slotP.clone().setY(0.03), w: 0, curl: 0.5 };
+    aR.cmd.look = deckP.clone(); aR.cmd.lookW = 0.9;
+  }
+  const T = 420 * speedScale(); const t0 = performance.now();
+  const cp = new THREE.Vector3();
+  try {
+    for (;;) {
+      const now = await frame(); const t = Math.min(1, (now - t0) / T);
+      const k = easeInOut(t);
+      cp.lerpVectors(deckP, slotP, k); cp.y = CARD_T * 2 + Math.sin(Math.PI * t) * 0.025;
+      s.setPlace(cp, THREE.MathUtils.lerp(deckPl.yaw, sl.yaw, k), 0, sl.w, sl.h);
+      if (aG && sideG && aG.cmd.arm[sideG]) {
+        const wG = Math.sin(Math.PI * seg(t, 0, 0.65));
+        aG.cmd.lean = 0.2 * wG; aG.cmd.arm[sideG]!.w = wG;
+      }
+      if (aR && sideR && aR.cmd.arm[sideR]) {
+        // surprise pull-back first, then reach to settle the penalty card
+        aR.cmd.lean = t < 0.45 ? -0.14 * Math.sin(Math.PI * (t / 0.45)) : 0.16 * Math.sin(Math.PI * seg(t, 0.45, 1));
+        aR.cmd.arm[sideR]!.w = Math.sin(Math.PI * seg(t, 0.35, 1)) * 0.85;
+        aR.cmd.look!.copy(cp);
+      }
+      if (t >= 1) break;
+    }
+  } finally {
+    s.remove(); live.delete(s);
+    if (aG && sideG) { delete aG.cmd.arm[sideG]; aG.cmd.lean = 0; aG.cmd.lookW = 0; aG.cmd.look = null; }
+    if (aR && sideR) { delete aR.cmd.arm[sideR]; aR.cmd.lean = 0; aR.cmd.lookW = 0; aR.cmd.look = null; }
+  }
+}
+
 export const backend3d: FlyBackend = {
   rect: (key) => { const pl = placeFor(key); return pl ? boxOf(pl) : null; },
   all: () => {
@@ -326,9 +581,17 @@ export const backend3d: FlyBackend = {
   sprite: (from, face, up) => { const s = new Sprite3D(from, face, up); live.add(s); const rm = s.remove.bind(s); s.remove = () => { live.delete(s); rm(); }; return s; },
   clear: () => { for (const s of [...live]) s.remove(); },
   act: (kind, p) => {
-    if (kind !== 'draw' || !ctx || getPrefs().reduced) return null;
-    const a = actorFor(p.seat); if (!a || !Object.keys(a.arms).length) return null;
-    return stageDraw(p.seat, p.face);
+    if (!ctx || getPrefs().reduced) return null;
+    const has = (s: number | null | undefined) => { if (s == null) return false; const a = actorFor(s); return !!(a && Object.keys(a.arms).length); };
+    if (kind === 'draw') return has(p.seat) ? stageDraw(p.seat, p.face) : null;
+    if (kind === 'throw') return has(p.seat) ? stageThrow(p.seat, p.face, p.pileIdx) : null;
+    if (kind === 'swap') return has(p.seat) ? stageSwap(p.seat, p.slot, p.out, p.pileIdx) : null;
+    if (kind === 'matchThrow') return has(p.seat) ? stageMatchThrow(p.seat, p.slot, p.face, p.pileIdx) : null;
+    if (kind === 'queenPeek') return has(p.owner) ? stageQueenPeek(p.owner, p.slot) : null;
+    if (kind === 'jackSwap') return has(p.owner) ? stageJackSwap(p.owner, p.a, p.b) : null;
+    if (kind === 'tenGive') return has(p.owner) || has(p.to) ? stagePenaltyCard(p.owner, p.to, p.slot) : null;
+    if (kind === 'penalty') return has(p.seat) ? stagePenaltyCard(null, p.seat, p.slot) : null;
+    return null;
   },
   release: (seat) => releaseSeat(seat),
   peek: (seat, slot) => { if (!ctx || getPrefs().reduced) return false; const a = actorFor(seat); if (!a || !Object.keys(a.arms).length || !ctx.layout.slots[slot]) return false; queueSeat(seat, () => stagePeek(seat, slot)); return true; },

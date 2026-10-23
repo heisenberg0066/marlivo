@@ -10,6 +10,7 @@ import { OrangeGuy, AmmarFigure } from './Hero';
 import { usePrefs, graphicsLevel } from '../prefs';
 import { loadManifest, entryFor, loadModel, normalise, clipFor, type CharacterEntry, type Placeholder } from './registry';
 import { registerActor, findArms, newCmd, solveArm, curlArm, resetArm, type Actor } from './actors';
+import { getCtx3 } from './backend3d';
 
 const G = {
   sphere: new THREE.SphereGeometry(1, 18, 14),
@@ -193,7 +194,7 @@ function ModelFigure({ e, id, mood, seed, pose: stance, fallback, onFail }: { e:
 }
 
 /** Layers the card-action commands on top of the mood pose: lean, head look-at, arm IK and paw curl. */
-const vT = new THREE.Vector3(), vH = new THREE.Vector3(), vC0 = new THREE.Vector3(), qT = new THREE.Quaternion(), X1 = new THREE.Vector3(1, 0, 0);
+const vT = new THREE.Vector3(), vH = new THREE.Vector3(), vC0 = new THREE.Vector3(), vIdle = new THREE.Vector3(), qT = new THREE.Quaternion(), X1 = new THREE.Vector3(1, 0, 0);
 function applyActor(a: Actor | null, b: Record<string, BoneRig>, lk: { yaw: number; pitch: number }, dt: number, t: number) {
   if (!a) return;
   const c = a.cmd;
@@ -210,16 +211,35 @@ function applyActor(a: Actor | null, b: Record<string, BoneRig>, lk: { yaw: numb
   const leanEff = c.lean * leanScale;
   if (spine && Math.abs(leanEff) > 1e-3) spine.bone.quaternion.multiply(qT.setFromAxisAngle(spine.ax[0], leanEff));
   const hb = b.head ?? b.body;
-  // head look: yaw/pitch towards the target in the figure's own frame, eased, limited like a neck
+  // head look: yaw/pitch towards the action target, or in idle towards the active player / card on the table
   let wy = 0, wp = 0;
-  if (c.look && hb && c.lookW > 0) {
+  let lookTarget = c.look;
+  let lookWeight = c.lookW;
+  if ((!lookTarget || lookWeight <= 0.02) && hb) {
+    const ctx3 = getCtx3();
+    const r = ctx3?.view.round;
+    const L = ctx3?.layout;
+    if (r && L) {
+      const actSeat = r.active?.k === 'attempt' ? r.active.seat : r.active?.k === 'power' ? r.active.owner : r.current;
+      if (actSeat != null && actSeat !== a.seat) {
+        const hp = r.drawn?.by === actSeat ? L.hands[actSeat]?.p : null;
+        const ap = L.areas[actSeat]?.p ?? L.chars[actSeat]?.p;
+        const pt = hp ?? (ap ? [ap[0] * 0.75, 0.14, ap[2] * 0.75] : null);
+        if (pt) { lookTarget = vIdle.set(pt[0], pt[1], pt[2]); lookWeight = 0.42; }
+      } else if (actSeat === a.seat && L.areas[a.seat]) {
+        const ap = L.areas[a.seat]!.p;
+        lookTarget = vIdle.set(ap[0], 0.05, ap[2]); lookWeight = 0.3;
+      }
+    }
+  }
+  if (lookTarget && hb && lookWeight > 0) {
     const fr = a.root.parent ?? a.root; // the seat group: local +z faces the table centre
     fr.updateMatrixWorld(true);
     hb.bone.getWorldPosition(vH);
-    vT.copy(c.look); fr.worldToLocal(vT); const h0 = fr.worldToLocal(vH.clone());
+    vT.copy(lookTarget); fr.worldToLocal(vT); const h0 = fr.worldToLocal(vH.clone());
     vT.sub(h0);
-    wy = THREE.MathUtils.clamp(Math.atan2(vT.x, vT.z), -0.75, 0.75) * c.lookW;
-    wp = THREE.MathUtils.clamp(-Math.atan2(vT.y, Math.hypot(vT.x, vT.z)), -0.3, 0.2) * c.lookW;
+    wy = THREE.MathUtils.clamp(Math.atan2(vT.x, vT.z), -0.75, 0.75) * lookWeight;
+    wp = THREE.MathUtils.clamp(-Math.atan2(vT.y, Math.hypot(vT.x, vT.z)), -0.3, 0.2) * lookWeight;
   }
   const k = Math.min(1, dt * 9);
   lk.yaw += (wy - lk.yaw) * k; lk.pitch += (wp - lk.pitch) * k;

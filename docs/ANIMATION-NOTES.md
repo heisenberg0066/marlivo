@@ -107,6 +107,33 @@ coming from another job), order = capture hook -> anim system -> re-rig + 2-bone
   and nearly edge-on when lifted to the face. Pepper's wing tip stretches a thin feather strip in extreme reaches.
 - IK test page: /workspace/animwork/gt/ik.html (bundled actors.ts via esbuild) for quick per-character checks.
 
+## Run 5 (2026-10-23) — polished draw & peek-own, all actions staged through hands, idle look-at, LIVE on main
+- Polished the three rough spots from Run 4:
+  1. Per-character `leanScale` (`0.28` for one-bone creatures like Orange guy, `0.42` for blocky bodies Choco/Sparkle,
+     `0.48` for animals Biscuit/Mint/Pepper) + capped creature head pitch (`±0.08` rad) so bodies never tip too far.
+  2. Separate-head rigs (Mint, Biscuit, Pepper, Choco, Sparkle) counter-rotate `-leanEff * 0.9` on the neck during a
+     forward spine lean so the crown never dips and the face/glasses stay upright toward the camera.
+  3. Held and peeked cards yaw (`-sin(yaw) * 0.45`, plus `±0.28` for top seat) and roll (`±0.15`) toward the camera
+     so they never read razor-thin / edge-on from any seat.
+- Added idle head look-at (`Figures.tsx`): when not performing an action, each character turns its head to watch the
+  active player (or their held card, or its own cards on its turn).
+- Added hand-staged choreography (`backend3d.ts` + `director.ts`) for all remaining opponent card actions:
+  - `throw` (`THROWN`): holding hand swings to the rim, uncurls, and releases the card face-up onto the discard pile.
+  - `swap` (`SWAPPED`): holding hand places the drawn card into the slot while the outgoing slot card flips to the pile.
+  - `matchThrow` (`ATTEMPT_END` complete): hand reaches the matched slot and flicks the card onto the pile.
+  - `queenPeek` (`QUEEN_PEEKED`): owner leans and reaches toward the target slot (own or opponent's) while the card
+    slides/lifts for a focused look and returns.
+  - `jackSwap` (`JACK_SWAPPED`): owner reaches with both arms while the two cards slide low across the felt with gold trails.
+  - `tenGive` / `penalty` (`TEN_GIVEN`, `PENALTY_DEALT`): card slides low from the deck; giver pushes it, receiver
+    reacts with a surprised pull-back (`lean < 0`) and reaches to settle the card into the slot.
+- Verified:
+  - Every-seat check (`2/3/4p × High/Low × laptop/phone`, 30 s model load): 12/12 clean (`/workspace/sb/anim/seatcheck-sheet.jpg`).
+  - `pnpm test` (82/82), `e2e-solo` laptop & phone (`R3D=1 BOTS=3`), `monkey` (`R3D=1 N=4`): all pass with 0 errors.
+- Next:
+  1. Ammar's free forearms/hands in Blender (cut forearms above trouser pockets, close pockets, model stylised
+     forearms/hands in sleeve + skin colours, pixel-by-pixel check on head/face/glasses).
+  2. Per-character eyelid meshes or scale/UV blink.
+
 ## Design (next runs)
 1. `render3d/anim/` — per-seat **actor registry**: each figure registers `{ handWorld(side), reach(target, w),
    look(target), lean(x), expr(kind) }`; backend3d resolves `hand-N` to the live hand bone instead of `L.hands`.
