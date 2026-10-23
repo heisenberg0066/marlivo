@@ -26,12 +26,12 @@ export function findArms(root: THREE.Object3D): Partial<Record<Side, ArmChain>> 
 }
 
 const vA = new THREE.Vector3(), vB = new THREE.Vector3(), vC = new THREE.Vector3(), vD = new THREE.Vector3(), vE = new THREE.Vector3(), vP = new THREE.Vector3();
-const qA = new THREE.Quaternion(), qB = new THREE.Quaternion(), qC = new THREE.Quaternion(), qI = new THREE.Quaternion();
+const qA = new THREE.Quaternion(), qB = new THREE.Quaternion(), qC = new THREE.Quaternion(), qI = new THREE.Quaternion(), qW = new THREE.Quaternion();
 /** Rotates a bone (in world space) so its from-direction turns to the to-direction, blended by w. */
 function aim(bone: THREE.Object3D, from: THREE.Vector3, to: THREE.Vector3, w: number) {
   if (from.lengthSq() < 1e-10 || to.lengthSq() < 1e-10) return;
-  qA.setFromUnitVectors(from.clone().normalize(), to.clone().normalize());
-  qA.slerpQuaternions(qI, qA, w);
+  qW.setFromUnitVectors(from.clone().normalize(), to.clone().normalize());
+  qA.slerpQuaternions(qI, qW, w); // (slerpQuaternions copies its first argument into this: keep them distinct)
   bone.getWorldQuaternion(qB);
   qB.premultiply(qA);
   bone.parent!.getWorldQuaternion(qC).invert();

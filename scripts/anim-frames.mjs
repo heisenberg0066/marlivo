@@ -29,6 +29,7 @@ await p.locator('.seg').nth(0).locator('button').nth(bots - 1).click();
 await p.locator('button.act.primary').last().click();
 for (let k = 0; k < Number(process.env.LOADMS ?? 30000); k += 1000) { await adv(200, 100); await p.waitForTimeout(800); }
 const state = () => p.evaluate(() => { const v = window.__ml?.view; const r = v?.round; return { n: (v?.log ?? []).length, you: v?.you, phase: v?.phase, cur: r?.current, drawn: r?.drawn?.by, active: r?.active?.k, owner: r?.active?.owner, aseat: r?.active?.seat, peekSlot: r?.active?.peekSlot, buttons: [...document.querySelectorAll('.actions button.act')].map((x) => x.textContent), sel: window.__ml3dHook?.selectable ?? [] }; });
+await p.evaluate(([o, se]) => { window.__mlCapture = { only: o, seat: se, hit: null }; }, [only, SEAT]);
 let seenN = (await state()).n, rec = 0; const t0 = Date.now(); const idx = [];
 while (rec < want && Date.now() - t0 < Number(process.env.MAXMS ?? 900000)) {
   await adv(200, 100);
@@ -43,15 +44,13 @@ while (rec < want && Date.now() - t0 < Number(process.env.MAXMS ?? 900000)) {
     else if (st.active === 'finish') await btn(/Skip|No|Pass|Later/);
     else if (st.cur === st.you && !st.active) { if (st.drawn === st.you) await btn(/Throw/); else await tap(await p.evaluate(() => window.__ml3dHook?.deck())); }
   }
-  const ev = await p.evaluate((n) => (window.__ml?.view?.log ?? []).slice(n).map((e) => ({ t: e.t, seat: e.p?.seat ?? e.p?.by ?? e.p?.to })), seenN);
-  if (!ev.length) continue;
-  seenN += ev.length;
-  const hit = ev.find((e) => only.includes(e.t) && (SEAT === 'any' || (SEAT === 'me') === (e.seat === st.you)));
+  const hit = await p.evaluate(() => { const c = window.__mlCapture; const h = c?.hit; return h ? { ...h, you: window.__ml?.view?.you } : null; });
   if (!hit) continue;
-  const name = `${String(rec).padStart(2, '0')}-${hit.t}-s${hit.seat}${hit.seat === st.you ? 'me' : ''}`;
+  const name = `${String(rec).padStart(2, '0')}-${hit.t}-s${hit.seat}${hit.seat === hit.you ? 'me' : ''}`;
   const dir = `${out}/${name}`; mkdirSync(dir, { recursive: true });
   for (let t = 0; t <= LEN; t += STEP) { await p.screenshot({ path: `${dir}/f${String(t).padStart(5, '0')}.jpg`, type: 'jpeg', quality: 72, timeout: 180000 }); await adv(STEP, STEP); } // one render per saved frame: animations are time-based
   idx.push(name); console.log('recorded', name); rec++;
+  await p.evaluate(() => { window.__mlCapture.hit = null; });
 }
 writeFileSync(`${out}/index.json`, JSON.stringify(idx));
 await b.close();

@@ -195,7 +195,8 @@ async function stageDraw(seat: number, face: CardFace | null): Promise<void> {
   const tableY = CARD_T * 2;
   const reachH = Math.sqrt(Math.max(0, (len * 1.12) ** 2 - (sh.y - tableY) ** 2));
   const shAlong = sh.clone().sub(c).dot(dirIn);
-  const along = Math.max(c.length() - TABLE_R + 0.06, Math.min(shAlong + reachH * 0.92, c.length() - 0.25));
+  // just inside the rim at least (the current casino room seats are far from the table: the hand meets the card there)
+  const along = Math.max(c.length() - TABLE_R + 0.035, Math.min(shAlong + reachH * 0.92, c.length() - 0.25));
   const P = c.clone().addScaledVector(dirIn, along); P.y = tableY;
   // a little to the reaching arm's side
   const lat = sh.clone().sub(c); lat.y = 0; lat.addScaledVector(dirIn, -lat.dot(dirIn)); P.addScaledVector(lat, 0.6);
@@ -214,7 +215,7 @@ async function stageDraw(seat: number, face: CardFace | null): Promise<void> {
   for (;;) {
     const now = await frame(); const t = Math.min(1, (now - t0) / T);
     // body: anticipation back, lean in for the reach, settle back with a little overshoot
-    a.cmd.lean = t < 0.12 ? -0.06 * easeInOut(t / 0.12) : t < 0.45 ? -0.06 + 0.3 * easeInOut(seg(t, 0.12, 0.45)) : 0.24 - 0.24 * easeOutBack(seg(t, 0.45, 0.85), 1.2);
+    a.cmd.lean = t < 0.12 ? -0.06 * easeInOut(t / 0.12) : t < 0.45 ? -0.06 + 0.4 * easeInOut(seg(t, 0.12, 0.45)) : 0.34 - 0.34 * easeOutBack(seg(t, 0.45, 0.85), 1.2);
     // arm: rest -> pickup -> face -> hold
     const r1 = easeInOut(seg(t, 0.1, 0.44)), r2 = easeOutBack(seg(t, 0.47, 0.76), 1.3), r3 = easeInOut(seg(t, 0.84, 1));
     cmd.w = easeInOut(seg(t, 0.06, 0.3));
@@ -226,13 +227,15 @@ async function stageDraw(seat: number, face: CardFace | null): Promise<void> {
     a.cmd.focus = easeInOut(seg(t, 0.55, 0.7)) * (1 - seg(t, 0.85, 1));
     // card: slides on the felt to the pickup point, then rides in the hand
     if (t < 0.45) {
-      const k = easeInOut(seg(t, 0, 0.42));
+      const k = easeInOut(seg(t, 0, 0.4));
       cardPos.lerpVectors(deck, P, k); cardPos.y = tableY + 0.002 + Math.sin(Math.PI * k) * 0.004;
       s.setPlace(cardPos, yaw0 + dy * k, 0, deckPl.w + (cw - deckPl.w) * k, deckPl.h + (chh - deckPl.h) * k);
       a.cmd.look!.copy(cardPos);
     } else {
       handPos(arm, hp); const up = seg(t, 0.45, 0.65);
-      cardPos.copy(hp); cardPos.y += chh * 0.32 * up;
+      // if the hand stopped a little short of the card, the card is drawn into the paw over the grab
+      const g = easeInOut(seg(t, 0.45, 0.55));
+      cardPos.copy(P).lerp(hp, g); cardPos.y += chh * 0.32 * up;
       const tilt = (hold.tilt ?? 1.25) * easeInOut(up);
       if (t > 0.86) cardPos.lerp(new THREE.Vector3(...hold.p), easeInOut(seg(t, 0.86, 1)));
       s.setPlace(cardPos, yawSeat, tilt, cw, chh);

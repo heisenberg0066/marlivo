@@ -40,6 +40,7 @@ if (on) {
   w.__mlAdvance = async (ms: number, frameMs = 1000 / 60) => {
     const end = now + ms;
     while (now < end - 1e-6) {
+      if (w.__mlStop) { w.__mlStop = false; break; } // a capture hook asked to stop right here
       const next = Math.min(end, now + frameMs);
       runTimers(next); now = next; frame();
       await Promise.resolve(); await new Promise((r) => (window as unknown as { __mlRealTimeout: typeof setTimeout }).__mlRealTimeout(r, 0)); // let promises + React commit

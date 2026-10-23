@@ -113,6 +113,7 @@ async function choreograph(prev: PlayerView, u: Update, apply: (ov: Overrides, b
     const p = e.p as Record<string, any>;
     const pv = e.priv as Record<string, any> | undefined;
     const b = bannerFor(e, next); if (b) banner(b);
+    captureHook(e.t, (p.seat ?? p.by ?? p.to) as number | undefined, me);
     switch (e.t) {
       case 'DICE_ROLLED': {
         sfx('dice');
@@ -301,4 +302,13 @@ async function choreograph(prev: PlayerView, u: Update, apply: (ov: Overrides, b
   }
   done();
   if (!getPrefs().reduced) await wait(60);
+}
+
+/** Animation capture (debug/vclock.ts, test only): stops the virtual clock exactly when a wanted event's animation
+ *  starts, so the capture script records it from its first frame. No-op unless a capture script set it up. */
+function captureHook(t: string, seat: number | undefined, me: number | null) {
+  const w = window as unknown as { __mlCapture?: { only: string[]; seat: string; hit: unknown }; __mlStop?: boolean };
+  const c = w.__mlCapture; if (!c || c.hit || !c.only.includes(t)) return;
+  if (c.seat !== 'any' && (c.seat === 'me') !== (seat === me)) return;
+  c.hit = { t, seat }; w.__mlStop = true;
 }
