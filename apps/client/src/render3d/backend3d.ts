@@ -89,7 +89,7 @@ let glowM: THREE.MeshBasicMaterial | null = null;
 
 class Sprite3D implements SpriteLike {
   root = new THREE.Group(); inner = new THREE.Group(); private face: THREE.Mesh; private glow: THREE.Mesh | null = null;
-  private cur: Place3 & { flip: number; spin: number };
+  private cur: Place3 & { flip: number; spin: number; roll?: number };
   private flipAnim: { from: number; to: number; t0: number; ms: number } | null = null;
   private raf = 0; private dead = false;
   constructor(from: Box, face: CardFace | null, up: boolean) {
@@ -112,7 +112,7 @@ class Sprite3D implements SpriteLike {
     const c = this.cur;
     this.root.position.set(c.p[0], c.p[1] + lift + Math.sin(Math.min(Math.PI, Math.max(0, c.flip))) * 0.05, c.p[2]);
     this.root.rotation.set(0, c.yaw + c.spin, 0);
-    this.inner.rotation.set(c.tilt ?? 0, 0, c.flip);
+    this.inner.rotation.set(c.tilt ?? 0, c.roll ?? 0, c.flip);
     this.inner.scale.set(c.w, 1, c.h);
   }
   private step() {
@@ -121,7 +121,7 @@ class Sprite3D implements SpriteLike {
   }
   private moving = false;
   /** Puts the card at an exact world placement (used while a hand carries it). */
-  setPlace(p: THREE.Vector3, yaw: number, tilt: number, w: number, h: number) { const c = this.cur; c.p = [p.x, p.y, p.z]; c.yaw = yaw; c.tilt = tilt; c.w = w; c.h = h; c.flip = 0; c.spin = 0; this.apply(); }
+  setPlace(p: THREE.Vector3, yaw: number, tilt: number, w: number, h: number, roll = 0) { const c = this.cur; c.p = [p.x, p.y, p.z]; c.yaw = yaw; c.tilt = tilt; c.w = w; c.h = h; c.roll = roll; c.flip = 0; c.spin = 0; this.apply(); }
   flip(up: boolean, ms = 260) { this.flipAnim = { from: this.cur.flip, to: up ? Math.PI : 0, t0: performance.now(), ms: Math.max(1, ms * speedScale()) }; }
   setFace(f: CardFace) { this.face.material = faceMat(f, ctx?.four ?? false); this.face.visible = true; }
   addClass(c: string) {
@@ -215,8 +215,11 @@ async function stagePeek(seat: number, slotId: string): Promise<void> {
       const inHand = easeInOut(seg(t, 0.38, 0.46)) * (1 - easeInOut(seg(t, 0.84, 0.9)));
       handPos(arm, hp);
       const up = easeInOut(seg(t, 0.42, 0.6)) * (1 - easeInOut(seg(t, 0.72, 0.86)));
-      cp.copy(slotP).lerp(hp, inHand); cp.y += sl.h * 0.3 * up;
-      s.setPlace(cp, sl.yaw, (sl.tilt ?? 0) + 1.2 * up, sl.w, sl.h);
+      cp.copy(slotP).lerp(hp, inHand); cp.y += sl.h * 0.32 * up;
+      // angle the lifted card toward the camera (yaw + slight roll) so it never reads razor-thin / edge-on
+      const camYawOff = (-Math.sin(sl.yaw) * 0.45 + (Math.cos(sl.yaw) < -0.5 ? (side === 'L' ? 0.28 : -0.28) : 0)) * up;
+      const rollOff = (side === 'L' ? -0.16 : 0.16) * up;
+      s.setPlace(cp, sl.yaw + camYawOff, (sl.tilt ?? 0) + 1.08 * up, sl.w, sl.h, rollOff);
       a.cmd.look!.copy(cp);
       if (t >= 1) break;
     }
@@ -281,13 +284,19 @@ async function stageDraw(seat: number, face: CardFace | null): Promise<void> {
       s.setPlace(cardPos, yaw0 + dy * k, 0, deckPl.w + (cw - deckPl.w) * k, deckPl.h + (chh - deckPl.h) * k);
       a.cmd.look!.copy(cardPos);
     } else {
-      handPos(arm, hp); const up = seg(t, 0.45, 0.65);
+      handPos(arm, hp); const up = seg(t, 0.45, 0.62);
       // if the hand stopped a little short of the card, the card is drawn into the paw over the grab
       const g = easeInOut(seg(t, 0.45, 0.55));
-      cardPos.copy(P).lerp(hp, g); cardPos.y += chh * 0.32 * up;
-      const tilt = (hold.tilt ?? 1.25) * easeInOut(up);
-      if (t > 0.86) cardPos.lerp(new THREE.Vector3(...hold.p), easeInOut(seg(t, 0.86, 1)));
-      s.setPlace(cardPos, yawSeat, tilt, cw, chh);
+      cardPos.copy(P).lerp(hp, g); cardPos.y += chh * 0.34 * up;
+      const tilt = (hold.tilt ?? 1.08) * easeOutBack(up, 1.05);
+      const settle = easeInOut(seg(t, 0.84, 1));
+      if (t > 0.84) cardPos.lerp(new THREE.Vector3(...hold.p), settle);
+      // yaw/roll toward the camera while lifted and in the hold spot so the card is never edge-on
+      const holdYaw = hold.yaw ?? yawSeat;
+      const liftYaw = yawSeat - Math.sin(yawSeat) * 0.45 + (Math.cos(yawSeat) < -0.5 ? (side === 'L' ? 0.28 : -0.28) : 0);
+      const cardYaw = yawSeat + (liftYaw - yawSeat) * easeInOut(up) * (1 - settle) + (holdYaw - yawSeat) * settle;
+      const rollOff = (side === 'L' ? -0.15 : 0.15) * easeInOut(up) * (1 - 0.5 * settle);
+      s.setPlace(cardPos, cardYaw, tilt, cw, chh, rollOff);
       a.cmd.look!.copy(cardPos);
     }
     if (t >= 1) break;

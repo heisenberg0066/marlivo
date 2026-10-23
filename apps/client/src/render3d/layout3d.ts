@@ -89,9 +89,10 @@ export function layout3(view: PlayerView, large = false, portrait = false): Layo
       const [x, z] = toWorld(a, ccx, ccz, pl.x * s, pl.y * s);
       out.slots[sv.id] = { p: [x, CARD_T, z], yaw: a, w: card.w * s, h: card.h * s, owner: seat };
     }
-    // opponents hold a drawn card at chest height in front of them, where their hand can reach it (it used to float at face height)
+    // opponents hold a drawn card at chest height in front of them, angled slightly toward the camera so it never reads edge-on
     const handD = sp === 'bottom' ? TABLE_R - 0.05 : TABLE_R + 0.14;
-    out.hands[seat] = { p: [dx * handD, sp === 'bottom' ? 0.2 : 0.25, dz * handD], yaw: a, ...card, tilt: sp === 'bottom' ? 0.5 : 1.15 };
+    const handYaw = sp === 'bottom' ? a : a - Math.sin(a) * 0.45 + (Math.cos(a) < -0.5 ? 0.24 : 0);
+    out.hands[seat] = { p: [dx * handD, sp === 'bottom' ? 0.2 : 0.25, dz * handD], yaw: handYaw, ...card, tilt: sp === 'bottom' ? 0.5 : 1.08 };
     out.chars[seat] = { p: [dx * (TABLE_R + 0.3), 0, dz * (TABLE_R + 0.3)], yaw: a + Math.PI };
     out.dice[seat] = [dx * 0.34, 0, dz * 0.34];
   }

@@ -8,7 +8,7 @@ export type Side = 'L' | 'R';
 export interface ArmChain { up: THREE.Bone; fore: THREE.Bone; hand: THREE.Bone; curl: THREE.Bone | null; restUp: THREE.Quaternion; restFore: THREE.Quaternion; restHand: THREE.Quaternion; restCurl: THREE.Quaternion | null }
 export interface ArmCmd { target: THREE.Vector3; w: number; curl: number }
 export interface ActorCmd { arm: Partial<Record<Side, ArmCmd>>; look: THREE.Vector3 | null; lookW: number; lean: number; focus: number }
-export interface Actor { seat: number; root: THREE.Object3D; arms: Partial<Record<Side, ArmChain>>; head: THREE.Bone | null; cmd: ActorCmd; lowDetail: boolean }
+export interface Actor { seat: number; id?: string; motion?: string; root: THREE.Object3D; arms: Partial<Record<Side, ArmChain>>; head: THREE.Bone | null; cmd: ActorCmd; lowDetail: boolean }
 
 /** Table cards a staged action is carrying right now (the sprite in the hand stands in for them). */
 export const stagedHidden = new Set<string>();

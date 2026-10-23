@@ -50,7 +50,7 @@ while (rec < want && Date.now() - t0 < Number(process.env.MAXMS ?? 900000)) {
   const dir = `${out}/${name}`; mkdirSync(dir, { recursive: true });
   for (let t = 0; t <= LEN; t += STEP) { await p.screenshot({ path: `${dir}/f${String(t).padStart(5, '0')}.jpg`, type: 'jpeg', quality: 72, timeout: 180000 }); await adv(STEP, STEP); } // one render per saved frame: animations are time-based
   idx.push(name); console.log('recorded', name); rec++;
-  await p.evaluate(() => { window.__mlCapture.hit = null; });
+  await p.evaluate((t) => { if (window.__mlCapture.only.length > 1) window.__mlCapture.only = window.__mlCapture.only.filter((x) => x !== t); window.__mlCapture.hit = null; }, hit.t);
 }
 writeFileSync(`${out}/index.json`, JSON.stringify(idx));
 await b.close();

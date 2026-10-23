@@ -153,7 +153,7 @@ function ModelFigure({ e, id, mood, seed, pose: stance, fallback, onFail }: { e:
   const actor = useRef<Actor | null>(null);
   useEffect(() => {
     if (!obj) return;
-    const a: Actor = { seat: seed, root: obj.root, arms: findArms(obj.root), head: obj.bones.head?.bone ?? obj.bones.body?.bone ?? null, cmd: newCmd(), lowDetail: level !== 'high' };
+    const a: Actor = { seat: seed, id, motion: e.motion, root: obj.root, arms: findArms(obj.root), head: obj.bones.head?.bone ?? obj.bones.body?.bone ?? null, cmd: newCmd(), lowDetail: level !== 'high' };
     actor.current = a;
     const un = registerActor(a);
     return () => { un(); actor.current = null; };
@@ -203,7 +203,12 @@ function applyActor(a: Actor | null, b: Record<string, BoneRig>, lk: { yaw: numb
   const br = Math.sin(t * 1.7);
   if (spine) spine.bone.quaternion.multiply(qT.setFromAxisAngle(spine.ax[0], -0.012 * br));
   for (const arm of Object.values(a.arms)) if (arm) arm.fore.quaternion.multiply(qT.setFromAxisAngle(X1, 0.02 * br));
-  if (spine && Math.abs(c.lean) > 1e-3) spine.bone.quaternion.multiply(qT.setFromAxisAngle(spine.ax[0], c.lean));
+  // one-bone creatures (Orange guy) and blocky bodies (Choco, Sparkle) lean much less so the whole body doesn't tip
+  const isCreature = a.motion === 'creature' || !b.spine;
+  const isBlocky = a.id === 'choco' || a.id === 'sugar';
+  const leanScale = isCreature ? 0.28 : isBlocky ? 0.42 : 0.48;
+  const leanEff = c.lean * leanScale;
+  if (spine && Math.abs(leanEff) > 1e-3) spine.bone.quaternion.multiply(qT.setFromAxisAngle(spine.ax[0], leanEff));
   const hb = b.head ?? b.body;
   // head look: yaw/pitch towards the target in the figure's own frame, eased, limited like a neck
   let wy = 0, wp = 0;
@@ -213,14 +218,21 @@ function applyActor(a: Actor | null, b: Record<string, BoneRig>, lk: { yaw: numb
     hb.bone.getWorldPosition(vH);
     vT.copy(c.look); fr.worldToLocal(vT); const h0 = fr.worldToLocal(vH.clone());
     vT.sub(h0);
-    wy = THREE.MathUtils.clamp(Math.atan2(vT.x, vT.z), -0.9, 0.9) * c.lookW;
-    wp = THREE.MathUtils.clamp(-Math.atan2(vT.y, Math.hypot(vT.x, vT.z)), -0.5, 0.42) * c.lookW;
+    wy = THREE.MathUtils.clamp(Math.atan2(vT.x, vT.z), -0.75, 0.75) * c.lookW;
+    wp = THREE.MathUtils.clamp(-Math.atan2(vT.y, Math.hypot(vT.x, vT.z)), -0.3, 0.2) * c.lookW;
   }
   const k = Math.min(1, dt * 9);
   lk.yaw += (wy - lk.yaw) * k; lk.pitch += (wp - lk.pitch) * k;
-  if (hb && (Math.abs(lk.yaw) > 1e-3 || Math.abs(lk.pitch) > 1e-3)) {
-    const share = hb === b.body ? 0.5 : 1; // creature without a neck: the whole body turns a little
-    hb.bone.quaternion.multiply(qT.setFromAxisAngle(hb.ax[1], lk.yaw * share)).multiply(qT.setFromAxisAngle(hb.ax[0], (lk.pitch + c.focus * 0.12) * share));
+  if (hb && (Math.abs(lk.yaw) > 1e-3 || Math.abs(lk.pitch) > 1e-3 || Math.abs(leanEff) > 1e-3)) {
+    if (hb === spine) {
+      // creature without a separate head: gentle yaw + tiny pitch cap so it never compounds with leanEff
+      const pCap = THREE.MathUtils.clamp((lk.pitch + c.focus * 0.06) * 0.2, -0.08, 0.08);
+      hb.bone.quaternion.multiply(qT.setFromAxisAngle(hb.ax[1], lk.yaw * 0.4)).multiply(qT.setFromAxisAngle(hb.ax[0], pCap));
+    } else {
+      // separate head: counter-rotate part of the spine lean so the crown doesn't dip and the face stays upright
+      const localPitch = THREE.MathUtils.clamp(lk.pitch + c.focus * 0.05 - leanEff * 0.9, -0.28, 0.1);
+      hb.bone.quaternion.multiply(qT.setFromAxisAngle(hb.ax[1], lk.yaw)).multiply(qT.setFromAxisAngle(hb.ax[0], localPitch));
+    }
   }
   a.root.updateMatrixWorld(true);
   a.root.getWorldPosition(vC0); vC0.y += 0.25;
