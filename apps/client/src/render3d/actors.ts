@@ -59,15 +59,19 @@ export function solveArm(c: ArmChain, t: THREE.Vector3, w: number, bodyCentre: T
   // so rotating arm.up more than ~15% pushes the upper arm into the egg wall. Keep arm.up near its clean bind angle
   // (elbow E at |x| ~ 0.395, 10 cm outside the lower torso) and drive the forearm (arm.fore) from E toward t!
   if (c.up.parent?.name === 'body') {
-    const outSign = Math.sign(E.x - bodyCentre.x) || 1;
+    const lat = new THREE.Vector3(E.x - bodyCentre.x, 0, E.z - bodyCentre.z);
+    if (lat.lengthSq() < 1e-6) lat.set(1, 0, 0); else lat.normalize();
     const bindDir = vD.copy(E).sub(S);
     const wantUp = vE.copy(t).sub(S);
-    if (outSign * wantUp.x < Math.abs(bindDir.x) * 1.1) wantUp.x = outSign * Math.abs(bindDir.x) * 1.1;
-    aim(c.up, bindDir, wantUp, w * 0.28);
+    const minLatUp = Math.max(0.18, bindDir.dot(lat) * 0.94);
+    const curLatUp = wantUp.dot(lat);
+    if (curLatUp < minLatUp) wantUp.addScaledVector(lat, minLatUp - curLatUp);
+    aim(c.up, bindDir, wantUp, w * 0.24);
     const E3 = c.fore.getWorldPosition(new THREE.Vector3()), H3 = (c.curl ?? c.hand).getWorldPosition(new THREE.Vector3());
     const fDir = vP.copy(t).sub(E3);
-    const minOutX = Math.max(0.085, Math.hypot(fDir.y, fDir.z) * 1.20);
-    if (outSign * fDir.x < minOutX) fDir.x = outSign * minOutX;
+    const curLatF = fDir.dot(lat);
+    const minLatF = Math.max(-0.015, -fDir.y * 0.14);
+    if (curLatF < minLatF) fDir.addScaledVector(lat, minLatF - curLatF);
     aim(c.fore, H3.sub(E3), fDir, w);
     return;
   }
@@ -201,10 +205,10 @@ export function clampArmTarget(tLoc: [number, number, number], sd: Side, id?: st
   const sgn = sd === 'L' ? -1 : 1;
   let [x, y, z] = tLoc;
   if (id === 'tango') {
-    // Keep hand target well outside the elbow E (|x_E| = 0.40) at |x| >= 0.49..0.52 so |H.x| >= 0.485 in every pose:
-    const minLat = y > 0.10 ? 0.51 : 0.49;
+    // Elbow E is at |x_E| = 0.395 (5.5 cm outside the egg radius 0.34), so |x| >= 0.375 hangs straight down below the elbow with full body clearance:
+    const minLat = z < 0.22 ? 0.375 : 0.35;
     if (sgn * x < minLat) x = sgn * minLat;
-    if (z < 0.05) z = 0.05;
+    if (z < 0.06) z = 0.06;
   } else {
     const minLat = z < 0.18 ? 0.155 : 0.095;
     if (sgn * x < minLat) x = sgn * minLat;
@@ -361,9 +365,9 @@ export function computeIdlePose(id: string | undefined, seat: number, t: number,
   const wGestL = mood === 'think' ? 0.85 : Math.pow(Math.max(0, -wave), 1.6);
 
   const isOrange = id === 'tango';
-  const downX = isOrange ? 0.49 : id === 'ammar' ? 0.175 : 0.22;
-  const downY = isOrange ? -0.08 : id === 'ammar' ? -0.07 : -0.05;
-  const downZ = isOrange ? 0.11 : 0.08;
+  const downX = isOrange ? 0.39 : id === 'ammar' ? 0.175 : 0.22;
+  const downY = isOrange ? -0.06 : id === 'ammar' ? -0.07 : -0.05;
+  const downZ = isOrange ? 0.13 : 0.08;
 
   const br = Math.sin(t * 2.1);
   const dxL = Math.sin(u2) * 0.024;

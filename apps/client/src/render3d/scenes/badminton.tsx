@@ -112,7 +112,7 @@ function poseArm(p: Player, ang: number) {
       const armL = arms.L;
       armL.up.quaternion.copy(armL.restUp);
       resetArm(armL);
-      p.body.localToWorld(vTarget.set(-p.side * 0.22, 0.38 + Math.max(0, elev) * 0.08, 0.14));
+      p.body.localToWorld(vTarget.set(-p.side * 0.34, 0.24 + Math.max(0, elev) * 0.06, 0.12));
       for (let k = 0; k < 2; k++) solveArm(armL, vTarget, 0.82, vBodyC);
       curlArm(armL, 0.45);
     }

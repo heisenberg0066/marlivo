@@ -116,7 +116,7 @@ function pose(r: BoneRig | undefined, x: number, y: number, z: number) {
 /** Per-character eye & mouth placement in unit-height bind space (y in 0..1, +z forward) for blinking and animated mouths. */
 export interface FaceShaderUniform { value: number; mouth: THREE.Vector4 }
 const EYE_SPEC: Record<string, { ey: number; eh: number; ex: number; ew: number; col: string; my: number; mh: number; mw: number; mcol: string }> = {
-  ammar:   { ey: 0.806, eh: 0.025, ex: 0.044, ew: 0.032, col: '#e6a87e', my: 0.745, mh: 0.020, mw: 0.028, mcol: '#e6a87e' },
+  ammar:   { ey: 0.826, eh: 0.024, ex: 0.043, ew: 0.030, col: '#e6a87e', my: 0.745, mh: 0.000, mw: 0.028, mcol: '#e6a87e' },
   biscuit: { ey: 0.758, eh: 0.034, ex: 0.072, ew: 0.044, col: '#9b643b', my: 0.640, mh: 0.032, mw: 0.046, mcol: '#c28c5c' },
   mint:    { ey: 0.725, eh: 0.044, ex: 0.076, ew: 0.052, col: '#9ab8a0', my: 0.645, mh: 0.028, mw: 0.042, mcol: '#b8bfa2' },
   pepper:  { ey: 0.752, eh: 0.048, ex: 0.082, ew: 0.056, col: '#d89a62', my: 0.000, mh: 0.000, mw: 0.000, mcol: '#d89a62' },
@@ -234,7 +234,7 @@ function ModelFigure({ e, id, mood, seed, pose: stance, fallback, onFail }: { e:
       const aniso = level === 'high' ? gl.capabilities.getMaxAnisotropy() : 1;
       root.traverse((o) => {
         const m = o as THREE.Mesh; if (!m.isMesh) return;
-        m.castShadow = true; m.frustumCulled = false;
+        m.castShadow = !/lens|rim|bridge|temple/i.test(m.name) && !/lens|rim|bridge|temple/i.test(m.parent?.name ?? ''); m.frustumCulled = false;
         const mt = m.material as THREE.MeshStandardMaterial; if (!mt?.isMeshStandardMaterial) return;
         if (mt.map) mt.roughness = Math.max(mt.roughness, 0.62);
         if (mt.normalMap) mt.normalScale.set(0.28, 0.28); // painted skin/cloth: matte. Wire, chain, lenses keep their shine

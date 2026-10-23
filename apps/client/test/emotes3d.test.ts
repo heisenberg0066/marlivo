@@ -69,9 +69,11 @@ describe('3D win/lose character reactions & HUD emotes', () => {
     const p1 = computeIdlePose('tango', 1, 2.5, 'idle', 0.25);
     const p2 = computeIdlePose('tango', 1, 5.0, 'think', -0.2);
     for (const p of [p0, p1, p2]) {
-      // Orange guy's wide egg torso requires radial clearance |x| >= 0.48 so hands/forearms never clip into his body
-      expect(Math.abs(p.tL[0])).toBeGreaterThanOrEqual(0.48);
-      expect(Math.abs(p.tR[0])).toBeGreaterThanOrEqual(0.48);
+      // Orange guy's elbow is at |x_E| = 0.395 (outside the 0.34 egg torso), so |x| in 0.37..0.44 hangs straight down with full radial clearance
+      expect(Math.abs(p.tL[0])).toBeGreaterThanOrEqual(0.35);
+      expect(Math.abs(p.tL[0])).toBeLessThanOrEqual(0.45);
+      expect(Math.abs(p.tR[0])).toBeGreaterThanOrEqual(0.35);
+      expect(Math.abs(p.tR[0])).toBeLessThanOrEqual(0.45);
       expect(p.tL[1]).toBeLessThan(0.32);
       expect(p.tR[1]).toBeLessThan(0.32);
       expect(p.tL[2]).toBeGreaterThan(0.04);
