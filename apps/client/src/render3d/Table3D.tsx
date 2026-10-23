@@ -17,6 +17,11 @@ import { usePrefs, graphicsLevel } from '../prefs';
 import { t } from '../i18n';
 import { layout3, TABLE_R, CARD_T, type Layout3, type V3 } from './layout3d';
 import { Room, Chair } from './Room';
+import { SCENE_VIEWS, preloadScene } from './scenes';
+import type { SceneName } from '../prefs';
+import { GardenChair, type SceneKey } from './scenes/props';
+import { CHAR_SCALE, CHAIR_BACK, CAMERA } from './sceneConfig';
+import { propLayout } from './scenes/propLayout';
 import { Card3D, PLANE, type Glow } from './Card3D';
 import { Figure, useCharacterEntry } from './Figures';
 import { Die3D } from './Die3D';
@@ -39,13 +44,14 @@ export function moodOf(v: PlayerView, ov: TableProps['ov'], seat: number): Mood 
 type OverlayPoints = Map<string, () => V3 | null>;
 
 /** Fits the seat-view camera so every seat's card area, the deck/pile and the opponents' heads are on screen. */
-function CameraRig({ L, me, mode, portrait }: { L: Layout3; me: number | null; mode: 'seat' | 'top'; portrait: boolean }) {
+function CameraRig({ L, me, mode, portrait, outdoor }: { L: Layout3; me: number | null; mode: 'seat' | 'top'; portrait: boolean; outdoor: boolean }) {
   const { camera, size } = useThree();
   const seatsKey = Object.entries(L.seats).map(([s, x]) => s + x.pos + (L.maxAreas[Number(s)]?.w ?? 0).toFixed(2)).join(',');
   useLayoutEffect(() => {
     const cam = camera as THREE.PerspectiveCamera;
     cam.fov = portrait ? 56 : 44; cam.aspect = size.width / size.height;
-    const el = mode === 'top' ? 1.15 : portrait ? 0.98 : 0.6;
+    // outdoor scenes sit a little lower (more garden + court behind the far player, sketch book v8 p06/p07)
+    const el = mode === 'top' ? 1.15 : portrait ? (outdoor ? CAMERA.portraitEl : 0.98) : outdoor ? CAMERA.laptopEl : 0.6;
     // key points: the full box of every area (as big as it can grow), deck, pile, heads of the opponents
     const pts: THREE.Vector3[] = [];
     for (const [seatS, a] of Object.entries(L.maxAreas)) {
@@ -54,9 +60,13 @@ function CameraRig({ L, me, mode, portrait }: { L: Layout3; me: number | null; m
       const seat = Number(seatS);
       // phone portrait: side characters may be cut at the screen edge (their name plates stay pinned), the cards matter more
       const side = portrait && mode === 'seat' && Math.abs(Math.sin(L.seats[seat]?.a ?? 0)) > 0.9;
+      // phone portrait, side seats: keep the inner part of the figure in frame (face towards the table)
+      if (side && seat !== me && L.chars[seat]) { const c = L.chars[seat]!.p; pts.push(new THREE.Vector3(c[0] * CAMERA.sideKeep, 0.55, c[2]), new THREE.Vector3(c[0] * CAMERA.sideKeep, 0.2, c[2])); }
       if (seat !== me && L.chars[seat] && !side) { const c = L.chars[seat]!.p; const y = mode === 'top' ? 0.2 : 0.66; const sx = Math.cos(L.seats[seat]!.a) * 0.2, sz = -Math.sin(L.seats[seat]!.a) * 0.2; pts.push(new THREE.Vector3(c[0], y, c[2]), new THREE.Vector3(c[0] + sx, 0.3, c[2] + sz), new THREE.Vector3(c[0] - sx, 0.3, c[2] - sz)); }
     }
     pts.push(new THREE.Vector3(-0.3, 0, 0), new THREE.Vector3(0.32, 0, 0));
+    // outdoor scenes: my own tea cup (at my right hand) stays in frame too
+    if (outdoor && !portrait && me !== null) { const tp = propLayout(L).tea[me]; if (tp) pts.push(new THREE.Vector3(tp.p[0] + 0.05, 0.05, tp.p[2])); }
     const dir = new THREE.Vector3(0, Math.sin(el), Math.cos(el));
     const target = new THREE.Vector3();
     const range = () => {
@@ -76,7 +86,7 @@ function CameraRig({ L, me, mode, portrait }: { L: Layout3; me: number | null; m
     const shift = ((r.maxY + r.minY) / 2 + 0.03) * (size.height / 2); // centre the content vertically (lens shift)
     cam.setViewOffset(size.width, size.height, 0, -shift, size.width, size.height);
     cam.updateProjectionMatrix();
-  }, [camera, size.width, size.height, seatsKey, mode, portrait, me]);
+  }, [camera, size.width, size.height, seatsKey, mode, portrait, me, outdoor]);
   return null;
 }
 
@@ -164,9 +174,10 @@ function Deck({ L, onDeck, clickable }: { L: Layout3; onDeck(): void; clickable:
   );
 }
 
-const Scene = memo(function Scene({ p, L, stage, points, els, portrait }: { p: TableProps; L: Layout3; stage: React.RefObject<HTMLDivElement>; points: React.MutableRefObject<OverlayPoints>; els: React.MutableRefObject<Map<string, HTMLElement>>; portrait: boolean }) {
+const Scene = memo(function Scene({ p, L, stage, points, els, portrait, scene }: { p: TableProps; L: Layout3; stage: React.RefObject<HTMLDivElement>; points: React.MutableRefObject<OverlayPoints>; els: React.MutableRefObject<Map<string, HTMLElement>>; portrait: boolean; scene: SceneName }) {
   const prefs = usePrefs();
   const hi = !!prefs.graphics && graphicsLevel() === 'high';
+  const SceneView = SCENE_VIEWS[scene];
   const { camera, gl } = useThree();
   const group = useRef<THREE.Group>(null);
   const v = p.view; const r = v.round; const me = v.you; const ov = p.ov;
@@ -184,13 +195,11 @@ const Scene = memo(function Scene({ p, L, stage, points, els, portrait }: { p: T
 
   return (
     <>
-      <CameraRig L={L} me={me} mode={prefs.camera} portrait={portrait} />
+      <CameraRig L={L} me={me} mode={prefs.camera} portrait={portrait} outdoor={scene !== 'classic'} />
       <OverlaySync points={points} els={els} stage={stage} />
       <Stats />
       {hi && <Sharpen />}
-      <Room />
-      {/* High: a soft back light from behind the far seats puts a rim on the characters */}
-      {hi && <directionalLight position={[0.4, 1.0, -2.6]} intensity={0.75} color="#ffe9cf" />}
+      <Suspense fallback={null}><SceneView L={L} hi={hi} level={hi ? 'high' : 'low'} portrait={portrait} /></Suspense>
       <group ref={group} />
       <Deck L={L} onDeck={p.onDeck} clickable={myTurnDraw} />
       {/* the discard pile, scattered inside the centre circle */}
@@ -233,8 +242,8 @@ const Scene = memo(function Scene({ p, L, stage, points, els, portrait }: { p: T
               );
             })}
             {!isMe && si && L.chars[seat] && (
-              <group position={L.chars[seat]!.p} rotation={[0, L.chars[seat]!.yaw, 0]} scale={0.85} onClick={(e) => { if (pick) { e.stopPropagation(); p.onSeat(seat); } }}>
-                <SeatChair id={si.characterId} />
+              <group position={L.chars[seat]!.p} rotation={[0, L.chars[seat]!.yaw, 0]} scale={CHAR_SCALE} onClick={(e) => { if (pick) { e.stopPropagation(); p.onSeat(seat); } }}>
+                <SeatChair id={si.characterId} scene={scene} />
                 <Suspense fallback={null}><Figure id={si.characterId} mood={moodOf(v, ov, seat)} seed={seat} /></Suspense>
               </group>
             )}
@@ -260,6 +269,21 @@ export const Table3D = memo(function Table3D(p: TableProps & { onFail?(why: stri
   useLayoutEffect(() => { const f = () => setPortrait(innerHeight > innerWidth * 1.05); addEventListener('resize', f); return () => removeEventListener('resize', f); }, []);
   const v = p.view; const r = v.round; const me = v.you;
   const L = useMemo(() => layout3(v, prefs.largeCards, portrait), [v, prefs.largeCards, portrait]);
+  // Scene switch (Settings or the in-game menu, any time during a match): download the new scene's chunk first,
+  // fade to black, swap, fade back. Only dressing changes: the game state, layout and director are untouched.
+  const want: SceneName = prefs.scene ?? 'golden';
+  const [shown, setShown] = useState<SceneName>(want);
+  const [fade, setFade] = useState(false);
+  useEffect(() => {
+    if (want === shown) return;
+    let alive = true; const ts: number[] = [];
+    preloadScene(want).then(() => {
+      if (!alive) return;
+      setFade(true);
+      ts.push(window.setTimeout(() => { setShown(want); ts.push(window.setTimeout(() => setFade(false), 220)); }, 180));
+    }, () => {});
+    return () => { alive = false; ts.forEach(clearTimeout); };
+  }, [want, shown]);
   useEffect(() => { setFlyBackend(backend3d); return () => { backend3d.clear(); setFlyBackend(null); setCtx3(null); }; }, []);
   const seatsShown = r ? r.participants : v.players.length ? v.players : v.seats.map((s, i) => (s ? i : -1)).filter((i) => i >= 0);
   // Hooks for the headless end-to-end check: where to click (real canvas clicks, ray-cast like a finger).
@@ -283,8 +307,9 @@ export const Table3D = memo(function Table3D(p: TableProps & { onFail?(why: stri
           gl.domElement.addEventListener('webglcontextlost', (e) => { e.preventDefault(); p.onFail?.('context-lost'); });
         }}
         frameloop="always">
-        <Scene p={p} L={L} stage={stage} points={points} els={els} portrait={portrait} />
+        <Scene p={p} L={L} stage={stage} points={points} els={els} portrait={portrait} scene={shown} />
       </Canvas>
+      <div className={'scene-fade' + (fade ? ' on' : '')} aria-hidden />
       <div className="ov3d">
         {seatsShown.map((seat) => {
           const si = v.seats[seat]; if (!si || seat === me || !L.chars[seat]) return null;
@@ -308,8 +333,9 @@ export default Table3D;
 export { TABLE_R };
 
 /** The chair behind a seated figure; figures that stand (manifest "chair": false) get none. */
-function SeatChair({ id }: { id: string }) {
+function SeatChair({ id, scene }: { id: string; scene: SceneKey | 'classic' }) {
   const e = useCharacterEntry(id);
   if (e && e.chair === false && e.model) return null;
-  return <Chair p={[0, 0, -0.12]} yaw={0} />;
+  if (scene === 'classic') return <Chair p={[0, 0, CHAIR_BACK]} yaw={0} />;
+  return <group position={[0, 0, CHAIR_BACK]}><GardenChair scene={scene} /></group>;
 }

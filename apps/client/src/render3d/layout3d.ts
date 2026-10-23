@@ -4,11 +4,12 @@
 // positions never shift when a card leaves (§16.2).
 import type { PlayerView } from '@marlivo/engine';
 import { areaLayout, pileSpot, seatPositions, type Anchor, type SeatPos } from '../render/geometry';
+import { TABLE_R, SEAT_DIST } from './sceneConfig';
 
 export type V3 = [number, number, number];
 export interface Place3 { p: V3; yaw: number; w: number; h: number; tilt?: number }
 
-export const TABLE_R = 1.0;
+export { TABLE_R, SEAT_DIST };
 export const CARD_ME = { w: 0.142, h: 0.2 };
 export const CARD_OPP = { w: 0.112, h: 0.157 };
 export const CARD_T = 0.0016; // card thickness used for stacking
@@ -93,7 +94,7 @@ export function layout3(view: PlayerView, large = false, portrait = false): Layo
     const handD = sp === 'bottom' ? TABLE_R - 0.05 : TABLE_R + 0.14;
     const handYaw = sp === 'bottom' ? a : a - Math.sin(a) * 0.45 + (Math.cos(a) < -0.5 ? 0.24 : 0);
     out.hands[seat] = { p: [dx * handD, sp === 'bottom' ? 0.2 : 0.25, dz * handD], yaw: handYaw, ...card, tilt: sp === 'bottom' ? 0.5 : 1.08 };
-    out.chars[seat] = { p: [dx * (TABLE_R + 0.3), 0, dz * (TABLE_R + 0.3)], yaw: a + Math.PI };
+    out.chars[seat] = { p: [dx * SEAT_DIST, 0, dz * SEAT_DIST], yaw: a + Math.PI };
     out.dice[seat] = [dx * 0.34, 0, dz * 0.34];
   }
   const count = r?.deckCount ?? 0;

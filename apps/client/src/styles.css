@@ -375,3 +375,7 @@ details { margin: 10px 0; } summary { cursor: pointer; color: var(--cream-2); }
 
 .lp-opt.on small { color: #fff3e0; font-weight: 700; }
 .lp-opt small { color: #f3dcc4; }
+/* 3D scene switch: quick fade to black while the new scene mounts */
+.scene-fade { position: absolute; inset: 0; background: #120a06; opacity: 0; pointer-events: none; transition: opacity .18s ease; z-index: 2; }
+.scene-fade.on { opacity: 1; }
+.menu .scene-pick { display: block; margin: 6px 0 8px; } .menu .scene-pick .seg button { font-size: .85em; padding: 7px 4px; }

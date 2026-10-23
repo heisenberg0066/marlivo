@@ -11,7 +11,7 @@ import { setFlyLayer, clearFly } from '../render/fly';
 import { CharacterBust, SEAT_COLORS, Pumpkin } from '../render/characters';
 import { sfx, unlock } from '../render/sound';
 import { t } from '../i18n';
-import { usePrefs, setPrefs } from '../prefs';
+import { usePrefs, setPrefs, SCENES } from '../prefs';
 import { Lobby } from './Lobby';
 import { TestPanel } from './TestPanel';
 
@@ -279,6 +279,7 @@ export function Game({ session, onExit }: { session: Session; onExit(): void }) 
               <div className="menu">
                 <h3>{t('game.menu')}</h3>
                 <label className="row"><input type="checkbox" checked={prefs.sound} onChange={(e) => setPrefs({ sound: e.target.checked })} /> {t('settings.sound')}</label>
+                {prefs.renderer === '3d' && <label className="scene-pick">{t('settings.scene')}<div className="seg">{SCENES.map((s) => <button key={s} className={(prefs.scene ?? 'golden') === s ? 'on' : ''} onClick={() => setPrefs({ scene: s })}>{t('settings.scene.' + s)}</button>)}</div></label>}
                 <label className="row"><input type="checkbox" checked={prefs.camera === 'seat'} onChange={(e) => setPrefs({ camera: e.target.checked ? 'seat' : 'top' })} /> {t('settings.seat')}</label>
                 <label className="row"><input type="checkbox" checked={prefs.slotNumbers} onChange={(e) => setPrefs({ slotNumbers: e.target.checked })} /> {t('settings.slotNumbers')}</label>
                 <label className="row"><input type="checkbox" checked={prefs.confirmSwap} onChange={(e) => setPrefs({ confirmSwap: e.target.checked })} /> {t('settings.confirmSwap')}</label>

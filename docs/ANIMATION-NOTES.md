@@ -150,3 +150,9 @@ coming from another job), order = capture hook -> anim system -> re-rig + 2-bone
 ## Known issues
 - Baseline frame strips per action not captured yet (tooling hang above); only a still of the 4-player laptop
   table: /workspace/sb/anim/baseline-laptop-4p-table.jpg.
+
+## Scene config (from the scenes job, 2026-10-23)
+Table radius, seat distance, chair offset and character scale now live in `render3d/sceneConfig.ts`
+(`TABLE_R` 0.98, `SEAT_DIST` 1.20 — characters moved 0.10 closer to the table). Read them from there, not from
+literals. Cups to avoid while reaching: `propLayout(L).avoid` in `render3d/scenes/propLayout.ts`. Details:
+[SCENES.md](SCENES.md).
