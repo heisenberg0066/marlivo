@@ -187,18 +187,22 @@ function ModelFigure({ e, id, mood, seed, pose: stance, fallback, onFail }: { e:
       pose(b.head, s.nod, s.twist * 0.6, s.tilt);
       pose(b.armL, 0, 0, -s.arm * 0.8); pose(b.armR, 0, 0, s.arm * (think ? 0.2 : 0.8));
     }
-    applyActor(actor.current, obj.bones, lk.current, dt);
+    applyActor(actor.current, obj.bones, lk.current, dt, t);
   });
   return obj ? <primitive object={obj.root} /> : <>{fallback}</>;
 }
 
 /** Layers the card-action commands on top of the mood pose: lean, head look-at, arm IK and paw curl. */
-const vT = new THREE.Vector3(), vH = new THREE.Vector3(), vC0 = new THREE.Vector3(), qT = new THREE.Quaternion();
-function applyActor(a: Actor | null, b: Record<string, BoneRig>, lk: { yaw: number; pitch: number }, dt: number) {
+const vT = new THREE.Vector3(), vH = new THREE.Vector3(), vC0 = new THREE.Vector3(), qT = new THREE.Quaternion(), X1 = new THREE.Vector3(1, 0, 0);
+function applyActor(a: Actor | null, b: Record<string, BoneRig>, lk: { yaw: number; pitch: number }, dt: number, t: number) {
   if (!a) return;
   const c = a.cmd;
   for (const arm of Object.values(a.arms)) if (arm) resetArm(arm);
   const spine = b.spine ?? b.body;
+  // idle breathing: the chest rises and settles (~3.7 s cycle), the arms follow a touch
+  const br = Math.sin(t * 1.7);
+  if (spine) spine.bone.quaternion.multiply(qT.setFromAxisAngle(spine.ax[0], -0.012 * br));
+  for (const arm of Object.values(a.arms)) if (arm) arm.fore.quaternion.multiply(qT.setFromAxisAngle(X1, 0.02 * br));
   if (spine && Math.abs(c.lean) > 1e-3) spine.bone.quaternion.multiply(qT.setFromAxisAngle(spine.ax[0], c.lean));
   const hb = b.head ?? b.body;
   // head look: yaw/pitch towards the target in the figure's own frame, eased, limited like a neck
