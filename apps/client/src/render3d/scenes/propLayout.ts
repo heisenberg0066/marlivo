@@ -72,16 +72,23 @@ export function propLayout(L: Layout3): PropLayout {
   }
   // chocolate: on the rim, in the gap that has most room (prefer the one next to me, seat at the bottom)
   const cr = Math.hypot(CHOCO.w, CHOCO.d) / 2;
+  // First try with the bar's full bounding circle and a little extra air next to the saucers (QA 2026-10-23: with
+  // 0.8 x the radius the bar could end up touching a saucer rim); fall back to the tighter fit only if nothing fits.
   let bestC: { x: number; z: number; c: number; ang: number } | null = null;
-  for (let i = 0; i < 144; i++) {
-    const ang = (i / 144) * Math.PI * 2;
-    for (const rr of [0.78, 0.74, 0.7, 0.66, 0.62]) {
-      const x = Math.sin(ang) * rr, z = Math.cos(ang) * rr;
-      const c = clearance(boxes, taken, x, z, cr * 0.8);
-      const near = Math.cos(ang - 0.8); // gentle preference for my right-front side
-      const score = c >= 0 ? 10 + near * 0.5 + rr : c;
-      if (!bestC || score > bestC.c) bestC = { x, z, c: score, ang };
+  for (const fit of [{ r: cr, air: 0.018 }, { r: cr * 0.8, air: 0 }]) {
+    const near2 = taken.map((t) => ({ ...t, r: t.r + fit.air }));
+    for (let i = 0; i < 144; i++) {
+      const ang = (i / 144) * Math.PI * 2;
+      for (const rr of [0.78, 0.74, 0.7, 0.66, 0.62]) {
+        const x = Math.sin(ang) * rr, z = Math.cos(ang) * rr;
+        const c = clearance(boxes, near2, x, z, fit.r);
+        const near = Math.cos(ang - 0.8); // gentle preference for my right-front side
+        const score = c >= 0 ? 10 + near * 0.5 + rr + Math.min(c, 0.04) * 3 : c;
+        if (!bestC || score > bestC.c) bestC = { x, z, c: score, ang };
+      }
     }
+    if (bestC && bestC.c >= 10) break;
+    bestC = null;
   }
   if (bestC) out.choco = { p: [bestC.x, 0, bestC.z], yaw: bestC.ang + Math.PI / 2 + 0.25 };
   return out;

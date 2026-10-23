@@ -10,7 +10,7 @@ const which = process.argv[2] ?? 'laptop'; const bots = Number(process.argv[3] ?
 const out = process.argv[5] ?? '/tmp/anim'; const gfx = process.argv[6] ?? 'high'; mkdirSync(out, { recursive: true });
 const STEP = Number(process.env.STEP ?? 50), LEN = Number(process.env.LEN ?? 1600), SEAT = process.env.SEAT ?? 'any';
 const only = (process.env.ONLY ?? 'DREW,THROWN,SWAPPED,PENALTY_DEALT,TEN_GIVEN,JACK_SWAPPED,QUEEN_PEEKED,PEEK_PICKED').split(',');
-const sizes = { phone: { viewport: { width: 390, height: 844 }, deviceScaleFactor: 1, isMobile: true, hasTouch: true }, laptop: { viewport: { width: 1280, height: 720 } } };
+const sizes = { phone: { viewport: { width: 390, height: 844 }, deviceScaleFactor: Number(process.env.DPR ?? 1), isMobile: true, hasTouch: true }, laptop: { viewport: { width: 1280, height: 720 } } };
 const b = await chromium.launch({ executablePath: '/usr/bin/google-chrome', args: ['--no-sandbox', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
 const ctx = await b.newContext(sizes[which]);
 await ctx.addInitScript(([g, sp]) => { localStorage.setItem('marlivo.animstep', '1'); localStorage.setItem('marlivo.prefs', JSON.stringify({ name: 'Ammar', characterId: 'ammar', speed: sp, sound: false, renderer: '3d', graphics: g, confirmSwap: false })); localStorage.setItem('marlivo.lang', 'en'); }, [gfx, process.env.SPEED ?? 'normal']);

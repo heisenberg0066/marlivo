@@ -1,6 +1,7 @@
 // Frees Ammar's fused pocket hands/forearms, closes the pocket/flank openings cleanly in black cloth, models
 // stylised short-sleeved arms + bare forearms + hands (with thumb) in his exact sleeve and skin texture colours,
-// and rigs them with the 4-bone chain (armL/R -> _fore -> _hand -> _curl).
+// rigs them with the 4-bone chain (armL/R -> _fore -> _hand -> _curl), adds the 3-bone leg chain
+// (legL/R -> _knee -> _foot), and enforces 100% head-bone weighting (yNorm >= 0.66) so his face never splits on yaw.
 // Every vertex with y >= 0.625 (neck, head, face, hair, ears), the glasses/chain meshes, and the textures are
 // kept 100% byte-identical so his face has zero pixel difference.
 // Usage: node rig_ammar.mjs in.glb out.glb [low]
@@ -13,13 +14,12 @@ await MeshoptDecoder.ready; await MeshoptEncoder.ready;
 const io = new NodeIO().registerExtensions(ALL_EXTENSIONS).registerDependencies({ 'meshopt.decoder': MeshoptDecoder, 'meshopt.encoder': MeshoptEncoder });
 const doc = await io.read(inF);
 const root = doc.getRoot();
-const skin = root.listSkins()[0];
+const skin = root.getSkins ? root.getSkins()[0] : root.listSkins()[0];
 const joints = [...skin.listJoints()];
 const ibmA = skin.getInverseBindMatrices();
 const ibm = (i) => ibmA.getElement(i, new Array(16));
 const mul = (a, b) => { const o = new Array(16).fill(0); for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) for (let k = 0; k < 4; k++) o[c * 4 + r] += a[k * 4 + r] * b[c * 4 + k]; return o; };
 const xf = (m, v) => [0, 1, 2].map((r) => m[r] * v[0] + m[4 + r] * v[1] + m[8 + r] * v[2] + m[12 + r]);
-const xfDir = (m, v) => { const d = [0, 1, 2].map((r) => m[r] * v[0] + m[4 + r] * v[1] + m[8 + r] * v[2]); const l = Math.hypot(...d) || 1; return d.map((x) => x / l); };
 const inv3 = (m, v) => {
   const t = [v[0] - m[12], v[1] - m[13], v[2] - m[14]];
   const c = [0, 1, 2].map((k) => [m[k * 4], m[k * 4 + 1], m[k * 4 + 2]]);
@@ -41,7 +41,6 @@ const ti = prim.getMaterial().getBaseColorTextureInfo().listExtensions()[0];
 const uvOff = ti ? ti.getOffset() : [0, 0];
 const uvSc = ti ? ti.getScale() : [1, 1];
 const toAttrUV = (u, v) => [(u - uvOff[0]) / uvSc[0], (v - uvOff[1]) / uvSc[1]];
-// Verified flat-normal skin & dark-cloth texels on Ammar's atlas:
 const UV_SKIN = toAttrUV((65 + 0.5) / 512, (107 + 0.5) / 512);
 const UV_DARK = toAttrUV((412 + 0.5) / 512, (174 + 0.5) / 512);
 
@@ -53,7 +52,14 @@ const smooth = (x) => (x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x));
 // 1. Tuck the old fused forearm + outer sleeve bulge into a clean torso/closed-pocket wall for y in [0.365, 0.610]
 //    Never touch any vertex with y >= 0.620 (collar/neck/head/face/hair/ears).
 const rest = new Array(vCount0);
-for (let i = 0; i < vCount0; i++) rest[i] = xf(M0, P.getElement(i, []));
+let minY = Infinity, maxY = -Infinity;
+for (let i = 0; i < vCount0; i++) {
+  const q = xf(M0, P.getElement(i, []));
+  rest[i] = q;
+  if (q[1] < minY) minY = q[1];
+  if (q[1] > maxY) maxY = q[1];
+}
+const H = maxY - minY || 1;
 
 let tucked = 0;
 const tuckedPos = new Map(), tuckedUv = new Map();
@@ -75,9 +81,11 @@ for (let i = 0; i < vCount0; i++) {
   }
 }
 
-// 2. Add 4-bone arm chains: armL -> armL_fore -> armL_hand -> armL_curl (and armR)
-//    In Ammar's armature space, x > 0 is his left side (armL) and x < 0 is his right side (armR).
+// 2. Add 4-bone arm chains: armL (-x) and armR (+x)
+const hipsIdx = 0;
+const hipsNode = joints[hipsIdx];
 const spineIdx = joints.findIndex((j) => j.getName() === 'spine');
+const headIdx = joints.findIndex((j) => j.getName() === 'head');
 const spineNode = joints[spineIdx];
 const B = (j) => j.getWorldMatrix();
 const SPLIT = [0.46, 0.78, 0.90], HB = 0.065;
@@ -88,8 +96,8 @@ const chain = (s) => {
 };
 
 const armDefs = [
-  { side: 'armL', sgn: 1, sh: [0.112, 0.585, 0.008], tip: [0.146, 0.325, 0.042] },
-  { side: 'armR', sgn: -1, sh: [-0.112, 0.585, 0.018], tip: [-0.146, 0.325, 0.052] },
+  { side: 'armL', sgn: -1, sh: [-0.112, 0.585, 0.018], tip: [-0.146, 0.325, 0.052] },
+  { side: 'armR', sgn: 1,  sh: [0.112, 0.585, 0.008],  tip: [0.146, 0.325, 0.042] },
 ];
 
 const newPos = [], newNrm = [], newUv = [], newJ = [], newW = [], newIdx = [];
@@ -101,7 +109,6 @@ for (const def of armDefs) {
   const L = Math.hypot(...ax);
   const dir = ax.map((x) => x / L);
 
-  // Create root arm bone under spine
   const loc0 = inv3(B(spineNode), sh);
   const armNode = doc.createNode(side).setTranslation(loc0);
   spineNode.addChild(armNode);
@@ -128,7 +135,6 @@ for (const def of armDefs) {
   }
   ibmA.setArray(new Float32Array(ibmList));
 
-  // Local frame perpendicular to arm axis: u = outward lateral (sgn * X), v = forward (+Z)
   let u = [sgn, -dir[0] * sgn / dir[1], 0];
   { const l = Math.hypot(...u); u = u.map((x) => x / l); }
   let v = [
@@ -138,11 +144,6 @@ for (const def of armDefs) {
   ];
   if (v[2] < 0) v = v.map((x) => -x);
 
-  // Build stylised sleeve + forearm + hand + thumb tube
-  // s in [-0.08, 1.0]:
-  //   [-0.08, 0.36]: black short sleeve (spherical shoulder cap at s<0.05, slight cuff flare at s=0.35)
-  //   [0.36, 0.78]: warm tan bare forearm tapering to wrist
-  //   [0.78, 1.00]: stylised hand & rounded fingers (oval palm + thumb bump on front-inner side)
   const baseVert = vCount0 + newPos.length / 3;
   for (let ir = 0; ir <= nRings; ir++) {
     const f = ir / nRings;
@@ -150,21 +151,17 @@ for (const def of armDefs) {
     const isSleeve = s <= 0.36;
     let rx, rz;
     if (s < 0.02) {
-      // Spherical shoulder cap closing at s = -0.08
       const cap = Math.sqrt(Math.max(0.02, 1 - ((0.02 - s) / 0.105) ** 2));
       rx = 0.036 * cap; rz = 0.038 * cap;
     } else if (s <= 0.36) {
-      // Short sleeve with subtle cuff flare
       const k = (s - 0.02) / 0.34;
       rx = 0.036 + 0.003 * Math.sin(Math.PI * k);
       rz = 0.038 + 0.003 * Math.sin(Math.PI * k);
     } else if (s <= 0.78) {
-      // Forearm tapering from below cuff to wrist
       const k = (s - 0.36) / 0.42;
       rx = 0.027 * (1 - 0.25 * k);
       rz = 0.029 * (1 - 0.22 * k);
     } else {
-      // Hand & fingers: slightly wider front-to-back, rounded fingertip cap at s = 1.0
       const k = (s - 0.78) / 0.22;
       const tipCap = k > 0.75 ? Math.sqrt(Math.max(0.04, 1 - ((k - 0.75) / 0.26) ** 2)) : 1;
       rx = 0.017 * (1 + 0.15 * Math.sin(Math.PI * k)) * tipCap;
@@ -178,7 +175,6 @@ for (const def of armDefs) {
     for (let is = 0; is < nSeg; is++) {
       const ang = (is / nSeg) * Math.PI * 2;
       const ca = Math.cos(ang), sa = Math.sin(ang);
-      // Subtle thumb bump on the front-inner side of the palm (s in [0.78, 0.90], sa > 0.5, ca < 0)
       let thumb = 1;
       if (s > 0.77 && s < 0.91 && sa > 0.35 && ca < 0.1) {
         thumb += 0.38 * Math.sin(Math.PI * ((s - 0.77) / 0.14)) * Math.max(0, sa - 0.35);
@@ -221,14 +217,82 @@ for (const def of armDefs) {
   }
 }
 
-// 3. Append the new arm vertices & triangles to the mesh primitive, keeping all untouched original bytes bit-identical
+// 3. Add 3-bone leg chains (legL -> legL_knee -> legL_foot & legR -> legR_knee -> legR_foot) and 100% head weighting (yNorm >= 0.66)
+const legSpecs = [
+  { side: 'legL', hip: [-0.061, 0.300, 0.047], knee: [-0.061, 0.160, 0.047], foot: [-0.072, 0.045, 0.074] },
+  { side: 'legR', hip: [0.065, 0.300, 0.021],  knee: [0.065, 0.160, 0.021],  foot: [0.089, 0.045, 0.030] },
+];
+const legIdx = {};
+for (const ls of legSpecs) {
+  const ibmList = [...ibmA.getArray()];
+  const locH = inv3(B(hipsNode), ls.hip);
+  const nH = doc.createNode(ls.side).setTranslation(locH);
+  hipsNode.addChild(nH); skin.addJoint(nH);
+  const iH = skin.listJoints().length - 1;
+  const TH = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -locH[0], -locH[1], -locH[2], 1];
+  const ibmH = mul(TH, ibm(hipsIdx));
+  ibmList.push(...ibmH);
+
+  const locK = inv3(B(nH), ls.knee);
+  const nK = doc.createNode(`${ls.side}_knee`).setTranslation(locK);
+  nH.addChild(nK); skin.addJoint(nK);
+  const iK = skin.listJoints().length - 1;
+  const TK = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -locK[0], -locK[1], -locK[2], 1];
+  const ibmK = mul(TK, ibmH);
+  ibmList.push(...ibmK);
+
+  const locF = inv3(B(nK), ls.foot);
+  const nF = doc.createNode(`${ls.side}_foot`).setTranslation(locF);
+  nK.addChild(nF); skin.addJoint(nF);
+  const iF = skin.listJoints().length - 1;
+  const TF = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -locF[0], -locF[1], -locF[2], 1];
+  const ibmF = mul(TF, ibmK);
+  ibmList.push(...ibmF);
+
+  ibmA.setArray(new Float32Array(ibmList));
+  legIdx[ls.side] = [iH, iK, iF];
+}
+
+const jOverrides = new Map(), wOverrides = new Map();
+const LEG_FRACS = [0.48, 0.82], LEG_HB = 0.09;
+const legChain = (s) => {
+  const g = LEG_FRACS.map((b) => smooth((s - b + LEG_HB) / (2 * LEG_HB)));
+  return [1 - g[0], g[0] - g[1], g[1]].map((x) => Math.max(0, x));
+};
+for (let i = 0; i < vCount0; i++) {
+  const q = rest[i];
+  const yNorm = (q[1] - minY) / H;
+  if (yNorm >= 0.62) {
+    const hw = yNorm >= 0.66 ? 1.0 : smooth((yNorm - 0.62) / 0.04);
+    jOverrides.set(i, hw >= 0.9999 ? [headIdx, 0, 0, 0] : [headIdx, spineIdx, 0, 0]);
+    wOverrides.set(i, hw >= 0.9999 ? [1, 0, 0, 0] : [hw, 1 - hw, 0, 0]);
+  } else if (q[1] <= 0.325) {
+    const wy = smooth((0.32 - q[1]) / 0.055);
+    const seam = q[1] <= 0.16 ? 1.0 : smooth(Math.abs(q[0] - 0.008) / 0.014);
+    const legMem = wy * seam;
+    if (legMem > 1e-4) {
+      const L = q[0] < 0.008 ? legIdx.legL : legIdx.legR;
+      const s = Math.max(0, Math.min(1, (0.30 - q[1]) / 0.30));
+      const lw = legChain(s);
+      const out = [[hipsIdx, 1 - legMem], [L[0], lw[0] * legMem], [L[1], lw[1] * legMem], [L[2], lw[2] * legMem]]
+        .filter(([, w]) => w > 1e-4)
+        .sort((a, b) => b[1] - a[1]);
+      const sum = out.reduce((a, b) => a + b[1], 0);
+      const jj = [0, 0, 0, 0], ww = [0, 0, 0, 0];
+      out.forEach(([ji, yw], n) => { jj[n] = ji; ww[n] = yw / sum; });
+      jOverrides.set(i, jj);
+      wOverrides.set(i, ww);
+    }
+  }
+}
+
 const totalV = vCount0 + newPos.length / 3;
-function expandAttr(attr, extra, itemSize, overrides = null, roundExtra = false) {
+function expandAttr(attr, extra, itemSize, overrides = null, roundExtra = false, ForceCtor = null) {
   const oldArr = attr.getArray();
-  const Ctor = oldArr.constructor;
+  const Ctor = ForceCtor ?? oldArr.constructor;
   const out = new Ctor(totalV * itemSize);
-  out.set(oldArr, 0); // bit-for-bit copy of original vertex attributes
-  const next = doc.createAccessor().setType(attr.getType()).setNormalized(attr.getNormalized()).setArray(out).setBuffer(attr.getBuffer());
+  const next = doc.createAccessor().setType(attr.getType()).setNormalized(ForceCtor ? false : attr.getNormalized()).setArray(out).setBuffer(attr.getBuffer());
+  for (let i = 0; i < vCount0; i++) next.setElement(i, attr.getElement(i, []));
   if (overrides) {
     for (const [idx, val] of overrides) next.setElement(idx, val);
   }
@@ -242,8 +306,8 @@ function expandAttr(attr, extra, itemSize, overrides = null, roundExtra = false)
 prim.setAttribute('POSITION', expandAttr(P, newPos, 3, tuckedPos, true));
 prim.setAttribute('NORMAL', expandAttr(N, newNrm, 3));
 prim.setAttribute('TEXCOORD_0', expandAttr(U, newUv, 2, tuckedUv));
-prim.setAttribute('JOINTS_0', expandAttr(J0, newJ, 4));
-prim.setAttribute('WEIGHTS_0', expandAttr(W0, newW, 4));
+prim.setAttribute('JOINTS_0', expandAttr(J0, newJ, 4, jOverrides, false, Uint16Array));
+prim.setAttribute('WEIGHTS_0', expandAttr(W0, newW, 4, wOverrides, false, Float32Array));
 
 const oldIdx = IDX.getArray();
 const nextIdx = new Uint16Array(oldIdx.length + newIdx.length);

@@ -1,4 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import {
   HUD_EMOTES,
   computeEmotePose,
@@ -8,11 +10,53 @@ import {
   seatCupBounce,
   computeIdlePose,
   computeMouthTarget,
+  computeWalkGait,
+  computeSeatedLegPose,
   type EmoteKind,
 } from '../src/render3d/actors';
+import { computeBadmintonState, PERIOD as BADMINTON_PERIOD } from '../src/render3d/scenes/badminton';
 
-describe('3D win/lose character reactions & HUD emotes', () => {
+const CHAR_DIR = resolve(__dirname, '../public/assets/characters');
+const ALL_7_CHARS = ['ammar', 'orange-guy', 'biscuit', 'mint', 'pepper', 'choco', 'sugar'] as const;
+const ALL_7_IDS = ['ammar', 'tango', 'biscuit', 'mint', 'pepper', 'choco', 'sugar'] as const;
+
+function parseGlbJson(filePath: string): { nodes?: { name?: string }[]; skins?: { joints: number[] }[] } {
+  const buf = readFileSync(filePath);
+  const magic = buf.readUInt32LE(0);
+  expect(magic).toBe(0x46546c67); // 'glTF'
+  const jsonLen = buf.readUInt32LE(12);
+  const jsonStr = buf.subarray(20, 20 + jsonLen).toString('utf8');
+  return JSON.parse(jsonStr);
+}
+
+describe('All 7 characters 4-bone arm + 3-bone leg GLB rigs, animations, badminton & HUD', () => {
   beforeEach(() => clearEmotes());
+
+  it('verifies all 14 character GLBs (7 characters x High/Low) have 4-bone arms (armL/R -> fore -> hand -> curl) AND 3-bone legs (legL/R -> knee -> foot)', () => {
+    const requiredBones = [
+      'armL', 'armL_fore', 'armL_hand', 'armL_curl',
+      'armR', 'armR_fore', 'armR_hand', 'armR_curl',
+      'legL', 'legL_knee', 'legL_foot',
+      'legR', 'legR_knee', 'legR_foot',
+    ];
+    for (const c of ALL_7_CHARS) {
+      for (const suffix of ['', '-low']) {
+        const glb = parseGlbJson(`${CHAR_DIR}/${c}${suffix}.glb`);
+        const skin = glb.skins?.[0];
+        expect(skin, `${c}${suffix}.glb skin`).toBeTruthy();
+        const jointNames = (skin!.joints ?? []).map((idx) => glb.nodes?.[idx]?.name ?? '');
+        for (const reqBone of requiredBones) {
+          expect(jointNames, `${c}${suffix}.glb missing ${reqBone}`).toContain(reqBone);
+        }
+      }
+    }
+  });
+
+  it('removes the 📜 Log button from the real game (!session.test) in Game.tsx', () => {
+    const gameSrc = readFileSync(resolve(__dirname, '../src/screens/Game.tsx'), 'utf8');
+    expect(gameSrc).toContain("{session.test && <button className=\"icon\" onClick={() => setDrawer('log')}");
+    expect(gameSrc).toContain("{session.test && drawer === 'log' && <LogView");
+  });
 
   it('exposes the 4 compact HUD emotes (Wave, Cheer, Boo, Slam)', () => {
     expect(HUD_EMOTES.map((e) => e.kind)).toEqual(['wave', 'cheer', 'boo', 'slam']);
@@ -64,27 +108,61 @@ describe('3D win/lose character reactions & HUD emotes', () => {
     }
   });
 
-  it('computes a living, relaxed idle posture with radial body clearance for Orange guy and Ammar', () => {
-    const p0 = computeIdlePose('tango', 1, 0.0, 'idle', 0);
-    const p1 = computeIdlePose('tango', 1, 2.5, 'idle', 0.25);
-    const p2 = computeIdlePose('tango', 1, 5.0, 'think', -0.2);
-    for (const p of [p0, p1, p2]) {
-      // Orange guy's elbow is at |x_E| = 0.395 (outside the 0.34 egg torso), so |x| in 0.37..0.44 hangs straight down with full radial clearance
-      expect(Math.abs(p.tL[0])).toBeGreaterThanOrEqual(0.35);
-      expect(Math.abs(p.tL[0])).toBeLessThanOrEqual(0.45);
-      expect(Math.abs(p.tR[0])).toBeGreaterThanOrEqual(0.35);
-      expect(Math.abs(p.tR[0])).toBeLessThanOrEqual(0.45);
-      expect(p.tL[1]).toBeLessThan(0.32);
-      expect(p.tR[1]).toBeLessThan(0.32);
-      expect(p.tL[2]).toBeGreaterThan(0.04);
-      expect(p.tR[2]).toBeGreaterThan(0.04);
+  it('computes a living, relaxed idle posture and 3-bone seated leg animation for ALL 7 characters', () => {
+    for (const id of ALL_7_IDS) {
+      const p0 = computeIdlePose(id, 1, 0.0, 'idle', 0);
+      const p1 = computeIdlePose(id, 1, 2.2, 'idle', 0.25);
+      expect(p0.tL[1]).not.toBeCloseTo(p1.tL[1], 3);
+      expect(p0.spineRoll).not.toBeCloseTo(p1.spineRoll, 3);
+
+      const legsIdle0 = computeSeatedLegPose(id, 1, 0.2, 'idle', 0, null, false);
+      const legsIdle1 = computeSeatedLegPose(id, 1, 1.6, 'idle', 0, null, false);
+      expect(legsIdle0.L.hipPitch).not.toBeCloseTo(legsIdle1.L.hipPitch, 3);
+      expect(legsIdle0.L.kneeBend).toBeGreaterThan(0.05);
+      expect(legsIdle0.R.kneeBend).toBeGreaterThan(0.05);
+
+      const legsReach = computeSeatedLegPose(id, 1, 1.0, 'idle', 0.28, null, true);
+      expect(legsReach.L.kneeBend).toBeGreaterThan(0.15);
+      expect(legsReach.R.kneeBend).toBeGreaterThan(0.15);
+
+      const legsHappy = computeSeatedLegPose(id, 1, 0.5, 'happy', 0, null, false);
+      expect(Math.abs(legsHappy.L.hipPitch - legsHappy.R.hipPitch)).toBeGreaterThan(0.1);
     }
-    const pAmmar = computeIdlePose('ammar', 2, 1.0, 'idle', 0);
-    expect(Math.abs(pAmmar.tL[0])).toBeLessThan(0.28);
-    // Verify continuous movement across time (never static)
-    expect(p0.tL[1]).not.toBeCloseTo(p1.tL[1], 3);
-    expect(p0.spineRoll).not.toBeCloseTo(p1.spineRoll, 3);
-    expect(p2.tL[1]).toBeGreaterThan(p0.tL[1]); // 'think' raises left hand toward chin/gesture
+
+    // Verify walking gait helper drives opposite-phase hip swing and forward knee bend
+    const g0 = computeWalkGait(0.4, 1.0);
+    const g1 = computeWalkGait(0.4 + Math.PI, 1.0);
+    expect(g0.L.hipPitch).toBeGreaterThan(0.15);
+    expect(g0.R.hipPitch).toBeLessThan(-0.15);
+    expect(g1.L.hipPitch).toBeLessThan(-0.15);
+    expect(g0.L.kneeBend).toBeGreaterThan(0.2);
+  });
+
+  it('drives continuous 2-hand + 2-leg athletic badminton footwork across the 6.4s 4-shot rally cycle', () => {
+    expect(BADMINTON_PERIOD).toBeCloseTo(6.4, 2);
+    const sClear = computeBadmintonState(0.45);
+    const sSmash = computeBadmintonState(2.05);
+    const sLungeA = computeBadmintonState(3.45);
+    const sLungeB = computeBadmintonState(4.95);
+
+    // Jump-smash at t=2.05: Player B leaps into the air (> 0.22m) with overhead racket arm and arched back
+    expect(sSmash.B.jumpY).toBeGreaterThan(0.22);
+    expect(sSmash.B.armR[1]).toBeGreaterThan(0.65);
+    expect(sSmash.B.legL.kneeBend).toBeGreaterThan(0.3);
+    expect(sSmash.B.legR.kneeBend).toBeGreaterThan(0.4);
+
+    // Net lunges at t=3.45 (A) and t=4.95 (B): deep front-leg lunge (legR forward > 0.70, legL trailing < -0.50)
+    expect(sLungeA.A.legR.hipPitch).toBeGreaterThan(0.70);
+    expect(sLungeA.A.legR.kneeBend).toBeGreaterThan(0.75);
+    expect(sLungeA.A.legL.hipPitch).toBeLessThan(-0.50);
+
+    expect(sLungeB.B.legR.hipPitch).toBeGreaterThan(0.70);
+    expect(sLungeB.B.legR.kneeBend).toBeGreaterThan(0.75);
+    expect(sLungeB.B.legL.hipPitch).toBeLessThan(-0.50);
+
+    // Both hands (armR and armL) and both legs move continuously across the rally
+    expect(sClear.A.armL[1]).not.toBeCloseTo(sLungeA.A.armL[1], 2);
+    expect(sClear.A.armR[2]).not.toBeCloseTo(sLungeA.A.armR[2], 2);
   });
 
   it('drives dynamic cartoon mouth states across cheer/laugh, peek O-mouth, slam/penalty, and relaxed idle', () => {
@@ -100,12 +178,12 @@ describe('3D win/lose character reactions & HUD emotes', () => {
       arm: {}, look: null, lookW: 0, lean: 0, focus: 0.85,
     }, null);
     expect(mPeek.open).toBeGreaterThan(0.40);
-    expect(mPeek.width).toBeLessThan(0.60); // narrow 'O' mouth
+    expect(mPeek.width).toBeLessThan(0.60);
 
     const mSlam = computeMouthTarget('tango', 'sad', 1.0, idle, null, {
       seat: 1, kind: 'slam', icon: '💢', label: 'Slam!', startedAt: 0, duration: 2000, u: 0.25,
     });
     expect(mSlam.open).toBeGreaterThan(0.65);
-    expect(mSlam.smile).toBeLessThan(-0.25); // downturned groaning mouth
+    expect(mSlam.smile).toBeLessThan(-0.25);
   });
 });

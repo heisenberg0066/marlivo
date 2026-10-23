@@ -31,4 +31,6 @@ export const CHOCO = { w: 0.13, d: 0.06 } as const;
 
 /** Seat-view camera for the outdoor scenes: elevation (radians above the table plane) on laptop / phone portrait,
  *  and how much of a side seat's figure the phone keeps in frame (fraction of the seat distance; all scenes). */
-export const CAMERA = { laptopEl: 0.5, portraitEl: 0.86, sideKeep: 0.92 } as const;
+export const CAMERA = { laptopEl: 0.5, portraitEl: 0.86, sideKeep: 1.0, portraitSideBack: 0.42 } as const;
+// portraitSideBack (radians, QA 2026-10-23): on a phone held upright the left/right players sit this much further
+// round the table towards the far side, so their faces stay on the narrow screen (their cards do not move).

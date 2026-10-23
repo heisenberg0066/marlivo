@@ -9,7 +9,27 @@ import { useRigMotion, type Rig } from './rig';
 import { OrangeGuy, AmmarFigure } from './Hero';
 import { usePrefs, graphicsLevel } from '../prefs';
 import { loadManifest, entryFor, loadModel, normalise, clipFor, type CharacterEntry, type Placeholder } from './registry';
-import { registerActor, findArms, newCmd, solveArm, curlArm, resetArm, stepArmSmoothing, clampArmTarget, activeEmoteFor, computeEmotePose, computeIdlePose, computeMouthTarget, type Actor, type EmotePose, type IdlePose } from './actors';
+import {
+  registerActor,
+  findArms,
+  findLegs,
+  poseLeg,
+  computeSeatedLegPose,
+  newCmd,
+  solveArm,
+  curlArm,
+  resetArm,
+  stepArmSmoothing,
+  clampArmTarget,
+  activeEmoteFor,
+  computeEmotePose,
+  computeIdlePose,
+  computeMouthTarget,
+  type Actor,
+  type EmotePose,
+  type IdlePose,
+  type Side,
+} from './actors';
 import { getCtx3 } from './backend3d';
 
 const G = {
@@ -76,7 +96,6 @@ function PlaceholderFigure({ kind, mood, seed }: { kind: Placeholder; mood: Mood
     head = <><M c="#eadcc2" s={[0.15, 0.16, 0.15]} /><Eyes y={0.02} z={0.135} set={set('eyes')} /><M c="#b07a5a" p={[0, -0.06, 0.135]} s={[0.03, 0.012, 0.01]} /></>;
     arms = <><Arm side={-1} c="#d9c7a8" w={0.04} set={set('armL')} /><Arm side={1} c="#d9c7a8" w={0.04} set={set('armR')} /></>;
   }
-  // The orange guy is one round body with a face on it; the others have a separate head.
   const headY = kind === 'orange' ? 0.3 : 0.38;
   return (
     <group ref={set('root')}>
@@ -87,8 +106,6 @@ function PlaceholderFigure({ kind, mood, seed }: { kind: Placeholder; mood: Mood
   );
 }
 
-/** Bone motion for rigged GLB figures. Rotations are given about model-space axes (x = nod, y = turn,
- *  z = side tilt; the model faces +z) and converted once into each bone's local frame. */
 interface BoneRig { bone: THREE.Bone; rest: THREE.Quaternion; ax: THREE.Vector3[] }
 function rigBones(root: THREE.Object3D, names: string[]): Record<string, BoneRig> {
   const out: Record<string, BoneRig> = {};
@@ -97,7 +114,7 @@ function rigBones(root: THREE.Object3D, names: string[]): Record<string, BoneRig
   for (const n of names) {
     const b = root.getObjectByName(n) as THREE.Bone | undefined;
     if (!b) continue;
-    const wq = rootQ.clone().multiply(b.getWorldQuaternion(new THREE.Quaternion())).invert(); // model -> bone local
+    const wq = rootQ.clone().multiply(b.getWorldQuaternion(new THREE.Quaternion())).invert();
     out[n] = { bone: b, rest: b.quaternion.clone(), ax: [new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 0, 1)].map((v) => v.applyQuaternion(wq).normalize()) };
   }
   return out;
@@ -111,9 +128,6 @@ function pose(r: BoneRig | undefined, x: number, y: number, z: number) {
   if (z) r.bone.quaternion.multiply(tq.setFromAxisAngle(r.ax[2], z));
 }
 
-/** A GLB figure from the manifest: normalised to the seat, animated by its clips or, for rigged figures, by bones.
- *  While the file loads the built-in procedural figure stands in. */
-/** Per-character eye & mouth placement in unit-height bind space (y in 0..1, +z forward) for blinking and animated mouths. */
 export interface FaceShaderUniform { value: number; mouth: THREE.Vector4 }
 const EYE_SPEC: Record<string, { ey: number; eh: number; ex: number; ew: number; col: string; my: number; mh: number; mw: number; mcol: string }> = {
   ammar:   { ey: 0.826, eh: 0.024, ex: 0.043, ew: 0.030, col: '#e6a87e', my: 0.745, mh: 0.000, mw: 0.028, mcol: '#e6a87e' },
@@ -221,7 +235,7 @@ export function attachBlinkShader(root: THREE.Object3D, id: string, ryDeg: numbe
 function ModelFigure({ e, id, mood, seed, pose: stance, fallback, onFail }: { e: CharacterEntry; id: string; mood: Mood; seed: number; pose: 'sit' | 'stand'; fallback: ReactNode; onFail(): void }) {
   const level = usePrefs().graphics && graphicsLevel();
   const gl = useThree((st) => st.gl);
-  const [obj, setObj] = useState<{ root: THREE.Object3D; mixer: THREE.AnimationMixer; clips: THREE.AnimationClip[]; bones: Record<string, BoneRig>; y0: number; blinkU: FaceShaderUniform[] } | null>(null);
+  const [obj, setObj] = useState<{ root: THREE.Object3D; mixer: THREE.AnimationMixer; clips: THREE.AnimationClip[]; bones: Record<string, BoneRig>; x0: number; y0: number; z0: number; blinkU: FaceShaderUniform[] } | null>(null);
   const action = useRef<THREE.AnimationAction | null>(null);
   useEffect(() => {
     let alive = true;
@@ -230,20 +244,28 @@ function ModelFigure({ e, id, mood, seed, pose: stance, fallback, onFail }: { e:
       if (!gltf) { onFail(); return; }
       const { clone } = await import('three/examples/jsm/utils/SkeletonUtils.js');
       const root = clone(gltf.scene);
-      // High: sharpest texture filtering the GPU offers (textures are sRGB colour + linear normal maps, mipmapped)
       const aniso = level === 'high' ? gl.capabilities.getMaxAnisotropy() : 1;
       root.traverse((o) => {
         const m = o as THREE.Mesh; if (!m.isMesh) return;
         m.castShadow = !/lens|rim|bridge|temple/i.test(m.name) && !/lens|rim|bridge|temple/i.test(m.parent?.name ?? ''); m.frustumCulled = false;
         const mt = m.material as THREE.MeshStandardMaterial; if (!mt?.isMeshStandardMaterial) return;
         if (mt.map) mt.roughness = Math.max(mt.roughness, 0.62);
-        if (mt.normalMap) mt.normalScale.set(0.28, 0.28); // painted skin/cloth: matte. Wire, chain, lenses keep their shine
-        mt.metalness = 0; // no environment map in the room: metals would render black
+        if (mt.normalMap) mt.normalScale.set(0.28, 0.28);
+        mt.metalness = 0;
         for (const tx of [mt.map, mt.normalMap, mt.emissiveMap]) if (tx && tx.anisotropy !== aniso) { tx.anisotropy = aniso; tx.needsUpdate = true; }
       });
       const blinkU = attachBlinkShader(root, id, e.rotationY ?? 0);
       normalise(root, stance === 'stand' && e.chair !== false ? { ...e, baseY: -0.12 } : e);
-      setObj({ root, mixer: new THREE.AnimationMixer(root), clips: gltf.animations, bones: rigBones(root, ['body', 'armL', 'armR', 'root', 'hips', 'spine', 'head']), y0: root.position.y, blinkU });
+      setObj({
+        root,
+        mixer: new THREE.AnimationMixer(root),
+        clips: gltf.animations,
+        bones: rigBones(root, ['body', 'armL', 'armR', 'root', 'hips', 'spine', 'head']),
+        x0: root.position.x,
+        y0: root.position.y,
+        z0: root.position.z,
+        blinkU,
+      });
     });
     return () => { alive = false; };
   }, [e, level, stance, gl]);
@@ -257,16 +279,37 @@ function ModelFigure({ e, id, mood, seed, pose: stance, fallback, onFail }: { e:
     action.current?.fadeOut(0.3);
     action.current = next;
   }, [obj, mood]);
-  // card-action actor for this seat (seed is the seat number on the table)
   const actor = useRef<Actor | null>(null);
   useEffect(() => {
     if (!obj) return;
-    const a: Actor = { seat: seed, id, motion: e.motion, root: obj.root, arms: findArms(obj.root), head: obj.bones.head?.bone ?? obj.bones.body?.bone ?? null, cmd: newCmd(), lowDetail: level !== 'high' };
+    const a: Actor = {
+      seat: seed,
+      id,
+      motion: e.motion,
+      root: obj.root,
+      arms: findArms(obj.root),
+      legs: findLegs(obj.root),
+      head: obj.bones.head?.bone ?? obj.bones.body?.bone ?? null,
+      cmd: newCmd(),
+      lowDetail: level !== 'high',
+    };
     actor.current = a;
     const un = registerActor(a);
     return () => { un(); actor.current = null; };
   }, [obj, seed, level]);
-  const lk = useRef({ yaw: 0, pitch: 0, lean: 0, mouthOpen: 0, mouthSmile: 0.25, mouthWidth: 0.95, bodyQ: new Map<string, THREE.Quaternion>() });
+  const lk = useRef({
+    yaw: 0,
+    pitch: 0,
+    lean: 0,
+    coilYaw: 0,
+    shiftX: 0,
+    shiftY: 0,
+    shiftZ: 0,
+    mouthOpen: 0,
+    mouthSmile: 0.25,
+    mouthWidth: 0.95,
+    bodyQ: new Map<string, THREE.Quaternion>(),
+  });
   const sm = useRef({ hop: 0, tilt: 0, nod: 0, arm: 0, twist: 0 });
   useFrame((st, dt) => {
     if (!obj) return;
@@ -274,7 +317,6 @@ function ModelFigure({ e, id, mood, seed, pose: stance, fallback, onFail }: { e:
     obj.mixer.update(d);
     if (obj.clips.length) return;
     const t = st.clock.elapsedTime + seed * 1.7, b = obj.bones, k = 1 - Math.exp(-d * 6), s = sm.current;
-    // targets per mood, eased so mood changes blend
     const happy = mood === 'happy', think = mood === 'think', sad = mood === 'sad', away = mood === 'away', surp = mood === 'surprised';
     const T = {
       hop: happy ? Math.abs(Math.sin(t * 6)) * 0.07 : surp ? 0.03 : 0,
@@ -289,18 +331,21 @@ function ModelFigure({ e, id, mood, seed, pose: stance, fallback, onFail }: { e:
     const busyArms = !!(actor.current && Object.values(actor.current.cmd.arm).some((x) => x && !x.hold && x.w > 0.05));
     const ep = em && !busyArms ? computeEmotePose(em.kind, em.u) : null;
     const idle = computeIdlePose(id, seed, st.clock.elapsedTime, mood, lk.current.yaw);
-    obj.root.position.y = obj.y0 + (ep ? ep.hop : s.hop) + Math.sin(t * 1.6) * 0.008;
-    // Reset torso/head bones to rest before computing this frame's target pose (smoothed afterwards)
+    // Reset torso/head bones to rest before computing this frame's target pose
     for (const [kBone, br] of Object.entries(b)) if (kBone !== 'armL' && kBone !== 'armR' && br) br.bone.quaternion.copy(br.rest);
     if (e.motion === 'creature') {
       pose(b.root, 0, 0, idle.hipsRoll);
       pose(b.body, s.nod * 0.5 + idle.spinePitch, s.twist + idle.spineYaw, s.tilt * 0.55 + idle.spineRoll);
+    } else if (id === 'choco' || id === 'sugar') {
+      // Blocky figures (eyes/mouth on front of block): drive torso/head together via spine so face never shears
+      pose(b.hips, 0, 0, idle.hipsRoll);
+      pose(b.spine, s.nod * 0.45 + idle.spinePitch, s.twist * 0.7 + idle.spineYaw, s.tilt * 0.45 + idle.spineRoll);
+      pose(b.head, 0, 0, 0);
     } else {
       pose(b.hips, 0, 0, idle.hipsRoll);
       pose(b.spine, s.nod * 0.3 + idle.spinePitch, s.twist * 0.6 + idle.spineYaw, s.tilt * 0.35 + idle.spineRoll);
       pose(b.head, s.nod, s.twist * 0.5, s.tilt * 0.6 + idle.headRoll);
     }
-    // organic blink + animated cartoon mouth (open, smile, width, cover)
     if (obj.blinkU.length) {
       const period = 3.5 + (seed % 3) * 0.55;
       const ph = t % period;
@@ -323,77 +368,158 @@ function ModelFigure({ e, id, mood, seed, pose: stance, fallback, onFail }: { e:
         u.mouth.set(lk.current.mouthOpen, lk.current.mouthSmile, lk.current.mouthWidth, cov);
       }
     }
-    applyActor(actor.current, obj.bones, lk.current, d, t, ep, idle);
+    applyActor(actor.current, obj, lk.current, d, t, ep, idle, s.hop, mood);
   });
   return obj ? <primitive object={obj.root} /> : <>{fallback}</>;
 }
 
-/** Layers the card-action commands on top of the living idle pose with exponential quaternion damping and overlapping arm motion. */
-const vT = new THREE.Vector3(), vIdleArm = new THREE.Vector3(), vH = new THREE.Vector3(), vC0 = new THREE.Vector3(), vIdle = new THREE.Vector3(), qT = new THREE.Quaternion();
+const vT = new THREE.Vector3(), vIdleArm = new THREE.Vector3(), vH = new THREE.Vector3(), vC0 = new THREE.Vector3(), vIdle = new THREE.Vector3(), vLocReach = new THREE.Vector3(), qT = new THREE.Quaternion();
 function applyActor(
   a: Actor | null,
-  b: Record<string, BoneRig>,
-  lk: { yaw: number; pitch: number; lean: number; bodyQ: Map<string, THREE.Quaternion> },
+  obj: { root: THREE.Object3D; bones: Record<string, BoneRig>; x0: number; y0: number; z0: number },
+  lk: { yaw: number; pitch: number; lean: number; coilYaw: number; shiftX: number; shiftY: number; shiftZ: number; bodyQ: Map<string, THREE.Quaternion> },
   dt: number,
   t: number,
   ep: EmotePose | null = null,
   idle?: IdlePose,
+  moodHop = 0,
+  mood = 'idle',
 ) {
   if (!a) return;
+  const b = obj.bones;
   const c = a.cmd;
+  const fr = a.root.parent ?? a.root;
+  fr.updateMatrixWorld(true);
+
   const spine = b.spine ?? b.body;
   const isCreature = a.motion === 'creature' || !b.spine;
   const isBlocky = a.id === 'choco' || a.id === 'sugar';
-  const leanScale = isCreature ? 0.28 : isBlocky ? 0.42 : 0.48;
-  const wantLean = (c.lean + (ep ? ep.lean : 0)) * leanScale;
-  lk.lean += (wantLean - lk.lean) * (1 - Math.exp(-dt * 10));
-  const leanEff = lk.lean;
-  if (spine && Math.abs(leanEff) > 1e-3) spine.bone.quaternion.multiply(qT.setFromAxisAngle(spine.ax[0], leanEff));
-  const hb = b.head ?? b.body;
-  // head look: yaw/pitch towards the action target, or in idle towards the active player / card on the table
-  let wy = 0, wp = 0;
-  let lookTarget = c.look;
-  let lookWeight = c.lookW;
-  if ((!lookTarget || lookWeight <= 0.02) && hb) {
-    const ctx3 = getCtx3();
-    const r = ctx3?.view.round;
-    const L = ctx3?.layout;
-    if (r && L) {
-      const actSeat = r.active?.k === 'attempt' ? r.active.seat : r.active?.k === 'power' ? r.active.owner : r.current;
-      if (actSeat != null && actSeat !== a.seat) {
-        const hp = r.drawn?.by === actSeat ? L.hands[actSeat]?.p : null;
-        const ap = L.areas[actSeat]?.p ?? L.chars[actSeat]?.p;
-        const pt = hp ?? (ap ? [ap[0] * 0.75, 0.14, ap[2] * 0.75] : null);
-        if (pt) { lookTarget = vIdle.set(pt[0], pt[1], pt[2]); lookWeight = 0.46; }
-      } else if (actSeat === a.seat && L.areas[a.seat]) {
-        const ap = L.areas[a.seat]!.p;
-        lookTarget = vIdle.set(ap[0], 0.05, ap[2]); lookWeight = 0.34;
+
+  // Check active arm reaches & holds to drive automatic whole-body forward root shift & shoulder coil
+  let wantShiftX = c.shift?.[0] ?? 0;
+  let wantShiftY = c.shift?.[1] ?? 0;
+  let wantShiftZ = c.shift?.[2] ?? 0;
+  let wantCoilYaw = c.yaw ?? 0;
+  let activeReachMax = 0;
+  let holdingSide: Side | null = null;
+
+  for (const sd of ['L', 'R'] as const) {
+    const ac = c.arm[sd];
+    if (!ac || ac.w <= 0.02) continue;
+    if (ac.hold) {
+      holdingSide = sd;
+    } else {
+      activeReachMax = Math.max(activeReachMax, ac.w);
+      vLocReach.copy(ac.target);
+      fr.worldToLocal(vLocReach);
+      // Reach distance forward (+z toward table center)
+      const reachZ = THREE.MathUtils.clamp((vLocReach.z - 0.14) / 0.45, 0, 1) * ac.w;
+      if (!c.shift) {
+        wantShiftZ = Math.max(wantShiftZ, reachZ * 0.19);
+        wantShiftY = Math.max(wantShiftY, reachZ * 0.028);
+        wantShiftX += THREE.MathUtils.clamp(vLocReach.x * 0.18, -0.045, 0.045) * ac.w;
+      }
+      if (c.yaw === undefined) {
+        // Reaching with L (-x) turns torso so left shoulder leads (+z): negative yaw; R (+x): positive yaw
+        const sgn = sd === 'L' ? -1 : 1;
+        wantCoilYaw += sgn * 0.36 * reachZ;
       }
     }
   }
+
+  // Spectator engagement: when a match window is open on the pile, spectators lean in slightly
+  const ctx3 = getCtx3();
+  const r = ctx3?.view.round;
+  const L = ctx3?.layout;
+  const spectatorLean = !activeReachMax && !holdingSide && r?.window ? 0.065 : 0;
+
+  const kShift = 1 - Math.exp(-dt * 11.5);
+  lk.shiftX += (wantShiftX - lk.shiftX) * kShift;
+  lk.shiftY += (wantShiftY - lk.shiftY) * kShift;
+  lk.shiftZ += (wantShiftZ - lk.shiftZ) * kShift;
+  lk.coilYaw += (wantCoilYaw - lk.coilYaw) * kShift;
+
+  obj.root.position.set(
+    obj.x0 + lk.shiftX,
+    obj.y0 + (ep ? ep.hop : moodHop) + lk.shiftY + Math.sin(t * 1.6) * 0.008,
+    obj.z0 + lk.shiftZ,
+  );
+
+  const leanScale = isCreature ? 0.32 : isBlocky ? 0.44 : 0.52;
+  const wantLean = (c.lean + spectatorLean + (ep ? ep.lean : 0)) * leanScale;
+  lk.lean += (wantLean - lk.lean) * (1 - Math.exp(-dt * 11));
+  const leanEff = lk.lean;
+  if (spine && (Math.abs(leanEff) > 1e-3 || Math.abs(lk.coilYaw) > 1e-3)) {
+    spine.bone.quaternion
+      .multiply(qT.setFromAxisAngle(spine.ax[0], leanEff))
+      .multiply(tq2.setFromAxisAngle(spine.ax[1], lk.coilYaw * (isCreature ? 0.65 : 0.85)));
+  }
+
+  // 3-bone articulated leg animation for all 7 characters
+  if (a.legs && (a.legs.L || a.legs.R)) {
+    const legPose = computeSeatedLegPose(a.id, a.seat, t, mood, c.lean, ep ? null : activeEmoteFor(a.seat), activeReachMax > 0.15);
+    poseLeg(a.legs.L, legPose.L.hipPitch, legPose.L.kneeBend, legPose.L.footPitch, legPose.L.hipRoll, dt);
+    poseLeg(a.legs.R, legPose.R.hipPitch, legPose.R.kneeBend, legPose.R.footPitch, legPose.R.hipRoll, dt);
+  }
+
+  const hb = isBlocky ? spine : (b.head ?? b.body);
+  let wy = 0, wp = 0;
+  let lookTarget = c.look;
+  let lookWeight = c.lookW;
+
+  // Active slot-scanning loop while holding a drawn card (deciding whether to swap or throw!)
+  if (holdingSide && !ep && L && L.areas[a.seat]) {
+    const ap = L.areas[a.seat]!;
+    const scanPhase = Math.sin(t * 2.8 + a.seat * 1.3);
+    const glanceAtHeld = Math.sin(t * 1.4 + a.seat) > 0.45;
+    if (glanceAtHeld && L.hands[a.seat]) {
+      const hp = L.hands[a.seat]!.p;
+      lookTarget = vIdle.set(hp[0], hp[1], hp[2]);
+      lookWeight = 0.72;
+    } else {
+      const sx = Math.cos(ap.yaw) * scanPhase * 0.19;
+      const sz = -Math.sin(ap.yaw) * scanPhase * 0.19;
+      lookTarget = vIdle.set(ap.p[0] + sx, 0.04, ap.p[2] + sz);
+      lookWeight = 0.78;
+    }
+  } else if ((!lookTarget || lookWeight <= 0.02) && hb && r && L) {
+    const actSeat = r.active?.k === 'attempt' ? r.active.seat : r.active?.k === 'power' ? r.active.owner : r.current;
+    // When a match window is open, spectators alternate glancing at the center discard pile and the active player
+    if (r.window && Math.sin(t * 1.5 + a.seat) > 0.15) {
+      lookTarget = vIdle.set(0.16, 0.04, 0);
+      lookWeight = 0.56;
+    } else if (actSeat != null && actSeat !== a.seat) {
+      const hp = r.drawn?.by === actSeat ? L.hands[actSeat]?.p : null;
+      const ap = L.areas[actSeat]?.p ?? L.chars[actSeat]?.p;
+      const pt = hp ?? (ap ? [ap[0] * 0.75, 0.14, ap[2] * 0.75] : null);
+      if (pt) { lookTarget = vIdle.set(pt[0], pt[1], pt[2]); lookWeight = 0.52; }
+    } else if (actSeat === a.seat && L.areas[a.seat]) {
+      const ap = L.areas[a.seat]!.p;
+      lookTarget = vIdle.set(ap[0], 0.05, ap[2]); lookWeight = 0.42;
+    }
+  }
+
   if (lookTarget && hb && lookWeight > 0) {
-    const fr = a.root.parent ?? a.root; // the seat group: local +z faces the table centre
     fr.updateMatrixWorld(true);
     hb.bone.getWorldPosition(vH);
     vT.copy(lookTarget); fr.worldToLocal(vT); const h0 = fr.worldToLocal(vH.clone());
     vT.sub(h0);
     wy = THREE.MathUtils.clamp(Math.atan2(vT.x, vT.z), -0.75, 0.75) * lookWeight;
-    wp = THREE.MathUtils.clamp(-Math.atan2(vT.y, Math.hypot(vT.x, vT.z)), -0.3, 0.2) * lookWeight;
+    wp = THREE.MathUtils.clamp(-Math.atan2(vT.y, Math.hypot(vT.x, vT.z)), -0.32, 0.22) * lookWeight;
   }
-  const kLook = 1 - Math.exp(-dt * 8.5);
+  const kLook = 1 - Math.exp(-dt * 9.0);
   lk.yaw += (wy - lk.yaw) * kLook; lk.pitch += (wp - lk.pitch) * kLook;
   const yawEff = lk.yaw + (ep ? ep.shake : 0);
   if (hb && (Math.abs(yawEff) > 1e-3 || Math.abs(lk.pitch) > 1e-3 || Math.abs(leanEff) > 1e-3)) {
     if (hb === spine) {
-      const pCap = THREE.MathUtils.clamp((lk.pitch + c.focus * 0.06) * 0.2, -0.08, 0.08);
-      hb.bone.quaternion.multiply(qT.setFromAxisAngle(hb.ax[1], yawEff * 0.48)).multiply(qT.setFromAxisAngle(hb.ax[0], pCap));
+      const pCap = THREE.MathUtils.clamp((lk.pitch + c.focus * 0.06) * 0.24, -0.10, 0.10);
+      hb.bone.quaternion.multiply(qT.setFromAxisAngle(hb.ax[1], yawEff * 0.52)).multiply(qT.setFromAxisAngle(hb.ax[0], pCap));
     } else {
-      const localPitch = THREE.MathUtils.clamp(lk.pitch + c.focus * 0.05 - leanEff * 0.9, -0.28, 0.1);
+      const localPitch = THREE.MathUtils.clamp(lk.pitch + c.focus * 0.05 - leanEff * 0.9, -0.28, 0.12);
       hb.bone.quaternion.multiply(qT.setFromAxisAngle(hb.ax[1], yawEff)).multiply(qT.setFromAxisAngle(hb.ax[0], localPitch));
     }
   }
-  // Smooth torso & head bones with exponential quaternion slerp so body motion never snaps
-  const kBody = 1 - Math.exp(-dt * 11.5);
+  const kBody = 1 - Math.exp(-dt * 12.5);
   for (const kName of ['root', 'hips', 'body', 'spine', 'head']) {
     const br = b[kName]; if (!br) continue;
     let sq = lk.bodyQ.get(kName);
@@ -401,12 +527,10 @@ function applyActor(
     else { sq.slerp(br.bone.quaternion, kBody); br.bone.quaternion.copy(sq); }
   }
 
-  const fr = a.root.parent ?? a.root;
   fr.updateMatrixWorld(true);
   a.root.getWorldPosition(vC0); vC0.y += 0.25;
   for (const sd of ['L', 'R'] as const) {
     const arm = a.arms[sd]; if (!arm) continue;
-    // Start IK solve from clean rest pose, then smooth via stepArmSmoothing for overlapping shoulder->elbow->wrist lag
     arm.up.quaternion.copy(arm.restUp);
     resetArm(arm);
 
@@ -423,10 +547,21 @@ function applyActor(
         if (cmd.w <= 0.01) delete c.arm[sd];
       }
     }
+
+    const otherSide: Side = sd === 'L' ? 'R' : 'L';
+    const otherCmd = c.arm[otherSide];
+    const sgn = sd === 'L' ? -1 : 1;
+
     let curl = idleCurl;
+    let isFastReach = false;
     if (cmd && cmd.w > 0.001 && !ep) {
       vT.lerpVectors(vIdleArm, cmd.target, cmd.w);
-      if (cmd.hold) { vT.y += Math.sin(t * 2.4) * 0.015; vT.x += Math.cos(t * 1.8) * 0.012; }
+      if (cmd.hold) {
+        vT.y += Math.sin(t * 2.6) * 0.016;
+        vT.x += Math.cos(t * 1.9) * 0.014;
+      } else {
+        isFastReach = true;
+      }
       curl = THREE.MathUtils.lerp(idleCurl, cmd.curl, cmd.w);
     } else if (ep) {
       const tLoc = sd === 'L' ? ep.tL : ep.tR;
@@ -440,6 +575,23 @@ function applyActor(
       } else {
         vT.copy(vIdleArm);
       }
+    } else if (otherCmd && otherCmd.hold && otherCmd.w > 0.2) {
+      // While the other hand holds a drawn card, this free hand hovers/taps thoughtfully over the slots or chin!
+      const ponderWave = 0.5 + 0.5 * Math.sin(t * 2.4 + a.seat);
+      const hoverX = sgn * (a.id === 'tango' ? 0.35 : 0.16) + Math.sin(t * 3.1) * 0.035;
+      const hoverY = 0.08 + ponderWave * 0.16;
+      const hoverZ = 0.24 + (1 - ponderWave) * 0.06;
+      vT.set(hoverX, hoverY, hoverZ);
+      fr.localToWorld(vT);
+      vT.lerpVectors(vIdleArm, vT, otherCmd.w * 0.85);
+      curl = 0.35 + 0.18 * Math.sin(t * 6.2);
+    } else if (otherCmd && !otherCmd.hold && otherCmd.w > 0.1) {
+      // Automatic off-hand bracing on the table rim when the other hand reaches across the felt!
+      const braceX = sgn * (a.id === 'tango' ? 0.36 : 0.22);
+      vT.set(braceX, 0.032, 0.27);
+      fr.localToWorld(vT);
+      vT.lerpVectors(vIdleArm, vT, otherCmd.w * 0.82);
+      curl = THREE.MathUtils.lerp(idleCurl, 0.55, otherCmd.w * 0.82);
     } else {
       vT.copy(vIdleArm);
     }
@@ -450,12 +602,10 @@ function applyActor(
     fr.localToWorld(vT);
     for (let k = 0; k < 2; k++) solveArm(arm, vT, 1.0, vC0);
     curlArm(arm, curl * (a.lowDetail ? 0.5 : 1));
-    stepArmSmoothing(arm, dt);
+    stepArmSmoothing(arm, dt, isFastReach);
   }
-  void t;
 }
 
-/** The manifest entry for a character id (null until the manifest has loaded). */
 export function useCharacterEntry(id: string): CharacterEntry | null {
   const [entry, setEntry] = useState<CharacterEntry | null>(null);
   useEffect(() => { let a = true; loadManifest().then((m) => a && setEntry(entryFor(m, id))); return () => { a = false; }; }, [id]);

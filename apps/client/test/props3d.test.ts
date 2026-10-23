@@ -47,6 +47,8 @@ describe('table props', () => {
       for (const z of zones) expect(overlap(bar, z)).toBe(false);
       for (const [x, z] of bar) { expect(Math.hypot(x, z)).toBeLessThan(TABLE_R - 0.005); expect(Math.hypot(x, z)).toBeGreaterThan(CENTRE_CLEAR_R); }
       for (const t of Object.values(P.tea)) expect(overlap(bar, octagon(t.p[0], t.p[2], TEA.saucerR))).toBe(false);
+      // and with a visible gap (no bar touching a saucer rim)
+      for (const t of Object.values(P.tea)) expect(overlap(bar, octagon(t.p[0], t.p[2], TEA.saucerR + 0.012))).toBe(false);
       // seated characters sit outside the table
       for (const c of Object.values(L.chars)) expect(Math.hypot(c.p[0], c.p[2])).toBeCloseTo(SEAT_DIST);
     });

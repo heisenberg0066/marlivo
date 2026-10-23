@@ -92,7 +92,27 @@ function CameraRig({ L, me, mode, portrait, outdoor }: { L: Layout3; me: number 
 }
 
 function OverlaySync({ points, els, stage }: { points: React.MutableRefObject<OverlayPoints>; els: React.MutableRefObject<Map<string, HTMLElement>>; stage: React.RefObject<HTMLDivElement> }) {
-  useFrame(() => {
+  const savedCam = useRef<{ pos: THREE.Vector3; quat: THREE.Quaternion; fov: number } | null>(null);
+  useFrame(({ camera, size }) => {
+    const cam = camera as THREE.PerspectiveCamera;
+    const ov = (window as unknown as { __mlCam?: { pos: [number, number, number]; target: [number, number, number]; fov?: number } | null }).__mlCam;
+    if (ov) {
+      if (!savedCam.current) savedCam.current = { pos: cam.position.clone(), quat: cam.quaternion.clone(), fov: cam.fov };
+      cam.clearViewOffset();
+      cam.fov = ov.fov ?? 40;
+      cam.aspect = size.width / size.height;
+      cam.position.set(ov.pos[0], ov.pos[1], ov.pos[2]);
+      cam.lookAt(ov.target[0], ov.target[1], ov.target[2]);
+      cam.updateProjectionMatrix();
+      cam.updateMatrixWorld();
+    } else if (savedCam.current) {
+      cam.position.copy(savedCam.current.pos);
+      cam.quaternion.copy(savedCam.current.quat);
+      cam.fov = savedCam.current.fov;
+      cam.updateProjectionMatrix();
+      cam.updateMatrixWorld();
+      savedCam.current = null;
+    }
     updateMyEmoteHand();
     const st = stage.current; if (!st) return;
     const r = st.getBoundingClientRect();

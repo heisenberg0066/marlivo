@@ -1,30 +1,42 @@
 // Pure geometry & outfit logic for the 3D Orange waiter (sketch book v8 p22–27, W1–W6).
 // Kept free of WebGL so vitest can verify that:
-//  - outfits are picked at random (never a fixed cycle) from the full set of styles,
+//  - outfits are picked at random (never a fixed cycle and never repeating the previous outfit when returning),
+//  - pickRefillOrder visits EVERY active seated player's cup in circular order around the table perimeter,
 //  - the walking path stays on the terrace side of the hedge, outside the table and outside every seated player,
 //  - every stop point sits in a gap between seats with clear reach to the cup / player / centre piles.
 import type { Layout3, V3 } from '../layout3d';
 import { TABLE_R, SEAT_DIST, FLOOR_Y } from '../sceneConfig';
 
-export const WAITER_OUTFITS = ['full', 'suit', 'tie', 'plain', 'tuxedo'] as const;
+export const WAITER_OUTFITS = ['full', 'suit', 'tie', 'plain', 'tuxedo', 'chef'] as const;
 export type WaiterOutfit = (typeof WAITER_OUTFITS)[number];
 
-/** Picks an outfit at random on each visit (not in sequence). */
-export function pickWaiterOutfit(rng: () => number = Math.random): WaiterOutfit {
-  const idx = Math.floor(rng() * WAITER_OUTFITS.length) % WAITER_OUTFITS.length;
-  return WAITER_OUTFITS[Math.max(0, idx)]!;
+/** Picks an outfit at random on each visit, never repeating `prevOutfit` when provided. */
+export function pickWaiterOutfit(
+  rngOrPrev: (() => number) | WaiterOutfit = Math.random,
+  prevOutfit?: WaiterOutfit,
+): WaiterOutfit {
+  const rng = typeof rngOrPrev === 'function' ? rngOrPrev : Math.random;
+  const prev = typeof rngOrPrev === 'string' ? rngOrPrev : prevOutfit;
+  const pool = prev ? WAITER_OUTFITS.filter((o) => o !== prev) : WAITER_OUTFITS;
+  const idx = Math.floor(rng() * pool.length) % pool.length;
+  return pool[Math.max(0, idx)]!;
 }
 
-/** Kitchen door spawn at the bottom-left terrace edge (v8 p27). */
-export const KITCHEN_DOOR: V3 = [-2.65, FLOOR_Y, 1.55];
+/** Kitchen door / off-stage spawn on the left garden terrace path (in full view of the camera). */
+export const KITCHEN_DOOR: V3 = [-2.35, FLOOR_Y, -1.65];
+export const OFF_STAGE: V3 = [-2.35, FLOOR_Y, -1.65];
 /** Radius of the dashed walking loop around the table (outside chairs at ~1.35, inside stone rim at 2.38). */
-export const LOOP_R = 1.64;
+export const LOOP_R = 1.58;
 /** Radius when stepped into a gap between seats to pour tea / splash / present medal. */
-export const STOP_R = 1.28;
+export const STOP_R = 1.26;
 /** Minimum allowed distance from the waiter to any seated character's root. */
 export const CHAR_CLEAR_R = 0.44;
 /** Hedge line z (waiter must never cross onto the badminton court z < HEDGE_Z). */
 export const HEDGE_Z = -2.25;
+/** Seconds spent pouring tea at each player's cup and walking between adjacent seats. */
+export const REFILL_POUR = 2.2;
+export const REFILL_WALK = 2.3;
+export const WAITER_BREAK_RANGE: readonly [number, number] = [7, 10];
 
 export interface WaiterStop {
   id: 'A' | 'B' | 'C' | 'D';
@@ -40,6 +52,58 @@ const normAngle = (a: number) => {
   return a;
 };
 
+/** Returns ALL active seats sorted in circular order around the table perimeter starting from the left terrace side
+ *  (-PI * 0.65 -> top -> right -> bottom) so every player's cup is refilled one by one in full camera view. */
+export function pickRefillOrder(L: Layout3, cupSeats?: number[]): number[] {
+  const seats = cupSeats && cupSeats.length > 0 ? [...cupSeats] : Object.keys(L.seats).map(Number);
+  const startRef = -Math.PI * 0.35;
+  return seats.sort((sA, sB) => {
+    const aA = L.seats[sA]?.a ?? 0;
+    const aB = L.seats[sB]?.a ?? 0;
+    const dA = ((startRef - aA) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
+    const dB = ((startRef - aB) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
+    return dA - dB;
+  });
+}
+
+/** Computes a safe standing stop right outside a specific seat's teacup, clear of every seated character
+ *  and within the visible terrace frame (z <= 0.85 so he never walks behind the camera). */
+export function cupStopForSeat(L: Layout3, seat: number, cupPos?: V3): WaiterStop {
+  const seatAngle = L.seats[seat]?.a ?? 0;
+  const rawCupAngle = cupPos ? Math.atan2(cupPos[0], cupPos[2]) : normAngle(seatAngle + 0.36);
+  let bestA = rawCupAngle;
+  let bestScore = -1e9;
+  for (let step = -24; step <= 24; step++) {
+    const cand = normAngle(rawCupAngle + step * 0.045);
+    const sx = Math.sin(cand) * STOP_R;
+    const sz = Math.cos(cand) * STOP_R;
+    if (sz < HEDGE_Z + 0.08) continue;
+    let minCharD = Infinity;
+    for (const c of Object.values(L.chars)) {
+      minCharD = Math.min(minCharD, Math.hypot(sx - c.p[0], sz - c.p[2]));
+    }
+    const cupD = cupPos ? Math.hypot(sx - cupPos[0], sz - cupPos[2]) : Math.abs(normAngle(cand - rawCupAngle));
+    // Keep stops in the 4 open diagonal quadrants (|sx| >= 0.55, sz in [-1.08, +0.42]) so he is never hidden behind the top player or below the bottom HUD
+    const inFrameBonus = (sz <= 0.42 && sz >= -1.08 ? 45 : 0) + (Math.abs(sx) >= 0.58 ? 35 : 0);
+    const clearBonus = minCharD >= CHAR_CLEAR_R + 0.02 ? 100 : minCharD * 50;
+    const score = clearBonus + inFrameBonus - cupD * 2.2;
+    if (score > bestScore) {
+      bestScore = score;
+      bestA = cand;
+    }
+  }
+  const sx = Math.sin(bestA), sz = Math.cos(bestA);
+  const standPos: V3 = [sx * STOP_R, FLOOR_Y, sz * STOP_R];
+  const faceYaw = cupPos ? Math.atan2(cupPos[0] - standPos[0], cupPos[2] - standPos[2]) : bestA + Math.PI;
+  return {
+    id: 'A',
+    angle: bestA,
+    loopPos: [sx * LOOP_R, FLOOR_Y, sz * LOOP_R],
+    standPos,
+    faceYaw,
+  };
+}
+
 /** Computes the 4 gap stop points (A = bottom-left, D = top-left, C = top-right, B = bottom-right)
  *  nudged away from any occupied seat in 2p, 3p or 4p so the waiter never collides with a seated player. */
 export function computeWaiterStops(L: Layout3): Record<'A' | 'B' | 'C' | 'D', WaiterStop> {
@@ -52,7 +116,6 @@ export function computeWaiterStops(L: Layout3): Record<'A' | 'B' | 'C' | 'D', Wa
   ];
   const out = {} as Record<'A' | 'B' | 'C' | 'D', WaiterStop>;
   for (const b of base) {
-    // Search around the nominal gap angle for the angle with greatest angular clearance from occupied seats
     let bestA = b.a, bestClear = -1;
     for (let step = -12; step <= 12; step++) {
       const cand = normAngle(b.a + step * 0.035);
@@ -68,13 +131,12 @@ export function computeWaiterStops(L: Layout3): Record<'A' | 'B' | 'C' | 'D', Wa
       angle: bestA,
       loopPos: [sx * LOOP_R, FLOOR_Y, sz * LOOP_R],
       standPos: [sx * STOP_R, FLOOR_Y, sz * STOP_R],
-      faceYaw: bestA + Math.PI, // facing the table centre
+      faceYaw: bestA + Math.PI,
     };
   }
   return out;
 }
 
-/** Picks the stop point closest to a target (x, z) (e.g. a seat's teacup or character). */
 export function nearestStop(stops: Record<'A' | 'B' | 'C' | 'D', WaiterStop>, x: number, z: number): WaiterStop {
   let best = stops.A, bestD = Infinity;
   for (const s of Object.values(stops)) {
@@ -84,10 +146,8 @@ export function nearestStop(stops: Record<'A' | 'B' | 'C' | 'D', WaiterStop>, x:
   return best;
 }
 
-/** Builds a smooth polyline along the safe terrace loop from startAngle to endAngle (clockwise via the kitchen side
- *  if shorter, staying on the terrace side z > HEDGE_Z and outside LOOP_R). */
 export function arcWaypoints(fromAngle: number, toAngle: number, steps = 10): V3[] {
-  let diff = normAngle(toAngle - fromAngle);
+  const diff = normAngle(toAngle - fromAngle);
   const pts: V3[] = [];
   for (let i = 0; i <= steps; i++) {
     const a = fromAngle + (diff * i) / steps;
@@ -96,7 +156,6 @@ export function arcWaypoints(fromAngle: number, toAngle: number, steps = 10): V3
   return pts;
 }
 
-/** Full waypoint list from KITCHEN_DOOR -> stop1 -> stop2 ... -> KITCHEN_DOOR. */
 export function buildWaiterRoute(stops: WaiterStop[]): { pos: V3; pauseIdx?: number }[] {
   if (!stops.length) return [{ pos: KITCHEN_DOOR }];
   const route: { pos: V3; pauseIdx?: number }[] = [{ pos: KITCHEN_DOOR }];
@@ -114,7 +173,6 @@ export function buildWaiterRoute(stops: WaiterStop[]): { pos: V3; pauseIdx?: num
   return route;
 }
 
-/** Validates that a point (x, z) on the waiter's route never enters the table or hits the court. */
 export function isSafeWaiterPoint(L: Layout3, x: number, z: number, atStop = false): boolean {
   const r = Math.hypot(x, z);
   if (r < (atStop ? TABLE_R + 0.22 : SEAT_DIST + 0.32)) return false;

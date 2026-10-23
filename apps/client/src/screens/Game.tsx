@@ -225,7 +225,7 @@ export function Game({ session, onExit }: { session: Session; onExit(): void }) 
           {session.test && <span className="test-pill">{t('lobby.testRoom')}</span>}
           {session.mode !== 'online' && <span className="code-pill">{session.code}</span>}
         </div>
-        <button className="icon" onClick={() => setDrawer('log')} aria-label={t('game.log')}>📜</button>
+        {session.test && <button className="icon" onClick={() => setDrawer('log')} aria-label={t('game.log')}>📜</button>}
         <button className="icon" onClick={() => setDrawer('chat')} aria-label={t('game.chat')}>💬</button>
         {session.test && <button className="icon" onClick={() => setDrawer('test')} aria-label={t('test.title')}>🧪</button>}
       </header>
@@ -285,7 +285,7 @@ export function Game({ session, onExit }: { session: Session; onExit(): void }) 
         <div className="drawer-back" onClick={() => setDrawer(null)}>
           <aside className={`drawer ${drawer}`} onClick={(e) => e.stopPropagation()}>
             <button className="drawer-close" onClick={() => setDrawer(null)}>✕</button>
-            {drawer === 'log' && <LogView view={v} nameOf={nameOf} />}
+            {session.test && drawer === 'log' && <LogView view={v} nameOf={nameOf} />}
             {drawer === 'chat' && <ChatView session={session} nameOf={nameOf} />}
             {drawer === 'test' && <TestPanel session={session} view={v} />}
             {drawer === 'menu' && (
