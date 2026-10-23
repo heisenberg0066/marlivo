@@ -88,6 +88,25 @@ coming from another job), order = capture hook -> anim system -> re-rig + 2-bone
 - NOT verified yet in the running game (clips pending): the draw choreography may need sign fixes (lean direction,
   curl axis, elbow pole) per character; check frames before merging. Not deployed.
 
+## Run 4 (2026-10-23)
+- Capture: director `captureHook` + vclock `__mlStop` stop the virtual clock on the exact frame a wanted event's
+  animation starts (`anim-frames.mjs` sets `window.__mlCapture`), so clips start on the action.
+- IK bug fixed: `slerpQuaternions(qI, qA)` into qA copied identity first, so the arms never moved.
+- Clips (/workspace/sb/anim): before-draw-orange-* (card arcs high and lands in the face) vs after-draw-mint-* (card
+  slides on the felt, Mint leans in, the paw takes it at the rim, lifts it to the face, holds it at the chest);
+  after-peek-own-orange-* (opponent reaches its slot, lifts the card to its face, lays it back). Before had no
+  opponent peek motion at all.
+- Hold spot for opponents moved from face height (1.08 m, y 0.36) to chest height in reach (1.14 m, y 0.25).
+- Peeks run per seat in a queue (`queueSeat`) without blocking the director; `stagedHidden` hides the table copy of
+  a card while a hand carries it (Card3D checks it every frame).
+- Idle breathing layer (spine + forearms). Blink NOT done (eyes are painted: needs per-character lid meshes placed
+  from front renders). Ammar's arms NOT done: his mesh has arms but the hands are fused into his trouser pockets, so
+  rigging them would tear the pants; needs geometry surgery (cut the forearms, fill the pockets, model new
+  forearms/hands in sleeve + skin colours) with a face pixel check. He uses the old flights meanwhile.
+- Known: Orange guy leans a lot (whole body is one bone); Mint's head dips far during the lean; held card is small
+  and nearly edge-on when lifted to the face. Pepper's wing tip stretches a thin feather strip in extreme reaches.
+- IK test page: /workspace/animwork/gt/ik.html (bundled actors.ts via esbuild) for quick per-character checks.
+
 ## Design (next runs)
 1. `render3d/anim/` — per-seat **actor registry**: each figure registers `{ handWorld(side), reach(target, w),
    look(target), lean(x), expr(kind) }`; backend3d resolves `hand-N` to the live hand bone instead of `L.hands`.
