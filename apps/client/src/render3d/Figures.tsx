@@ -115,7 +115,7 @@ function pose(r: BoneRig | undefined, x: number, y: number, z: number) {
  *  While the file loads the built-in procedural figure stands in. */
 /** Per-character eye placement in unit-height bind space (y in 0..1, +z forward) and eyelid colour for blinking. */
 const EYE_SPEC: Record<string, { ey: number; eh: number; ex: number; ew: number; col: string }> = {
-  ammar:   { ey: 0.806, eh: 0.025, ex: 0.044, ew: 0.032, col: '#c07e56' },
+  ammar:   { ey: 0.806, eh: 0.025, ex: 0.044, ew: 0.032, col: '#e6a87e' },
   biscuit: { ey: 0.758, eh: 0.034, ex: 0.072, ew: 0.044, col: '#9b643b' },
   mint:    { ey: 0.725, eh: 0.044, ex: 0.076, ew: 0.052, col: '#9ab8a0' },
   pepper:  { ey: 0.752, eh: 0.048, ex: 0.082, ew: 0.056, col: '#d89a62' },
@@ -194,7 +194,8 @@ function ModelFigure({ e, id, mood, seed, pose: stance, fallback, onFail }: { e:
         const m = o as THREE.Mesh; if (!m.isMesh) return;
         m.castShadow = true; m.frustumCulled = false;
         const mt = m.material as THREE.MeshStandardMaterial; if (!mt?.isMeshStandardMaterial) return;
-        if (mt.map) mt.roughness = Math.max(mt.roughness, 0.62); // painted skin/cloth: matte. Wire, chain, lenses keep their shine
+        if (mt.map) mt.roughness = Math.max(mt.roughness, 0.62);
+        if (mt.normalMap) mt.normalScale.set(0.28, 0.28); // painted skin/cloth: matte. Wire, chain, lenses keep their shine
         mt.metalness = 0; // no environment map in the room: metals would render black
         for (const tx of [mt.map, mt.normalMap, mt.emissiveMap]) if (tx && tx.anisotropy !== aniso) { tx.anisotropy = aniso; tx.needsUpdate = true; }
       });

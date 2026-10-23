@@ -75,7 +75,7 @@
       "baseY": -0.88,
       "chair": false,
       "motion": "person",
-      "glow": 0.45,
+      "glow": 0.65,
       "rotationY": -15
     },
     "choco": {
@@ -111,7 +111,7 @@
     "guest": {
       "name": {
         "en": "Guest",
-        "fr": "Invité"
+        "fr": "Invit\u00e9"
       },
       "model": null,
       "placeholder": "generic",

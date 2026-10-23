@@ -186,7 +186,7 @@ class Sprite3D implements SpriteLike {
 
 // ---- First-person hand for the local player's seat (mySeat) ------------------------------------------------
 const FP_PALETTE: Record<string, { paw: string; sleeve: string }> = {
-  ammar:   { paw: '#c07e56', sleeve: '#1e1d20' },
+  ammar:   { paw: '#eab086', sleeve: '#1e1d20' },
   biscuit: { paw: '#9b643b', sleeve: '#3b6fb0' },
   mint:    { paw: '#9ab8a0', sleeve: '#3f8a5a' },
   pepper:  { paw: '#d87a2e', sleeve: '#a52d26' },

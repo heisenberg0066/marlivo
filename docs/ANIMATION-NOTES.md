@@ -211,6 +211,29 @@ coming from another job), order = capture hook -> anim system -> re-rig + 2-bone
     `phone` `R3D=1 BOTS=3`), `monkey` (`R3D=1 N=3`): all pass with 0 failures and 0 errors.
   - Visual verification strip: `/workspace/sb/anim/reactions-and-badminton-strip.jpg`.
 
+## Run 10 (2026-10-23) — Ammar Natural Light-Tan Skin Tone Adjustment (LIVE on main)
+- **Measured Reference vs Previous `ammar.glb` / `ammar-low.glb` Skin Tone:**
+  - In `ref_ammar_avatar.png` and `/workspace/sb/gen5/cut/ammar_front.png`, Ammar's skin has `p25 = [190, 125, 84]`,
+    `p50 (median) = [225, 141, 99]`, `p75 = [241, 157, 117]`.
+  - In the previous `ammar.glb` (`hyb29`), the right cheek, eye sockets, jawline/neck, ears, side temples, and forearms
+    had texture values `[155..192, 91..126, 52..87]` (`lum = 105..141`), which after 3D lighting + normal-map crevices
+    rendered at `p50 = [167, 111, 80]` (`p25 = [147, 99, 71]`) — reading too dark/muddy ("too close to be blacky").
+- **Fix (`tools/character-pipeline/polish_ammar_skin.py`, `apply_ammar_skin.mjs`, `ammar.glb`, `ammar-low.glb`, `manifest.json`, `Figures.tsx`, `backend3d.ts`):**
+  - Built a continuous, UV-seam-free chroma/redness skin transfer (`f = ss(R - B, 16, 78) * ss(R - G, 10, 48) * ss(R, r_lo, r_hi)`)
+    that maps all skin regions (forehead, cheeks, nose, eye sockets, chin, neck/jawline, ears, side/back fade skin, and
+    the 4-bone forearms/hands) onto Ammar's warm light-tan reference curve (`[216, 146, 104] -> [233, 160, 115] -> [245, 173, 127]`)
+    while keeping a tight protection mask (`w_fh`) + dark-core crispening on his mustache, goatee, eyebrows, eyelashes,
+    pupils, and dark curly hair so his facial hair and hair stay deep and sharp with zero haloing or seams.
+  - Updated Ammar's `glow` in `manifest.json` (`0.45 -> 0.65`), softened `mt.normalScale` to `0.28` in `Figures.tsx` so
+    baked normal-map crevices don't carve dark shadows into his face, and matched his eyelid blink colour (`#e6a87e` in
+    `Figures.tsx`) and first-person hand colour (`#eab086` in `backend3d.ts`).
+  - Preserved all 11 joints (`hips, spine, head, armL/R -> _fore -> _hand -> _curl`) and `EXT_meshopt_compression` on
+    both `ammar.glb` and `ammar-low.glb`.
+- **Verification:**
+  - Before/After/Reference 15-panel sheet: `/workspace/sb/anim/ammar-skintone-before-after.jpg`.
+  - Golden garden 3D table sheet (Laptop High/Low, Phone High/Low + zoomed top/side seat close-ups): `/workspace/sb/anim/ammar-skintone-table.jpg`.
+  - `pnpm test` (105/105), 3D E2E (`laptop` and `phone` `R3D=1 BOTS=3`), `monkey` (`R3D=1 N=3`): all pass with 0 failures.
+
 ## Design (next runs)
 1. `render3d/anim/` — per-seat **actor registry**: each figure registers `{ handWorld(side), reach(target, w),
    look(target), lean(x), expr(kind) }`; backend3d resolves `hand-N` to the live hand bone instead of `L.hands`.
