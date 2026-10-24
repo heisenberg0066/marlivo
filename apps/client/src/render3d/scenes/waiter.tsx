@@ -16,6 +16,7 @@ import { loadManifest, entryFor, loadModel, normalise } from '../registry';
 import { findArms, findLegs, resetLeg, solveArm, curlArm, resetArm, stepArmSmoothing, handPos, type ArmChain, type LegChain, type Side } from '../actors';
 import type { FaceShaderUniform } from '../Figures';
 import { attachBlinkShader } from '../Figures';
+import { TEA } from '../sceneConfig';
 import { propLayout } from './propLayout';
 import { refillTea } from './tea';
 import { shadowMat } from './props';
@@ -31,12 +32,14 @@ import {
   samplePlan,
   legGeomFrom,
   walkPose,
+  legIK,
   cadenceOf,
   KITCHEN_DOOR,
   WAITER_FLOOR_Y,
   WAITER_MODEL_H,
   WAITER_SCALE,
   WALK_SPEED,
+  WALK_R,
   WAITER_ACTIVE_SEC,
   WAITER_AWAY_SEC,
   WAITER_CYCLE_SEC,
@@ -341,16 +344,19 @@ function OutfitMeshes({
   );
 }
 
+/** how far the teapot tips while pouring (rad): enough for the tea to run, the spout stays well above the cup */
+const POUR_TILT = 0.22;
+
 function TeapotProp({ pouring, propRef, spoutRef }: { pouring: boolean; propRef?: React.RefObject<THREE.Group>; spoutRef?: React.RefObject<THREE.Object3D> }) {
   return (
-    <group ref={propRef} position={[0.25, 0.40, 0.18]} rotation={[pouring ? 0.5 : 0.08, -0.22, pouring ? -0.62 : 0]}>
+    <group ref={propRef} position={[0.25, 0.40, 0.18]} rotation={[0.08, -0.22, 0]}>
       <mesh geometry={WG.sph} material={WM.porcelain} scale={[0.082, 0.074, 0.082]} />
       <mesh geometry={WG.torus} material={WM.gold} position={[0, 0.056, 0]} rotation={[Math.PI / 2, 0, 0]} scale={0.048} />
       <mesh geometry={WG.sph} material={WM.porcelain} position={[0, 0.065, 0]} scale={[0.045, 0.022, 0.045]} />
       <mesh geometry={WG.sph} material={WM.gold} position={[0, 0.086, 0]} scale={0.014} />
-      <mesh geometry={WG.cyl} material={WM.porcelain} position={[0.082, 0.02, 0.02]} rotation={[0.2, 0, -0.75]} scale={[0.014, 0.082, 0.018]} />
+      <mesh geometry={WG.cyl} material={WM.porcelain} position={[0.1, 0.026, 0.02]} rotation={[0.2, 0, -0.9]} scale={[0.014, 0.115, 0.018]} />
       <mesh geometry={WG.arc} material={WM.porcelain} position={[-0.076, 0.005, -0.01]} rotation={[0, 0, Math.PI * 0.45]} scale={0.038} />
-      <object3D ref={spoutRef} position={[0.112, 0.048, 0.028]} />
+      <object3D ref={spoutRef} position={[0.148, 0.062, 0.028]} />
       {pouring && (
         <group>
           <mesh geometry={WG.sph} material={WM.steam} position={[0.12, 0.09, 0.03]} scale={0.022} />
@@ -483,6 +489,49 @@ function useWaiterModel(level: 'high' | 'low') {
 
 const qA = new THREE.Quaternion();
 /** Sets one leg from the gait (no smoothing needed: the pose is an exact function of the distance walked). */
+/** Stance foot lock: the analytic gait already moves a stance foot back at the walking speed, but the leg's swing
+ *  plane, the turning body and the hip bob leave a few % of slide. While a foot is planted we re-solve that leg so the
+ *  ankle stays on the world point where it touched down (fore-aft + height through the 2-bone IK, sideways through hip
+ *  roll), fading out over the toe roll before lift-off. */
+const vA = new THREE.Vector3(), vB = new THREE.Vector3(), vH = new THREE.Vector3();
+function plantFoot(leg: LegChain | undefined, fp: { stance: boolean; u: number }, lp: LegPose, g: LegGeom, body: THREE.Object3D, plants: { L: THREE.Vector3 | null; R: THREE.Vector3 | null }, sd: Side) {
+  if (!leg) return;
+  if (!fp.stance) { plants[sd] = null; return; }
+  if (!plants[sd]) { plants[sd] = leg.foot.getWorldPosition(new THREE.Vector3()); return; }
+  const w = fp.u > 0.8 ? Math.max(0, 1 - (fp.u - 0.8) / 0.2) : 1;
+  if (w <= 0) return;
+  const W = body.worldToLocal(vB.copy(plants[sd]!));
+  const hip = body.worldToLocal(leg.hip.getWorldPosition(vH));
+  let A = body.worldToLocal(leg.foot.getWorldPosition(vA));
+  let f = A.z - hip.z, d = hip.y - A.y, roll = 0, J = 0;
+  const extra = lp.footPitch - (lp.kneeBend - lp.hipPitch);
+  const put = (hp: number, kb: number, rl: number) => {
+    resetLeg(leg);
+    if (Math.abs(hp) > 1e-5) leg.hip.quaternion.multiply(qA.setFromAxisAngle(leg.axHip[0], -hp));
+    if (Math.abs(rl) > 1e-5) leg.hip.quaternion.multiply(qA.setFromAxisAngle(leg.axHip[2], rl));
+    if (Math.abs(kb) > 1e-5) leg.knee.quaternion.multiply(qA.setFromAxisAngle(leg.axKnee[0], kb));
+    const fpch = kb - hp + extra;
+    if (Math.abs(fpch) > 1e-5) leg.foot.quaternion.multiply(qA.setFromAxisAngle(leg.axFoot[0], -fpch));
+    leg.hip.updateMatrixWorld(true);
+  };
+  for (let k = 0; k < 3; k++) {
+    f += (W.z - A.z) * w; d -= (W.y - A.y) * w;
+    const ik = legIK(g, f, d);
+    if (k === 0) {
+      // sideways response of the ankle to a little hip roll (sign and size depend on the rig's bone axes)
+      put(ik.hipPitch, ik.kneeBend, 0.02);
+      const x1 = body.worldToLocal(leg.foot.getWorldPosition(vA)).x;
+      put(ik.hipPitch, ik.kneeBend, 0);
+      const x0 = body.worldToLocal(leg.foot.getWorldPosition(vA)).x;
+      J = (x1 - x0) / 0.02;
+      A = body.worldToLocal(leg.foot.getWorldPosition(vA));
+    }
+    if (Math.abs(J) > 1e-3) roll = Math.max(-0.25, Math.min(0.25, roll + ((W.x - A.x) * w) / J));
+    put(ik.hipPitch, ik.kneeBend, roll);
+    A = body.worldToLocal(leg.foot.getWorldPosition(vA));
+  }
+}
+
 function applyLeg(leg: LegChain | undefined, pose: LegPose) {
   if (!leg) return;
   resetLeg(leg);
@@ -526,6 +575,12 @@ export const OrangeWaiter = memo(function OrangeWaiter({ L, view, level }: { L: 
   const teapotRef = useRef<THREE.Group>(null);
   const spoutRef = useRef<THREE.Object3D>(null);
   const streamRef = useRef<THREE.Mesh>(null);
+  const spoutOffRef = useRef(new THREE.Vector3(0.1, 0.03, 0.04));
+  const pourDbgRef = useRef<Record<string, number[]>>({});
+  // world-space foot plants: where each stance foot touched down (null while it swings)
+  const plantRef = useRef<{ L: THREE.Vector3 | null; R: THREE.Vector3 | null }>({ L: null, R: null });
+  const streamOffRef = useRef(-1);
+  const streamHRef = useRef(-1);
   const cushionRef = useRef<THREE.Group>(null);
 
   const props = useMemo(() => propLayout(L), [L]);
@@ -593,6 +648,7 @@ export const OrangeWaiter = memo(function OrangeWaiter({ L, view, level }: { L: 
           clock: clockRef.current,
           footL: fp('L'), footR: fp('R'),
           rigReady: !!rig,
+          stream: { visible: !!streamRef.current?.visible, spoutOffCup: +streamOffRef.current.toFixed(3), spoutAboveCup: +streamHRef.current.toFixed(3), dbg: pourDbgRef.current },
           // on-screen test: fraction of a few body points (feet .. head) inside the view (NDC within +-1)
           onScreen: (() => {
             const cam = camRef.current, rt = rootRef.current;
@@ -779,7 +835,11 @@ export const OrangeWaiter = memo(function OrangeWaiter({ L, view, level }: { L: 
     const hu = smp.holdU;
     if (smp.tag === 'pour') {
       pouring = hu > 0.16 && hu < 0.86;
-      lean = 0.07 * Math.sin(Math.PI * Math.min(1, hu / 0.2) * 0.5) * Math.min(1, (1 - hu) / 0.12);
+      const env = Math.sin(Math.PI * Math.min(1, hu / 0.2) * 0.5) * Math.min(1, (1 - hu) / 0.12);
+      // lean in over the table edge when the cup is further than his arm reaches
+      const cupP = smp.seat !== undefined ? props.tea[smp.seat]?.p : undefined;
+      const reachD = cupP ? Math.hypot(cupP[0] - smp.x, cupP[2] - smp.z) : 0;
+      lean = (0.1 + Math.min(0.15, Math.max(0, reachD - 0.6) * 0.6)) * env;
       if (pouring && smp.seat !== undefined) refillTea(smp.seat);
     } else if (smp.tag === 'visit') {
       lean = hu < 0.5 ? 0.06 : 0; wink = hu >= 0.5;
@@ -813,6 +873,10 @@ export const OrangeWaiter = memo(function OrangeWaiter({ L, view, level }: { L: 
 
     if (rig && bodyRef.current && rootRef.current) {
       if (pose) { applyLeg(rig.legs.L, pose.L); applyLeg(rig.legs.R, pose.R); }
+      if (pose && g && amt > 0.05 && run.locked === undefined) {
+        rootRef.current.updateMatrixWorld(true);
+        for (const sd of ['L', 'R'] as const) plantFoot(rig.legs[sd], sd === 'L' ? pose.footL : pose.footR, sd === 'L' ? pose.L : pose.R, g, bodyRef.current, plantRef.current, sd);
+      } else { plantRef.current.L = null; plantRef.current.R = null; }
 
       const ph = (now + 1.1) % 3.8;
       const bl = wink ? 0 : ph < 0.14 ? Math.sin((ph / 0.14) * Math.PI) : 0;
@@ -827,8 +891,18 @@ export const OrangeWaiter = memo(function OrangeWaiter({ L, view, level }: { L: 
       let tR: V3 = [0.28, 0.33, 0.06 + swing], wR = 0.78, cR = 0.35;
       if (run.kind === 'refill') {
         // tray and teapot held in close to the body (a compact footprint between the chairs)
-        tL = [-0.24, 0.39, 0.12 + swing * 0.15]; wL = 0.96; cL = 0.48;
-        tR = pouring ? [0.2, 0.45, 0.27] : [0.23, 0.39, 0.12 + swing * 0.2]; wR = 1.0; cR = pouring ? 0.92 : 0.85;
+        // inside a gap between two seats the tray comes in close in front of his chest
+        const tuck = Math.min(1, Math.max(0, (WALK_R - 0.15 - Math.hypot(smp.x, smp.z)) / 0.25));
+        const mix = (a: V3, b: V3): V3 => [a[0] + (b[0] - a[0]) * tuck, a[1] + (b[1] - a[1]) * tuck, a[2] + (b[2] - a[2]) * tuck];
+        tL = mix([-0.24, 0.39, 0.12 + swing * 0.15], [-0.14, 0.43, 0.2]); wL = 0.96; cL = 0.48;
+        tR = mix([0.23, 0.39, 0.12 + swing * 0.2], [0.15, 0.41, 0.19]); wR = 1.0; cR = 0.85;
+        const cupP = smp.seat !== undefined ? props.tea[smp.seat]?.p : undefined;
+        if (pouring && cupP) {
+          // teapot over the cup: spout ~0.2 above it (hand target = spout target - spout offset from the hand)
+          const want = bodyRef.current.worldToLocal(new THREE.Vector3(cupP[0], cupP[1] + 0.045 + 0.2, cupP[2]));
+          const o = spoutOffRef.current;
+          tR = [want.x - o.x, want.y - o.y, want.z - o.z]; wR = 1.0; cR = 0.92;
+        }
       } else if (smp.tag === 'visit') {
         if (hu < 0.5) { tR = [0.22, 0.42, 0.24]; wR = 0.95; cR = 0.55; tL = [-0.26, 0.36, 0.16]; wL = 0.85; cL = 0.45; }
         else { const wv = Math.sin(hu * 40) * 0.085; tR = [0.30 + wv, 0.56, 0.22]; wR = 1.0; cR = 0.12; tL = [-0.28, 0.36, 0.12]; wL = 0.88; cL = 0.6; }
@@ -866,7 +940,24 @@ export const OrangeWaiter = memo(function OrangeWaiter({ L, view, level }: { L: 
       }
       if (rig.arms.R && teapotRef.current) {
         const hPos = bodyRef.current.worldToLocal(handPos(rig.arms.R, new THREE.Vector3()));
-        teapotRef.current.position.copy(hPos).add(new THREE.Vector3(0.065, -0.005, 0.02));
+        const cupW = pouring && smp.seat !== undefined ? props.tea[smp.seat]?.p : undefined;
+        if (cupW) {
+          // pouring: the spout turns towards the cup (yaw in the body frame) and tips down a little
+          const c = bodyRef.current.worldToLocal(new THREE.Vector3(cupW[0], cupW[1], cupW[2]));
+          const th = Math.atan2(c.x - hPos.x, c.z - hPos.z) - Math.PI / 2;
+          const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), th)
+            .multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), -POUR_TILT));
+          teapotRef.current.quaternion.copy(q);
+          teapotRef.current.position.copy(hPos).add(new THREE.Vector3(0.1, -0.005, 0.0).applyAxisAngle(new THREE.Vector3(0, 1, 0), th));
+        } else {
+          teapotRef.current.rotation.set(0.08, -0.22, 0);
+          teapotRef.current.position.copy(hPos).add(new THREE.Vector3(0.065, -0.005, 0.02));
+        }
+        if (spoutRef.current) {
+          teapotRef.current.updateMatrixWorld(true);
+          const sp = bodyRef.current.worldToLocal(spoutRef.current.getWorldPosition(new THREE.Vector3()));
+          spoutOffRef.current.copy(sp.sub(hPos));
+        }
       }
       if (rig.arms.L && rig.arms.R && cushionRef.current) {
         const hL = bodyRef.current.worldToLocal(handPos(rig.arms.L, new THREE.Vector3()));
@@ -882,10 +973,16 @@ export const OrangeWaiter = memo(function OrangeWaiter({ L, view, level }: { L: 
       if (pouring && cup && sp && teapotRef.current) {
         teapotRef.current.updateMatrixWorld(true);
         const a = sp.getWorldPosition(new THREE.Vector3());
+        // the tea falls straight down from the spout; only drawn while the spout is over the cup
+        // lands in the middle of the cup: a short, nearly vertical stream (hidden unless the spout is right over it)
         const b = new THREE.Vector3(cup[0], cup[1] + 0.045, cup[2]);
+        const off = Math.hypot(a.x - cup[0], a.z - cup[2]);
+        if (rig?.arms.R) pourDbgRef.current = { spout: a.toArray(), hand: handPos(rig.arms.R, new THREE.Vector3()).toArray(), cup: [...cup], root: rootRef.current ? rootRef.current.position.toArray() : [], shoulder: rig.arms.R.up.getWorldPosition(new THREE.Vector3()).toArray() };
+        streamOffRef.current = off;
+        streamHRef.current = a.y - b.y;
         const mid = a.clone().add(b).multiplyScalar(0.5);
         const len = a.distanceTo(b);
-        streamRef.current.visible = true;
+        streamRef.current.visible = off <= TEA.cupR * 1.5 && a.y - b.y > Math.max(0.06, off * 1.8);
         streamRef.current.position.copy(mid);
         streamRef.current.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize());
         streamRef.current.scale.set(0.009, len, 0.009);

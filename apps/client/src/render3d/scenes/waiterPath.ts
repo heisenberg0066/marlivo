@@ -53,6 +53,12 @@ export const CHAIR_Z0 = CHAIR_BACK - 0.245;
 export const CHAIR_Z1 = CHAIR_BACK + 0.24;
 /** Free space he always keeps between his body and any chair / seated player (walking and pouring). */
 export const WALK_MARGIN = 0.25;
+/** Inside a gap between two seats (stepping in to the table edge and pouring) he may come this close to the
+ *  neighbours' measured footprints (never overlapping). */
+export const POUR_MARGIN = 0.12;
+/** Curved step in / out of a pour spot: sideways along the table this far (world units) while stepping out. */
+export const GAP_SIDE = 0.24;
+export const GAP_OUT = 0.26;
 /** Walking ring, outside every chair and seated body by WAITER_BODY_R + WALK_MARGIN (and in front of the hedge). */
 export const WALK_R = 2.55;
 /** Kept for the old API: radius of the chair footprint and its centre behind the character root. */
@@ -75,6 +81,8 @@ export const WALK_SPEED_RANGE: readonly [number, number] = [0.32, 0.37];
 export const WALK_EASE = 0.5;
 /** Turning on the spot before walking off from a cup: seconds = TURN_BASE + TURN_PER_RAD * angle. */
 export const TURN_BASE = 0.25;
+/** Off: he turns while walking out on the curved path instead (no stand-still turn). */
+const TURN_ON_SPOT = false;
 export const TURN_PER_RAD = 0.35;
 /** Pour at each cup: min / preferred / max seconds standing still. */
 export const POUR_MIN = 3.0;
@@ -109,11 +117,17 @@ const onRing = (a: number, r: number): P2 => [Math.sin(a) * r, Math.cos(a) * r];
  *  root per 10-degree bin; angle 0 = the way the seat / the waiter faces, counter-clockwise seen from above like yaw. */
 export const SEAT_PROFILE = [0.35, 0.41, 0.47, 0.47, 0.47, 0.45, 0.39, 0.32, 0.35, 0.4, 0.37, 0.32, 0.38, 0.37, 0.37, 0.36, 0.3, 0.31, 0.31, 0.32, 0.36, 0.37, 0.33, 0.33, 0.34, 0.4, 0.39, 0.32, 0.37, 0.43, 0.45, 0.43, 0.44, 0.44, 0.27, 0.27] as const;
 export const WAITER_PROFILE = [0.42, 0.41, 0.41, 0.42, 0.56, 0.64, 0.64, 0.63, 0.51, 0.48, 0.49, 0.43, 0.56, 0.56, 0.42, 0.41, 0.41, 0.4, 0.4, 0.4, 0.41, 0.41, 0.56, 0.56, 0.43, 0.47, 0.49, 0.53, 0.65, 0.69, 0.7, 0.69, 0.65, 0.58, 0.42, 0.41] as const;
+/** Inside a gap (r < WALK_R - 0.4) he holds the tray in close in front of his chest and reaches the teapot out over
+ *  the table: measured pouring footprint (sides/back = the tucked tray; the front lobe — the pouring arm, which reaches
+ *  out over the table top, not towards a neighbour — is capped here and checked live in the event test). */
+export const GAP_PROFILE = [0.55, 0.55, 0.55, 0.55, 0.55, 0.56, 0.5, 0.5, 0.43, 0.39, 0.34, 0.3, 0.56, 0.56, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.56, 0.56, 0.3, 0.34, 0.39, 0.43, 0.51, 0.51, 0.55, 0.55, 0.55, 0.55, 0.55, 0.55] as const;
+export const GAP_R = WALK_R - 0.4;
 const NB = 36;
 /** Local boundary points (bin edges and centres) of a star-shaped profile. */
 const ring = (prof: readonly number[]) => { const out: P2[] = []; for (let b = 0; b < NB; b++) for (const f of [0, 0.5]) { const a = ((b + f) / NB) * TAU; out.push([Math.sin(a) * prof[b]!, Math.cos(a) * prof[b]!]); } return out; };
-const SEAT_PTS = ring(SEAT_PROFILE), WAITER_PTS = ring(WAITER_PROFILE);
-const SEAT_MAX = Math.max(...SEAT_PROFILE), WAITER_MAX = Math.max(...WAITER_PROFILE);
+const SEAT_PTS = ring(SEAT_PROFILE), WAITER_PTS = ring(WAITER_PROFILE), GAP_PTS = ring(GAP_PROFILE);
+const SEAT_MAX = Math.max(...SEAT_PROFILE), WAITER_MAX = Math.max(...WAITER_PROFILE, ...GAP_PROFILE);
+const profileAt = (x: number, z: number) => (Math.hypot(x, z) < GAP_R ? { prof: GAP_PROFILE, pts: GAP_PTS } : { prof: WAITER_PROFILE, pts: WAITER_PTS });
 const profAt = (prof: readonly number[], a: number) => prof[Math.floor((((a % TAU) + TAU) % TAU) / TAU * NB) % NB]!;
 
 export interface Obstacle { kind: 'seat'; x: number; z: number; yaw: number; seat: number; r: number }
@@ -127,10 +141,11 @@ const inside = (prof: readonly number[], ox: number, oz: number, yaw: number, x:
 export function obstacleDist(o: Obstacle, x: number, z: number, yaw = 0): number {
   const cd = Math.hypot(x - o.x, z - o.z);
   if (cd > SEAT_MAX + WAITER_MAX + 0.6) return cd - SEAT_MAX - WAITER_MAX;
-  const wp = toWorld(WAITER_PTS, x, z, yaw), sp = toWorld(SEAT_PTS, o.x, o.z, o.yaw);
+  const W = profileAt(x, z);
+  const wp = toWorld(W.pts, x, z, yaw), sp = toWorld(SEAT_PTS, o.x, o.z, o.yaw);
   let d = Infinity;
   for (const a of wp) { if (inside(SEAT_PROFILE, o.x, o.z, o.yaw, a[0], a[1])) return -0.01; for (const b of sp) d = Math.min(d, Math.hypot(a[0] - b[0], a[1] - b[1])); }
-  for (const b of sp) if (inside(WAITER_PROFILE, x, z, yaw, b[0], b[1])) return -0.01;
+  for (const b of sp) if (inside(W.prof, x, z, yaw, b[0], b[1])) return -0.01;
   return d;
 }
 /** Fast (search) version: radial gaps between the two star-shaped footprints (accurate to ~1 cm near the closest point). */
@@ -138,8 +153,9 @@ export function obstacleDistFast(o: Obstacle, x: number, z: number, yaw: number)
   const cd = Math.hypot(x - o.x, z - o.z);
   if (cd > SEAT_MAX + WAITER_MAX + 0.6) return cd - SEAT_MAX - WAITER_MAX;
   let d = Infinity;
-  for (const [px, pz] of toWorld(WAITER_PTS, x, z, yaw)) { const dx = px - o.x, dz = pz - o.z; d = Math.min(d, Math.hypot(dx, dz) - profAt(SEAT_PROFILE, Math.atan2(dx, dz) - o.yaw)); }
-  for (const [px, pz] of toWorld(SEAT_PTS, o.x, o.z, o.yaw)) { const dx = px - x, dz = pz - z; d = Math.min(d, Math.hypot(dx, dz) - profAt(WAITER_PROFILE, Math.atan2(dx, dz) - yaw)); }
+  const W = profileAt(x, z);
+  for (const [px, pz] of toWorld(W.pts, x, z, yaw)) { const dx = px - o.x, dz = pz - o.z; d = Math.min(d, Math.hypot(dx, dz) - profAt(SEAT_PROFILE, Math.atan2(dx, dz) - o.yaw)); }
+  for (const [px, pz] of toWorld(SEAT_PTS, o.x, o.z, o.yaw)) { const dx = px - x, dz = pz - z; d = Math.min(d, Math.hypot(dx, dz) - profAt(W.prof, Math.atan2(dx, dz) - yaw)); }
   return d;
 }
 export const fastClear = (obs: Obstacle[], x: number, z: number, yaws: number[]) => {
@@ -173,10 +189,10 @@ function planPoses(plan: WaiterPlan, step: number, visit: (x: number, z: number,
   }
 }
 /** Per seat: the smallest free distance between his footprint and that seat's footprint along a plan. */
-export function seatClearances(L: Layout3, plan: WaiterPlan, step = 0.02): Record<number, number> {
+export function seatClearances(L: Layout3, plan: WaiterPlan, step = 0.02, where?: (x: number, z: number) => boolean): Record<number, number> {
   const obs = waiterObstacles(L);
   const out: Record<number, number> = {};
-  planPoses(plan, step, (x, z, yaw) => { for (const o of obs) out[o.seat] = Math.min(out[o.seat] ?? Infinity, obstacleDist(o, x, z, yaw)); });
+  planPoses(plan, step, (x, z, yaw) => { if (where && !where(x, z)) return; for (const o of obs) out[o.seat] = Math.min(out[o.seat] ?? Infinity, obstacleDist(o, x, z, yaw)); });
   return out;
 }
 
@@ -203,38 +219,46 @@ export function cupStopForSeat(L: Layout3, seat: number, cupPos?: V3, obs = wait
   const c = L.chars[seat]?.p ?? [0, 0, TABLE_R + 0.22] as V3;
   const sa = angleOf(c[0], c[2]);
   const cup = cupPos ?? ([Math.sin(sa) * 0.7, 0, Math.cos(sa) * 0.7] as V3);
-  // beside the player (in the gap next to them, never behind their back), as close to their cup as the measured
-  // footprints allow; side players prefer the side further from the camera (my seat, angle 0) so the pour is on screen
+  // in the gap beside the player, right at the table edge, as close to their cup as possible; side players prefer
+  // the side further from the camera (my seat, angle 0) so the pour is on screen
   let side0 = Math.sign(normAngle(angleOf(cup[0], cup[2]) - sa)) || 1;
   if (Math.abs(sa) > 0.35 && Math.abs(sa) < 2.6) side0 = Math.sign(sa);
-  const need = WALK_MARGIN + 0.04;
+  const need = POUR_MARGIN + 0.03;
+  const segClear = (p: P2, q: P2) => {
+    const yaw = Math.atan2(q[0] - p[0], q[1] - p[1]), n = Math.max(2, Math.ceil(Math.hypot(q[0] - p[0], q[1] - p[1]) / 0.04));
+    let m = Infinity;
+    for (let i = 0; i <= n; i++) m = Math.min(m, fastClear(obs, p[0] + ((q[0] - p[0]) * i) / n, p[1] + ((q[1] - p[1]) * i) / n, [yaw, yaw + Math.PI]));
+    return m;
+  };
   let best: { a: number; r: number; score: number } | null = null;
   for (const lim of [0.45, 0.6, 0.75, 0.9]) {
-  if (best) break;
-  for (const side of [side0, -side0]) {
-    for (let d = 0.25; d <= 1.6; d += 0.02) {
-      const a = sa + side * d;
-      for (let r = TABLE_R + 0.07 + WAITER_BODY_R + 0.02; r <= WALK_R + 1e-9; r += 0.04) {
-        const [x, z] = onRing(a, r);
-        if (z <= HEDGE_Z + 0.05) continue;
-        // his own player is the nearest one (he is beside them, not beside a neighbour)
-        const own = Math.hypot(x - c[0], z - c[2]);
-        if (Object.entries(L.chars).some(([k, o]) => Number(k) !== seat && Math.hypot(x - o.p[0], z - o.p[2]) < own - 0.02)) continue;
-        const score = Math.hypot(x - cup[0], z - cup[2]) + 0.5 * own + (side === side0 ? 0 : 0.2);
-        if (best && score >= best.score) continue;
-        // never behind anyone's back: off the line straight back from every nearby seat by more than 60 degrees
-        if (behindSomeone(L, x, z, lim)) continue;
-        // standing there turning between the way in, the cup and the way out (any heading)
-        if (fastClear(obs, x, z, ALL_YAWS) < need) continue;
-        // the radial step in from / out to the walking ring (facing in or out)
-        let ok = true;
-        const yin = Math.atan2(-x, -z), yout = yin + Math.PI;
-        for (let q = r; q <= WALK_R + 1e-9 && ok; q += 0.04) { const [qx, qz] = onRing(a, q); if (fastClear(obs, qx, qz, [yin, yout]) < WALK_MARGIN + 0.015) ok = false; }
-        if (ok) best = { a, r, score };
-        break; // a larger radius at the same angle is only further from the cup
+    if (best) break;
+    for (const side of [side0, -side0]) {
+      for (let d = 0.2; d <= 1.6; d += 0.02) {
+        const a = sa + side * d;
+        for (let r = TABLE_R + 0.07 + WAITER_BODY_R - 0.02; r <= WALK_R + 1e-9; r += 0.03) {
+          const [x, z] = onRing(a, r);
+          if (z <= HEDGE_Z + 0.05) continue;
+          const own = Math.hypot(x - c[0], z - c[2]);
+          if (Object.entries(L.chars).some(([k, o]) => Number(k) !== seat && Math.hypot(x - o.p[0], z - o.p[2]) < own - 0.02)) continue;
+          const score = Math.hypot(x - cup[0], z - cup[2]) + 0.3 * own + (side === side0 ? 0 : 0.15);
+          if (best && score >= best.score) continue;
+          if (behindSomeone(L, x, z, lim)) continue;
+          // standing there, turning between the way in, the cup and the way out
+          const fy = Math.atan2(cup[0] - x, cup[2] - z);
+          if (fastClear(obs, x, z, [-2.1, -1.6, -1.1, -0.55, 0, 0.55, 1.1, 1.6, 2.1].map((k) => fy + k)) < need) continue;
+          // the curved step in / out on either side (sideways along the table, then out to the ring)
+          const g = GAP_SIDE / r;
+          let ok = true;
+          for (const sd of [1, -1]) {
+            const w = onRing(a + sd * g, r + GAP_OUT), q = onRing(a + sd * 2 * g, WALK_R);
+            if (segClear([x, z], w) < need || segClear(w, q) < need) { ok = false; break; }
+          }
+          if (ok) best = { a, r, score };
+          break;
+        }
       }
     }
-  }
   }
   const b = best ?? { a: sa + side0 * 0.6, r: WALK_R };
   const [x, z] = onRing(b.a, b.r);
@@ -297,13 +321,20 @@ export function routeBetween(from: P2, to: P2, dir: number = WALK_DIR): Poly {
   // diagonal joins from / to the exit (they look like a natural walk-in), radial steps from / to the pour spots
   const join0 = r0 > WALK_R + 0.3 ? Math.sign(da || 1) * 0.28 : 0;
   const join1 = r1 > WALK_R + 0.3 ? Math.sign(da || 1) * 0.28 : 0;
-  const s0 = a0 + join0, s1 = a1 - join1;
-  let span = da - join0 - join1;
+  // pour spots inside the ring: leave / arrive on a curve (sideways along the table edge, then out), so he turns
+  // while walking instead of on the spot
+  const sg = Math.sign(da || 1);
+  const in0 = r0 < WALK_R - 0.3 && Math.abs(da) > 1e-6, in1 = r1 < WALK_R - 0.3 && Math.abs(da) > 1e-6;
+  const g0 = in0 ? GAP_SIDE / r0 : 0, g1 = in1 ? GAP_SIDE / r1 : 0;
+  const s0 = a0 + join0 + 2 * sg * g0, s1 = a1 - join1 - 2 * sg * g1;
+  let span = da - join0 - join1 - 2 * sg * (g0 + g1);
   if (Math.abs(da) > 1e-6 && Math.sign(span) !== Math.sign(da)) span = 0;
+  if (in0) pts.push(onRing(a0 + sg * g0, r0 + GAP_OUT));
   if (Math.abs(r0 - WALK_R) > 0.02 || join0) pts.push(onRing(s0, WALK_R));
   const n = Math.max(1, Math.ceil(Math.abs(span) / 0.06));
   for (let i = 1; i < n; i++) pts.push(onRing(s0 + (span * i) / n, WALK_R));
   if (Math.abs(r1 - WALK_R) > 0.02 || join1) pts.push(onRing(s0 + span, WALK_R));
+  if (in1) pts.push(onRing(a1 - sg * g1, r1 + GAP_OUT));
   pts.push(to);
   // drop duplicates
   const clean: P2[] = [];
@@ -340,7 +371,7 @@ class PlanBuilder {
       const h0 = Math.atan2(last.face[0] - last.at[0], last.face[1] - last.at[1]);
       const e = polyAt(poly, Math.min(0.05, poly.len));
       const turn = Math.abs(normAngle(Math.atan2(e.hx, e.hz) - h0));
-      if (turn > 0.5) this.hold(TURN_BASE + turn * TURN_PER_RAD, [this.at[0] + e.hx, this.at[1] + e.hz], 'turn');
+      if (TURN_ON_SPOT && turn > 0.5) this.hold(TURN_BASE + turn * TURN_PER_RAD, [this.at[0] + e.hx, this.at[1] + e.hz], 'turn');
     }
     if (poly.len > 1e-4) { const dur = walkTime(poly.len, v); this.segs.push({ k: 'walk', t0: this.t, dur, poly, v, d0: this.d }); this.t += dur; this.d += poly.len; }
     this.at = to;

@@ -18,6 +18,7 @@ import {
   seatClearances,
   obstacleDist,
   WALK_MARGIN,
+  POUR_MARGIN,
   WAITER_BODY_R,
   WALK_SPEED,
   buildShiftPlan,
@@ -120,7 +121,10 @@ describe('Orange waiter: outfits, shift / break cycle, walking plan round the ta
           const r = Math.hypot(st.standPos[0], st.standPos[2]);
           expect(r).toBeGreaterThan(TABLE_R + 0.07 + 0.3); // body never over the table
           expect(Math.hypot(st.standPos[0] - c[0], st.standPos[2] - c[2])).toBeLessThan(1.8); // beside the player (in the gap next to them, footprints + 0.25 apart)
-          expect(waiterClearance(obs, st.standPos[0], st.standPos[2])).toBeGreaterThanOrEqual(WALK_MARGIN - 1e-9);
+          expect(waiterClearance(obs, st.standPos[0], st.standPos[2])).toBeGreaterThanOrEqual(POUR_MARGIN);
+          // in at the table edge (laptop: r <= 1.7; the phone 4-player layout seats people closer together, so <= 2.1)
+          expect(r).toBeLessThan(portrait && n === 4 ? 2.1 : 1.7);
+
           expect(st.standPos[2]).toBeGreaterThan(HEDGE_Z);
           // beside the player, never behind their back: the stop is well off the line straight back from the seat
           const ch = L.chars[st.seat]!;
@@ -135,11 +139,14 @@ describe('Orange waiter: outfits, shift / break cycle, walking plan round the ta
           expect(st.face[0]).toBeCloseTo(P.tea[st.seat]!.p[0], 6);
         }
         // the whole route keeps clear of the table rim, every chair and every seated player
-        expect(planClearance(L, plan, 0.02)).toBeGreaterThanOrEqual(WALK_MARGIN);
+        expect(planClearance(L, plan, 0.02)).toBeGreaterThanOrEqual(POUR_MARGIN);
         // invariant per seat: every path point keeps his body WALK_MARGIN clear of that seat's chair box and body circle
         const per = seatClearances(L, plan);
         expect(Object.keys(per)).toHaveLength(n);
-        for (const v of Object.values(per)) expect(v).toBeGreaterThanOrEqual(WALK_MARGIN);
+        for (const v of Object.values(per)) expect(v).toBeGreaterThanOrEqual(POUR_MARGIN);
+        // out on the walking ring he keeps the full WALK_MARGIN from every seat
+        const ring = seatClearances(L, plan, 0.02, (x, z) => Math.hypot(x, z) > WALK_R - 0.08);
+        for (const v of Object.values(ring)) expect(v).toBeGreaterThanOrEqual(WALK_MARGIN);
         console.log(`clearance ${n}p${portrait ? ' phone' : ''}: total ${plan.total.toFixed(1)} s, speed ${plan.speed.toFixed(3)}, pour ${plan.pour.toFixed(2)}, per seat ` + JSON.stringify(Object.fromEntries(Object.entries(per).map(([k, v]) => [k, +v.toFixed(3)]))));
         // starts and ends at the exit, goes all the way round the table (angle swept >= one lap)
         const a = samplePlan(plan, 0), z = samplePlan(plan, plan.total);
@@ -173,7 +180,7 @@ describe('Orange waiter: outfits, shift / break cycle, walking plan round the ta
     const s0 = samplePlan(ev, 0), s1 = samplePlan(ev, ev.total);
     expect(Math.hypot(s0.x - from[0], s0.z - from[1])).toBeLessThan(1e-6);
     expect(Math.hypot(s1.x - from[0], s1.z - from[1])).toBeLessThan(1e-6);
-    expect(planClearance(L, ev, 0.02)).toBeGreaterThanOrEqual(WALK_MARGIN - 0.005);
+    expect(planClearance(L, ev, 0.02)).toBeGreaterThanOrEqual(POUR_MARGIN);
   });
 
   it('walking gait: feet planted on the ground do not slide, stride follows speed, no running (no flight phase)', () => {
