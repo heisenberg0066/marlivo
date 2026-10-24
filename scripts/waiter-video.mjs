@@ -26,15 +26,25 @@ await p.locator('.seg').nth(0).locator('button').nth(players - 2).click();
 await p.locator('.seg').nth(2).locator('button').nth(0).click();
 await p.locator('button.act.primary').last().click();
 for (let k = 0; k < 12; k++) { await adv(100, 50); await p.waitForTimeout(300); }
-if (cam === 'over') await p.evaluate(() => { window.__mlCam = { pos: [0, 2.3, 2.9], target: [0, -0.45, -0.8], fov: 44 }; });
+if (cam === 'over') await p.evaluate(() => { window.__mlCam = { pos: [2.7, 1.5, 2.4], target: [-0.35, -0.55, -0.45], fov: 50 }; });
 if (process.env.STILL) { await adv(Number(process.env.STILL_MS ?? 500), 50); await p.screenshot({ path: process.env.STILL }); await b.close(); process.exit(0); }
 const clk = () => p.evaluate(() => window.__mlWaiter?.state().clock ?? 0);
 let c = await clk();
 while (c < from - 0.02) { await adv(Math.min(500, (from - c) * 1000), 50); c = await clk(); }
+// CAM=follow: raised 3/4 view that follows him from outside the ring (table and players behind him)
+const follow = async () => {
+  const s = await p.evaluate(() => window.__mlWaiter.state());
+  if (!s.pos) return;
+  const r = Math.hypot(s.pos[0], s.pos[2]) || 1, ox = s.pos[0] / r, oz = s.pos[2] / r;
+  // a little round the ring behind him too, so the view is 3/4 rather than straight on
+  const yx = Math.sin(s.yaw), yz = Math.cos(s.yaw);
+  await p.evaluate(([px, pz, ox, oz, yx, yz]) => { window.__mlCam = { pos: [px + ox * 1.9 - yx * 0.9, 0.75, pz + oz * 1.9 - yz * 0.9], target: [px * 0.8, -0.35, pz * 0.8], fov: 50 }; }, [s.pos[0], s.pos[2], ox, oz, yx, yz]);
+};
 for (let i = 0; i < frames; i++) {
+  if (cam === 'follow') { await follow(); await adv(1, 1); }
   if (i % 15 === 0) await p.evaluate(() => { const s = window.__ml, v = s?.view; if (!s || !v) return; if (v.phase === 'START_ROLL') s.intent({ t: 'ROLL_DIE' }); if (v.phase === 'PEEK') { const me = v.you ?? 0; for (const x of (v.round?.areas?.[me] ?? []).slice(0, 2)) s.intent({ t: 'PEEK_PICK', slot: x.id }); s.intent({ t: 'PEEK_DONE' }); } });
   await p.screenshot({ path: `${out}/f${String(i).padStart(4, '0')}.jpg`, type: 'jpeg', quality: 90, timeout: 120000 });
-  await adv(1000 / fps);
+  await adv(1000 / fps - (cam === 'follow' ? 1 : 0));
   if (i % 50 === 0) console.log('frame', i, 'clock', (await clk()).toFixed(2));
 }
 await b.close();

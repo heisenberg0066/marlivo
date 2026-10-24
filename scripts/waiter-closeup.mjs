@@ -1,5 +1,5 @@
 // Close-up check of the waiter's walk on the deterministic virtual clock: follows him with a side camera (__mlCam)
-// and saves a frame every STEP ms. env: OUT, FROM (s), TO (s), STEP (ms), PLAYERS, CAM=side|front|game
+// and saves a frame every STEP ms. env: OUT, FROM (s), TO (s), STEP (ms), PLAYERS, CAM=side|front|game|top
 import { chromium } from 'playwright-core';
 import { mkdirSync, writeFileSync } from 'node:fs';
 const base = process.env.BASE ?? 'http://127.0.0.1:4192/marlivo/';
@@ -33,7 +33,8 @@ const log = [];
 let i = 0;
 while (c < to) {
   const s = await p.evaluate(() => window.__mlWaiter.state());
-  if (cam !== 'game' && s.pos) {
+  if (cam === 'top') { await p.evaluate(() => { window.__mlCam = { pos: [0, 6.2, 0.9], target: [0, -0.75, -0.05], fov: 44 }; }); await adv(1, 1); }
+  else if (cam !== 'game' && s.pos) {
     const yaw = s.yaw; let side = cam === 'side' ? Math.PI / 2 : 0;
     // side view from the outside of the ring (the table would hide his legs from the inside)
     if (cam === 'side' && Math.hypot(s.pos[0] + Math.sin(yaw + side), s.pos[2] + Math.cos(yaw + side)) < Math.hypot(s.pos[0], s.pos[2])) side = -side;

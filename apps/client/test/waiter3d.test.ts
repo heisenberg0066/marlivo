@@ -164,7 +164,7 @@ describe('Orange waiter: outfits, shift / break cycle, walking plan round the ta
     const s0 = samplePlan(ev, 0), s1 = samplePlan(ev, ev.total);
     expect(Math.hypot(s0.x - from[0], s0.z - from[1])).toBeLessThan(1e-6);
     expect(Math.hypot(s1.x - from[0], s1.z - from[1])).toBeLessThan(1e-6);
-    expect(planClearance(L, ev)).toBeGreaterThan(0);
+    expect(planClearance(L, ev, 0.02)).toBeGreaterThanOrEqual(WALK_MARGIN - 0.005);
   });
 
   it('walking gait: feet planted on the ground do not slide, stride follows speed, no running (no flight phase)', () => {

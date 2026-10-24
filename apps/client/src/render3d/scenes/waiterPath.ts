@@ -42,8 +42,8 @@ export const WAITER_MODEL_H = 0.8;
 /** Standing height in the world (about as tall as the badminton Orange guys, head a little below the seated heads). */
 export const WAITER_HEIGHT = 1.1;
 export const WAITER_SCALE = WAITER_HEIGHT / WAITER_MODEL_H;
-/** Footprint radius of his egg body (incl. the tray / teapot held at his sides). */
-export const WAITER_BODY_R = 0.4;
+/** Footprint radius of his egg body incl. the tray / teapot held out at his sides (measured top-down). */
+export const WAITER_BODY_R = 0.5;
 /** Footprint radius of a seated character's body (round Orange guy / Mint / Ammar figures at CHAR_SCALE, incl. arms). */
 export const SEATED_R = 0.36;
 /** Garden chair footprint in the seat group's local frame (before CHAR_SCALE): seat box 0.48 x 0.44 centred on
@@ -54,7 +54,7 @@ export const CHAIR_Z1 = CHAIR_BACK + 0.24;
 /** Free space he always keeps between his body and any chair / seated player (walking and pouring). */
 export const WALK_MARGIN = 0.12;
 /** Walking ring, outside every chair and seated body by WAITER_BODY_R + WALK_MARGIN (and in front of the hedge). */
-export const WALK_R = 2.15;
+export const WALK_R = 2.3;
 /** Kept for the old API: radius of the chair footprint and its centre behind the character root. */
 export const CHAIR_R = Math.hypot(CHAIR_HALF_X, (CHAIR_Z1 - CHAIR_Z0) / 2) * CHAR_SCALE;
 export const CHAIR_OFFSET = -((CHAIR_Z0 + CHAIR_Z1) / 2) * CHAR_SCALE;
