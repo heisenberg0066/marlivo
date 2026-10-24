@@ -43,7 +43,7 @@ export const WAITER_MODEL_H = 0.8;
 export const WAITER_HEIGHT = 1.1;
 export const WAITER_SCALE = WAITER_HEIGHT / WAITER_MODEL_H;
 /** Footprint radius of his egg body incl. the tray / teapot held out at his sides (measured top-down). */
-export const WAITER_BODY_R = 0.5;
+export const WAITER_BODY_R = 0.42;
 /** Footprint radius of a seated character's body (round Orange guy / Mint / Ammar figures at CHAR_SCALE, incl. arms). */
 export const SEATED_R = 0.36;
 /** Garden chair footprint in the seat group's local frame (before CHAR_SCALE): seat box 0.48 x 0.44 centred on
@@ -52,9 +52,9 @@ export const CHAIR_HALF_X = 0.26;
 export const CHAIR_Z0 = CHAIR_BACK - 0.245;
 export const CHAIR_Z1 = CHAIR_BACK + 0.24;
 /** Free space he always keeps between his body and any chair / seated player (walking and pouring). */
-export const WALK_MARGIN = 0.12;
+export const WALK_MARGIN = 0.25;
 /** Walking ring, outside every chair and seated body by WAITER_BODY_R + WALK_MARGIN (and in front of the hedge). */
-export const WALK_R = 2.3;
+export const WALK_R = 2.55;
 /** Kept for the old API: radius of the chair footprint and its centre behind the character root. */
 export const CHAIR_R = Math.hypot(CHAIR_HALF_X, (CHAIR_Z1 - CHAIR_Z0) / 2) * CHAR_SCALE;
 export const CHAIR_OFFSET = -((CHAIR_Z0 + CHAIR_Z1) / 2) * CHAR_SCALE;
@@ -73,6 +73,9 @@ export const HEDGE_Z = -2.25;
 export const WALK_SPEED = 0.35;
 export const WALK_SPEED_RANGE: readonly [number, number] = [0.32, 0.37];
 export const WALK_EASE = 0.5;
+/** Turning on the spot before walking off from a cup: seconds = TURN_BASE + TURN_PER_RAD * angle. */
+export const TURN_BASE = 0.25;
+export const TURN_PER_RAD = 0.35;
 /** Pour at each cup: min / preferred / max seconds standing still. */
 export const POUR_MIN = 3.0;
 export const POUR_PREF = 4.2;
@@ -101,47 +104,79 @@ export const normAngle = (a: number) => { a = (a + Math.PI) % TAU; if (a < 0) a 
 export const angleOf = (x: number, z: number) => Math.atan2(x, z);
 const onRing = (a: number, r: number): P2 => [Math.sin(a) * r, Math.cos(a) * r];
 
-export type Obstacle =
-  | { kind: 'char'; x: number; z: number; r: number; seat: number }
-  /** chair: oriented box (centre, unit axes, half sizes) */
-  | { kind: 'chair'; x: number; z: number; r: number; seat: number; ux: number; uz: number; hx: number; hz: number };
-/** Seated characters (circle) and their chairs (oriented box, from the real seat group transform). */
+/** Measured floor footprints (scripts/waiter-footprints.mjs: real skinned vertices of every seated group - figure,
+ *  chair, backpack, props - and of the waiter with tray + teapot, walking and pouring, +2 cm). Max distance from the
+ *  root per 10-degree bin; angle 0 = the way the seat / the waiter faces, counter-clockwise seen from above like yaw. */
+export const SEAT_PROFILE = [0.35, 0.41, 0.47, 0.47, 0.47, 0.45, 0.39, 0.32, 0.35, 0.4, 0.37, 0.32, 0.38, 0.37, 0.37, 0.36, 0.3, 0.31, 0.31, 0.32, 0.36, 0.37, 0.33, 0.33, 0.34, 0.4, 0.39, 0.32, 0.37, 0.43, 0.45, 0.43, 0.44, 0.44, 0.27, 0.27] as const;
+export const WAITER_PROFILE = [0.42, 0.41, 0.41, 0.42, 0.56, 0.64, 0.64, 0.63, 0.51, 0.48, 0.49, 0.43, 0.56, 0.56, 0.42, 0.41, 0.41, 0.4, 0.4, 0.4, 0.41, 0.41, 0.56, 0.56, 0.43, 0.47, 0.49, 0.53, 0.65, 0.69, 0.7, 0.69, 0.65, 0.58, 0.42, 0.41] as const;
+const NB = 36;
+/** Local boundary points (bin edges and centres) of a star-shaped profile. */
+const ring = (prof: readonly number[]) => { const out: P2[] = []; for (let b = 0; b < NB; b++) for (const f of [0, 0.5]) { const a = ((b + f) / NB) * TAU; out.push([Math.sin(a) * prof[b]!, Math.cos(a) * prof[b]!]); } return out; };
+const SEAT_PTS = ring(SEAT_PROFILE), WAITER_PTS = ring(WAITER_PROFILE);
+const SEAT_MAX = Math.max(...SEAT_PROFILE), WAITER_MAX = Math.max(...WAITER_PROFILE);
+const profAt = (prof: readonly number[], a: number) => prof[Math.floor((((a % TAU) + TAU) % TAU) / TAU * NB) % NB]!;
+
+export interface Obstacle { kind: 'seat'; x: number; z: number; yaw: number; seat: number; r: number }
+/** One obstacle per seat: the measured footprint of the figure + chair (+ backpack etc.) at its real root and yaw. */
 export function waiterObstacles(L: Layout3): Obstacle[] {
-  const out: Obstacle[] = [];
-  for (const [s, c] of Object.entries(L.chars)) {
-    const seat = Number(s);
-    out.push({ x: c.p[0], z: c.p[2], r: SEATED_R, kind: 'char', seat });
-    // seat group: position c.p, rotation y = c.yaw, scale CHAR_SCALE; local +x -> (cos yaw, -sin yaw), +z -> (sin yaw, cos yaw)
-    const ux = Math.cos(c.yaw), uz = -Math.sin(c.yaw), fx = Math.sin(c.yaw), fz = Math.cos(c.yaw);
-    const zc = ((CHAIR_Z0 + CHAIR_Z1) / 2) * CHAR_SCALE;
-    out.push({ kind: 'chair', seat, x: c.p[0] + fx * zc, z: c.p[2] + fz * zc, ux, uz, hx: CHAIR_HALF_X * CHAR_SCALE, hz: ((CHAIR_Z1 - CHAIR_Z0) / 2) * CHAR_SCALE, r: 0 });
-  }
-  return out;
+  return Object.entries(L.chars).map(([s, c]) => ({ kind: 'seat' as const, x: c.p[0], z: c.p[2], yaw: c.yaw, seat: Number(s), r: SEAT_MAX }));
 }
-/** Distance from a floor point to one obstacle's footprint (0 inside). */
-export function obstacleDist(o: Obstacle, x: number, z: number): number {
-  const dx = x - o.x, dz = z - o.z;
-  if (o.kind === 'char') return Math.max(0, Math.hypot(dx, dz) - o.r);
-  // a: along the chair's local x (sideways), b: along its local z (towards the table)
-  const a = dx * o.ux + dz * o.uz, b = -dx * o.uz + dz * o.ux;
-  const qa = Math.max(0, Math.abs(a) - o.hx), qb = Math.max(0, Math.abs(b) - o.hz);
-  return Math.hypot(qa, qb);
+const toWorld = (pts: P2[], x: number, z: number, yaw: number): P2[] => { const c = Math.cos(yaw), sn = Math.sin(yaw); return pts.map(([px, pz]) => [x + px * c + pz * sn, z - px * sn + pz * c]); };
+const inside = (prof: readonly number[], ox: number, oz: number, yaw: number, x: number, z: number) => { const dx = x - ox, dz = z - oz; return Math.hypot(dx, dz) < profAt(prof, Math.atan2(dx, dz) - yaw); };
+/** Free distance between the waiter's footprint (at x, z facing yaw) and one seat's footprint (negative = overlap). */
+export function obstacleDist(o: Obstacle, x: number, z: number, yaw = 0): number {
+  const cd = Math.hypot(x - o.x, z - o.z);
+  if (cd > SEAT_MAX + WAITER_MAX + 0.6) return cd - SEAT_MAX - WAITER_MAX;
+  const wp = toWorld(WAITER_PTS, x, z, yaw), sp = toWorld(SEAT_PTS, o.x, o.z, o.yaw);
+  let d = Infinity;
+  for (const a of wp) { if (inside(SEAT_PROFILE, o.x, o.z, o.yaw, a[0], a[1])) return -0.01; for (const b of sp) d = Math.min(d, Math.hypot(a[0] - b[0], a[1] - b[1])); }
+  for (const b of sp) if (inside(WAITER_PROFILE, x, z, yaw, b[0], b[1])) return -0.01;
+  return d;
 }
-/** Free distance between the waiter's body at (x, z) and the nearest obstacle / the table rim (negative = overlap). */
-export function waiterClearance(obs: Obstacle[], x: number, z: number): number {
+/** Fast (search) version: radial gaps between the two star-shaped footprints (accurate to ~1 cm near the closest point). */
+export function obstacleDistFast(o: Obstacle, x: number, z: number, yaw: number): number {
+  const cd = Math.hypot(x - o.x, z - o.z);
+  if (cd > SEAT_MAX + WAITER_MAX + 0.6) return cd - SEAT_MAX - WAITER_MAX;
+  let d = Infinity;
+  for (const [px, pz] of toWorld(WAITER_PTS, x, z, yaw)) { const dx = px - o.x, dz = pz - o.z; d = Math.min(d, Math.hypot(dx, dz) - profAt(SEAT_PROFILE, Math.atan2(dx, dz) - o.yaw)); }
+  for (const [px, pz] of toWorld(SEAT_PTS, o.x, o.z, o.yaw)) { const dx = px - x, dz = pz - z; d = Math.min(d, Math.hypot(dx, dz) - profAt(WAITER_PROFILE, Math.atan2(dx, dz) - yaw)); }
+  return d;
+}
+export const fastClear = (obs: Obstacle[], x: number, z: number, yaws: number[]) => {
   let c = Math.hypot(x, z) - (TABLE_R + 0.07) - WAITER_BODY_R;
-  for (const o of obs) c = Math.min(c, obstacleDist(o, x, z) - WAITER_BODY_R);
+  for (const o of obs) { if (Math.hypot(x - o.x, z - o.z) > SEAT_MAX + WAITER_MAX + c + 0.01) continue; for (const y of yaws) c = Math.min(c, obstacleDistFast(o, x, z, y)); }
+  return c;
+};
+const ALL_YAWS = Array.from({ length: 16 }, (_, i) => (i / 16) * TAU);
+/** Free distance between the waiter (at x, z facing yaw; worst heading if yaw is omitted) and the nearest seat or the
+ *  table rim (his body circle must stay off the table). */
+export function waiterClearance(obs: Obstacle[], x: number, z: number, yaw?: number): number {
+  let c = Math.hypot(x, z) - (TABLE_R + 0.07) - WAITER_BODY_R;
+  const yaws = yaw === undefined ? Array.from({ length: 12 }, (_, i) => (i / 12) * TAU) : [yaw];
+  for (const o of obs) for (const y of yaws) c = Math.min(c, obstacleDist(o, x, z, y));
   return c;
 }
-/** Per seat: the smallest free distance between his body and that seat's chair / seated character along a plan. */
+/** Headings he takes at a plan sample (walking: travel direction; standing: the cup, plus the turns in / out). */
+function planPoses(plan: WaiterPlan, step: number, visit: (x: number, z: number, yaw: number) => void) {
+  const segs = plan.segs;
+  for (let i = 0; i < segs.length; i++) {
+    const sg = segs[i]!;
+    if (sg.k === 'walk') { for (let s = 0; s <= sg.poly.len + 1e-9; s += step) { const p = polyAt(sg.poly, s); visit(p.x, p.z, Math.atan2(p.hx, p.hz)); } continue; }
+    const face = Math.atan2(sg.face[0] - sg.at[0], sg.face[1] - sg.at[1]);
+    const turns: number[] = [face];
+    const prev = segs[i - 1], next = segs[i + 1];
+    if (prev?.k === 'walk') { const e = polyAt(prev.poly, prev.poly.len); turns.push(Math.atan2(e.hx, e.hz)); }
+    if (next?.k === 'walk') { const e = polyAt(next.poly, 0); turns.push(Math.atan2(e.hx, e.hz)); }
+    for (const h of [prev, next]) if (h?.k === 'hold') turns.push(Math.atan2(h.face[0] - h.at[0], h.face[1] - h.at[1]));
+    for (const t of turns.slice(1)) { const d = normAngle(t - face); for (let k = 0; k <= 8; k++) visit(sg.at[0], sg.at[1], face + (d * k) / 8); }
+    visit(sg.at[0], sg.at[1], face);
+  }
+}
+/** Per seat: the smallest free distance between his footprint and that seat's footprint along a plan. */
 export function seatClearances(L: Layout3, plan: WaiterPlan, step = 0.02): Record<number, number> {
   const obs = waiterObstacles(L);
   const out: Record<number, number> = {};
-  const visit = (x: number, z: number) => { for (const o of obs) out[o.seat] = Math.min(out[o.seat] ?? Infinity, obstacleDist(o, x, z) - WAITER_BODY_R); };
-  for (const sg of plan.segs) {
-    if (sg.k !== 'walk') { visit(sg.at[0], sg.at[1]); continue; }
-    for (let s = 0; s <= sg.poly.len + 1e-9; s += step) { const p = polyAt(sg.poly, s); visit(p.x, p.z); }
-  }
+  planPoses(plan, step, (x, z, yaw) => { for (const o of obs) out[o.seat] = Math.min(out[o.seat] ?? Infinity, obstacleDist(o, x, z, yaw)); });
   return out;
 }
 
@@ -156,28 +191,50 @@ export interface WaiterStop {
 }
 
 /** The pour spot for one seat: beside the player, as close to them as the chairs allow. */
+export function behindSomeone(L: Layout3, x: number, z: number, lim = 0.45): boolean {
+  for (const ch of Object.values(L.chars)) {
+    const sx = x - ch.p[0], sz = z - ch.p[2], d = Math.hypot(sx, sz);
+    if (d > 1.7) continue;
+    if ((sx * -Math.sin(ch.yaw) + sz * -Math.cos(ch.yaw)) / d > lim) return true;
+  }
+  return false;
+}
 export function cupStopForSeat(L: Layout3, seat: number, cupPos?: V3, obs = waiterObstacles(L)): WaiterStop {
   const c = L.chars[seat]?.p ?? [0, 0, TABLE_R + 0.22] as V3;
   const sa = angleOf(c[0], c[2]);
   const cup = cupPos ?? ([Math.sin(sa) * 0.7, 0, Math.cos(sa) * 0.7] as V3);
-  // beside the player on the side of their cup; side players get the side further from the camera, so the pour
-  // is on screen (the camera looks from my seat, at angle 0)
+  // beside the player (in the gap next to them, never behind their back), as close to their cup as the measured
+  // footprints allow; side players prefer the side further from the camera (my seat, angle 0) so the pour is on screen
   let side0 = Math.sign(normAngle(angleOf(cup[0], cup[2]) - sa)) || 1;
   if (Math.abs(sa) > 0.35 && Math.abs(sa) < 2.6) side0 = Math.sign(sa);
-  let best: { a: number; r: number } | null = null;
-  outer: for (const r of [POUR_R, POUR_R + 0.08, POUR_R + 0.16, POUR_R + 0.26]) {
-    for (const side of [side0, -side0]) {
-      for (let d = 0.3; d <= 1.6; d += 0.01) {
-        const a = sa + side * d;
+  const need = WALK_MARGIN + 0.04;
+  let best: { a: number; r: number; score: number } | null = null;
+  for (const lim of [0.45, 0.6, 0.75, 0.9]) {
+  if (best) break;
+  for (const side of [side0, -side0]) {
+    for (let d = 0.25; d <= 1.6; d += 0.02) {
+      const a = sa + side * d;
+      for (let r = TABLE_R + 0.07 + WAITER_BODY_R + 0.02; r <= WALK_R + 1e-9; r += 0.04) {
         const [x, z] = onRing(a, r);
         if (z <= HEDGE_Z + 0.05) continue;
-        if (waiterClearance(obs, x, z) < WALK_MARGIN) continue;
-        // the radial step in from the walking ring must be just as clear
+        // his own player is the nearest one (he is beside them, not beside a neighbour)
+        const own = Math.hypot(x - c[0], z - c[2]);
+        if (Object.entries(L.chars).some(([k, o]) => Number(k) !== seat && Math.hypot(x - o.p[0], z - o.p[2]) < own - 0.02)) continue;
+        const score = Math.hypot(x - cup[0], z - cup[2]) + 0.5 * own + (side === side0 ? 0 : 0.2);
+        if (best && score >= best.score) continue;
+        // never behind anyone's back: off the line straight back from every nearby seat by more than 60 degrees
+        if (behindSomeone(L, x, z, lim)) continue;
+        // standing there turning between the way in, the cup and the way out (any heading)
+        if (fastClear(obs, x, z, ALL_YAWS) < need) continue;
+        // the radial step in from / out to the walking ring (facing in or out)
         let ok = true;
-        for (let q = r; q <= WALK_R && ok; q += 0.03) { const [qx, qz] = onRing(a, q); if (waiterClearance(obs, qx, qz) < WALK_MARGIN) ok = false; }
-        if (ok) { best = { a, r }; break outer; }
+        const yin = Math.atan2(-x, -z), yout = yin + Math.PI;
+        for (let q = r; q <= WALK_R + 1e-9 && ok; q += 0.04) { const [qx, qz] = onRing(a, q); if (fastClear(obs, qx, qz, [yin, yout]) < WALK_MARGIN + 0.015) ok = false; }
+        if (ok) best = { a, r, score };
+        break; // a larger radius at the same angle is only further from the cup
       }
     }
+  }
   }
   const b = best ?? { a: sa + side0 * 0.6, r: WALK_R };
   const [x, z] = onRing(b.a, b.r);
@@ -277,6 +334,14 @@ class PlanBuilder {
   constructor(start: P2) { this.at = start; }
   walk(to: P2, v: number, dir = WALK_DIR) {
     const poly = routeBetween(this.at, to, dir);
+    // standing at a cup facing it: first turn calmly on the spot towards the way out (no quick shuffle)
+    const last = this.segs[this.segs.length - 1];
+    if (poly.len > 1e-4 && last?.k === 'hold') {
+      const h0 = Math.atan2(last.face[0] - last.at[0], last.face[1] - last.at[1]);
+      const e = polyAt(poly, Math.min(0.05, poly.len));
+      const turn = Math.abs(normAngle(Math.atan2(e.hx, e.hz) - h0));
+      if (turn > 0.5) this.hold(TURN_BASE + turn * TURN_PER_RAD, [this.at[0] + e.hx, this.at[1] + e.hz], 'turn');
+    }
     if (poly.len > 1e-4) { const dur = walkTime(poly.len, v); this.segs.push({ k: 'walk', t0: this.t, dur, poly, v, d0: this.d }); this.t += dur; this.d += poly.len; }
     this.at = to;
     return this;
@@ -375,10 +440,7 @@ export function samplePlan(plan: WaiterPlan, t: number): PlanSample {
 export function planClearance(L: Layout3, plan: WaiterPlan, step = 0.05): number {
   const obs = waiterObstacles(L);
   let worst = Infinity;
-  for (const sg of plan.segs) {
-    if (sg.k !== 'walk') { worst = Math.min(worst, waiterClearance(obs, sg.at[0], sg.at[1])); continue; }
-    for (let s = 0; s <= sg.poly.len; s += step) { const p = polyAt(sg.poly, s); worst = Math.min(worst, waiterClearance(obs, p.x, p.z)); }
-  }
+  planPoses(plan, step, (x, z, yaw) => { worst = Math.min(worst, waiterClearance(obs, x, z, yaw)); });
   return worst;
 }
 

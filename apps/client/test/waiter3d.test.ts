@@ -93,7 +93,7 @@ describe('Orange waiter: outfits, shift / break cycle, walking plan round the ta
     expect(WAITER_FLOOR_Y).toBe(FLOOR_Y);
     expect(0.8 * WAITER_SCALE).toBeGreaterThan(1.0);
     expect(0.8 * WAITER_SCALE).toBeLessThan(1.25);
-    expect(Math.hypot(KITCHEN_DOOR[0], KITCHEN_DOOR[2])).toBeGreaterThan(WALK_R + 1);
+    expect(Math.hypot(KITCHEN_DOOR[0], KITCHEN_DOOR[2])).toBeGreaterThan(WALK_R + 0.8);
     expect(Math.hypot(KITCHEN_DOOR[0], KITCHEN_DOOR[2])).toBeLessThan(3.56); // still on the paved terrace
   });
 
@@ -119,18 +119,27 @@ describe('Orange waiter: outfits, shift / break cycle, walking plan round the ta
           const c = L.chars[st.seat]!.p;
           const r = Math.hypot(st.standPos[0], st.standPos[2]);
           expect(r).toBeGreaterThan(TABLE_R + 0.07 + 0.3); // body never over the table
-          expect(Math.hypot(st.standPos[0] - c[0], st.standPos[2] - c[2])).toBeLessThan(1.45); // beside the player (in the gap next to them)
+          expect(Math.hypot(st.standPos[0] - c[0], st.standPos[2] - c[2])).toBeLessThan(1.8); // beside the player (in the gap next to them, footprints + 0.25 apart)
           expect(waiterClearance(obs, st.standPos[0], st.standPos[2])).toBeGreaterThanOrEqual(WALK_MARGIN - 1e-9);
           expect(st.standPos[2]).toBeGreaterThan(HEDGE_Z);
+          // beside the player, never behind their back: the stop is well off the line straight back from the seat
+          const ch = L.chars[st.seat]!;
+          const bx = -Math.sin(ch.yaw), bz = -Math.cos(ch.yaw);
+          const sx = st.standPos[0] - ch.p[0], sz = st.standPos[2] - ch.p[2];
+          expect((sx * bx + sz * bz) / Math.hypot(sx, sz)).toBeLessThan(0.76);
+          // facing the cup means facing in over the table (the cup exists in the tea layout)
+          expect(P.tea[st.seat]).toBeTruthy();
+          const fx = st.face[0] - st.standPos[0], fz = st.face[2] - st.standPos[2];
+          expect((fx * -st.standPos[0] + fz * -st.standPos[2]) / (Math.hypot(fx, fz) * Math.hypot(st.standPos[0], st.standPos[2]))).toBeGreaterThan(0.3);
           // the cup he pours is that player's own cup
           expect(st.face[0]).toBeCloseTo(P.tea[st.seat]!.p[0], 6);
         }
         // the whole route keeps clear of the table rim, every chair and every seated player
-        expect(planClearance(L, plan, 0.02)).toBeGreaterThanOrEqual(WALK_MARGIN - 0.005);
+        expect(planClearance(L, plan, 0.02)).toBeGreaterThanOrEqual(WALK_MARGIN);
         // invariant per seat: every path point keeps his body WALK_MARGIN clear of that seat's chair box and body circle
         const per = seatClearances(L, plan);
         expect(Object.keys(per)).toHaveLength(n);
-        for (const v of Object.values(per)) expect(v).toBeGreaterThanOrEqual(WALK_MARGIN - 0.005);
+        for (const v of Object.values(per)) expect(v).toBeGreaterThanOrEqual(WALK_MARGIN);
         console.log(`clearance ${n}p${portrait ? ' phone' : ''}: total ${plan.total.toFixed(1)} s, speed ${plan.speed.toFixed(3)}, pour ${plan.pour.toFixed(2)}, per seat ` + JSON.stringify(Object.fromEntries(Object.entries(per).map(([k, v]) => [k, +v.toFixed(3)]))));
         // starts and ends at the exit, goes all the way round the table (angle swept >= one lap)
         const a = samplePlan(plan, 0), z = samplePlan(plan, plan.total);

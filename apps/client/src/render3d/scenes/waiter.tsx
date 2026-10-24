@@ -540,6 +540,7 @@ export const OrangeWaiter = memo(function OrangeWaiter({ L, view, level }: { L: 
   const cycleRef = useRef(0);
   const pendingRef = useRef<Pending | null>(null);
   const yawRef = useRef<number | null>(null);
+  const phaseRef = useRef(0);
   const lastRef = useRef<{ x: number; z: number; t: number; speed: number; amt: number; cyc: number; mode: string; tag: string | null }>({ x: 0, z: 0, t: 0, speed: 0, amt: 0, cyc: 0, mode: 'break', tag: null });
   const [shown, setShown] = useState<{ kind: WaiterActionKind; outfit: WaiterOutfit } | null>(null);
   const [flags, setFlags] = useState<Flags>(NO_FLAGS);
@@ -747,14 +748,17 @@ export const OrangeWaiter = memo(function OrangeWaiter({ L, view, level }: { L: 
     const smp = samplePlan(run.plan, t);
     const seg = run.plan.segs[smp.seg];
     const vCruise = seg && seg.k === 'walk' ? seg.v : WALK_SPEED;
-    // time spent walking so far drives the leg cycle at a constant cadence (stride shortens while easing in/out)
-    let moveT = 0;
-    for (let i = 0; i < smp.seg && i < run.plan.segs.length; i++) { const sg = run.plan.segs[i]!; if (sg.k === 'walk') moveT += sg.dur; }
-    if (seg && seg.k === 'walk') moveT += Math.min(seg.dur, Math.max(0, t - seg.t0));
     const rig = model.userData.waiterRig as WaiterRig | undefined;
     const g = rig?.geom.L ?? rig?.geom.R;
-    const amt = smp.moving ? Math.min(1, smp.speed / vCruise) : 0;
-    const cyc = g ? (moveT * cadenceOf(g, vCruise)) % 1 : 0;
+    // leg cycle: integrated per frame. Speeding up / slowing down both the cadence and the stride change (slow
+    // steps at the start of a walk, never a quick shuffle); stride = speed / cadence so a planted foot never slides.
+    // Turning on the spot ('turn'): a few slow, small steps.
+    const vAmt = smp.moving ? Math.min(1, smp.speed / vCruise) : 0;
+    const turning = smp.tag === 'turn';
+    const cadF = turning ? 0.5 : 0.45 + 0.55 * vAmt;
+    const amt = turning ? 0.12 * Math.sin(Math.PI * Math.min(1, smp.holdU * 1.15)) : vAmt / cadF;
+    if (g && (smp.moving || turning)) phaseRef.current = (phaseRef.current + dt * cadenceOf(g, vCruise) * cadF) % 1;
+    const cyc = phaseRef.current;
 
     const wantYaw = Math.atan2(smp.hx, smp.hz);
     if (yawRef.current === null) yawRef.current = wantYaw;
@@ -762,7 +766,7 @@ export const OrangeWaiter = memo(function OrangeWaiter({ L, view, level }: { L: 
       let dy = wantYaw - yawRef.current;
       dy = Math.atan2(Math.sin(dy), Math.cos(dy));
       // turn smoothly (about a quarter turn in 0.35 s), a little faster when standing
-      yawRef.current += dy * (1 - Math.exp(-dt * (smp.moving ? 7 : 5)));
+      yawRef.current += dy * (1 - Math.exp(-dt * (smp.moving ? 6 : turning ? 4 : 5)));
     }
     const yaw = yawRef.current;
 
@@ -803,7 +807,7 @@ export const OrangeWaiter = memo(function OrangeWaiter({ L, view, level }: { L: 
     }
     if (bodyRef.current) {
       bodyRef.current.position.set(0, pose ? pose.bodyY : 0, 0);
-      bodyRef.current.rotation.set(lean + 0.03 * amt, 0, 0);
+      bodyRef.current.rotation.set(lean + 0.03 * vAmt, 0, 0);
     }
     lastRef.current = { x: smp.x, z: smp.z, t: now, speed: smp.speed, amt, cyc, mode: run === shiftRef.current ? 'shift' : 'event', tag: smp.tag };
 
