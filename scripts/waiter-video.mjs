@@ -26,7 +26,7 @@ await p.locator('.seg').nth(0).locator('button').nth(players - 2).click();
 await p.locator('.seg').nth(2).locator('button').nth(0).click();
 await p.locator('button.act.primary').last().click();
 for (let k = 0; k < 12; k++) { await adv(100, 50); await p.waitForTimeout(300); }
-if (cam === 'over') await p.evaluate(() => { window.__mlCam = { pos: [0, 2.0, 1.4], target: [0, -0.6, -1.1], fov: 62 }; });
+if (cam === 'over') await p.evaluate(() => { window.__mlCam = { pos: [0, 2.3, 2.9], target: [0, -0.45, -0.8], fov: 44 }; });
 if (process.env.STILL) { await adv(Number(process.env.STILL_MS ?? 500), 50); await p.screenshot({ path: process.env.STILL }); await b.close(); process.exit(0); }
 const clk = () => p.evaluate(() => window.__mlWaiter?.state().clock ?? 0);
 let c = await clk();
