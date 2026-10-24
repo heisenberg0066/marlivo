@@ -10,7 +10,7 @@
 // steps in place) and the travel direction (he faces where he walks). The plan depends only on the layout and t,
 // so real-time play and the deterministic animstep clock behave exactly the same.
 import type { Layout3, V3 } from '../layout3d';
-import { TABLE_R, FLOOR_Y } from '../sceneConfig';
+import { TABLE_R, FLOOR_Y, CHAR_SCALE, CHAIR_BACK } from '../sceneConfig';
 
 export const WAITER_OUTFITS = ['full', 'suit', 'tie', 'plain', 'tuxedo', 'chef'] as const;
 export const OUTFIT_ORDER = WAITER_OUTFITS;
@@ -44,13 +44,20 @@ export const WAITER_HEIGHT = 1.1;
 export const WAITER_SCALE = WAITER_HEIGHT / WAITER_MODEL_H;
 /** Footprint radius of his egg body (incl. the tray / teapot held at his sides). */
 export const WAITER_BODY_R = 0.4;
-/** Footprint radius of a seated character and of a garden chair. */
-export const SEATED_R = 0.33;
-export const CHAIR_R = 0.32;
-/** Chair centre: this far behind the character root (CHAIR_BACK * CHAR_SCALE, rounded up). */
-export const CHAIR_OFFSET = 0.11;
-/** Walking ring behind the chairs. */
-export const WALK_R = 2.1;
+/** Footprint radius of a seated character's body (round Orange guy / Mint / Ammar figures at CHAR_SCALE, incl. arms). */
+export const SEATED_R = 0.36;
+/** Garden chair footprint in the seat group's local frame (before CHAR_SCALE): seat box 0.48 x 0.44 centred on
+ *  CHAIR_BACK, ladder back at CHAIR_BACK - 0.2 (props.tsx GardenChair), with 2 cm for the posts / cushion. */
+export const CHAIR_HALF_X = 0.26;
+export const CHAIR_Z0 = CHAIR_BACK - 0.245;
+export const CHAIR_Z1 = CHAIR_BACK + 0.24;
+/** Free space he always keeps between his body and any chair / seated player (walking and pouring). */
+export const WALK_MARGIN = 0.12;
+/** Walking ring, outside every chair and seated body by WAITER_BODY_R + WALK_MARGIN (and in front of the hedge). */
+export const WALK_R = 2.15;
+/** Kept for the old API: radius of the chair footprint and its centre behind the character root. */
+export const CHAIR_R = Math.hypot(CHAIR_HALF_X, (CHAIR_Z1 - CHAIR_Z0) / 2) * CHAR_SCALE;
+export const CHAIR_OFFSET = -((CHAIR_Z0 + CHAIR_Z1) / 2) * CHAR_SCALE;
 /** Radius of the pour spots beside each player (body stays clear of the table rim at TABLE_R + 0.07). */
 export const POUR_R = 1.56;
 /** Kitchen exit: off-screen at the front-left of the terrace (inside the stone edge at r = 3.6). */
@@ -63,11 +70,11 @@ export const WALK_DIR = -1;
 export const HEDGE_Z = -2.25;
 
 /** Calm walking pace (world units / s) and the ease in / ease out time of every walk. */
-export const WALK_SPEED = 0.58;
-export const WALK_SPEED_RANGE: readonly [number, number] = [0.5, 0.66];
+export const WALK_SPEED = 0.35;
+export const WALK_SPEED_RANGE: readonly [number, number] = [0.32, 0.37];
 export const WALK_EASE = 0.5;
 /** Pour at each cup: min / preferred / max seconds standing still. */
-export const POUR_MIN = 3.2;
+export const POUR_MIN = 3.0;
 export const POUR_PREF = 4.2;
 export const POUR_MAX = 5.2;
 
@@ -94,25 +101,48 @@ export const normAngle = (a: number) => { a = (a + Math.PI) % TAU; if (a < 0) a 
 export const angleOf = (x: number, z: number) => Math.atan2(x, z);
 const onRing = (a: number, r: number): P2 => [Math.sin(a) * r, Math.cos(a) * r];
 
-export interface Obstacle { x: number; z: number; r: number; kind: 'char' | 'chair'; seat: number }
-/** Seated characters and their chairs (the waiter's body must stay WAITER_BODY_R + r away from each). */
+export type Obstacle =
+  | { kind: 'char'; x: number; z: number; r: number; seat: number }
+  /** chair: oriented box (centre, unit axes, half sizes) */
+  | { kind: 'chair'; x: number; z: number; r: number; seat: number; ux: number; uz: number; hx: number; hz: number };
+/** Seated characters (circle) and their chairs (oriented box, from the real seat group transform). */
 export function waiterObstacles(L: Layout3): Obstacle[] {
   const out: Obstacle[] = [];
   for (const [s, c] of Object.entries(L.chars)) {
     const seat = Number(s);
-    const a = angleOf(c.p[0], c.p[2]);
-    const d = Math.hypot(c.p[0], c.p[2]);
     out.push({ x: c.p[0], z: c.p[2], r: SEATED_R, kind: 'char', seat });
-    const [cx, cz] = onRing(a, d + CHAIR_OFFSET);
-    out.push({ x: cx, z: cz, r: CHAIR_R, kind: 'chair', seat });
+    // seat group: position c.p, rotation y = c.yaw, scale CHAR_SCALE; local +x -> (cos yaw, -sin yaw), +z -> (sin yaw, cos yaw)
+    const ux = Math.cos(c.yaw), uz = -Math.sin(c.yaw), fx = Math.sin(c.yaw), fz = Math.cos(c.yaw);
+    const zc = ((CHAIR_Z0 + CHAIR_Z1) / 2) * CHAR_SCALE;
+    out.push({ kind: 'chair', seat, x: c.p[0] + fx * zc, z: c.p[2] + fz * zc, ux, uz, hx: CHAIR_HALF_X * CHAR_SCALE, hz: ((CHAIR_Z1 - CHAIR_Z0) / 2) * CHAR_SCALE, r: 0 });
   }
   return out;
+}
+/** Distance from a floor point to one obstacle's footprint (0 inside). */
+export function obstacleDist(o: Obstacle, x: number, z: number): number {
+  const dx = x - o.x, dz = z - o.z;
+  if (o.kind === 'char') return Math.max(0, Math.hypot(dx, dz) - o.r);
+  // a: along the chair's local x (sideways), b: along its local z (towards the table)
+  const a = dx * o.ux + dz * o.uz, b = -dx * o.uz + dz * o.ux;
+  const qa = Math.max(0, Math.abs(a) - o.hx), qb = Math.max(0, Math.abs(b) - o.hz);
+  return Math.hypot(qa, qb);
 }
 /** Free distance between the waiter's body at (x, z) and the nearest obstacle / the table rim (negative = overlap). */
 export function waiterClearance(obs: Obstacle[], x: number, z: number): number {
   let c = Math.hypot(x, z) - (TABLE_R + 0.07) - WAITER_BODY_R;
-  for (const o of obs) c = Math.min(c, Math.hypot(x - o.x, z - o.z) - o.r - WAITER_BODY_R);
+  for (const o of obs) c = Math.min(c, obstacleDist(o, x, z) - WAITER_BODY_R);
   return c;
+}
+/** Per seat: the smallest free distance between his body and that seat's chair / seated character along a plan. */
+export function seatClearances(L: Layout3, plan: WaiterPlan, step = 0.02): Record<number, number> {
+  const obs = waiterObstacles(L);
+  const out: Record<number, number> = {};
+  const visit = (x: number, z: number) => { for (const o of obs) out[o.seat] = Math.min(out[o.seat] ?? Infinity, obstacleDist(o, x, z) - WAITER_BODY_R); };
+  for (const sg of plan.segs) {
+    if (sg.k !== 'walk') { visit(sg.at[0], sg.at[1]); continue; }
+    for (let s = 0; s <= sg.poly.len + 1e-9; s += step) { const p = polyAt(sg.poly, s); visit(p.x, p.z); }
+  }
+  return out;
 }
 
 export interface WaiterStop {
@@ -137,11 +167,15 @@ export function cupStopForSeat(L: Layout3, seat: number, cupPos?: V3, obs = wait
   let best: { a: number; r: number } | null = null;
   outer: for (const r of [POUR_R, POUR_R + 0.08, POUR_R + 0.16, POUR_R + 0.26]) {
     for (const side of [side0, -side0]) {
-      for (let d = 0.3; d <= 1.25; d += 0.01) {
+      for (let d = 0.3; d <= 1.6; d += 0.01) {
         const a = sa + side * d;
         const [x, z] = onRing(a, r);
         if (z <= HEDGE_Z + 0.05) continue;
-        if (waiterClearance(obs, x, z) >= 0.03) { best = { a, r }; break outer; }
+        if (waiterClearance(obs, x, z) < WALK_MARGIN) continue;
+        // the radial step in from the walking ring must be just as clear
+        let ok = true;
+        for (let q = r; q <= WALK_R && ok; q += 0.03) { const [qx, qz] = onRing(a, q); if (waiterClearance(obs, qx, qz) < WALK_MARGIN) ok = false; }
+        if (ok) { best = { a, r }; break outer; }
       }
     }
   }
@@ -360,8 +394,10 @@ export function legGeomFrom(hip: V3, knee: V3, ankle: V3): LegGeom {
 /** Walking (not running): a foot is on the ground 60 % of the cycle (both feet 20 %), no flight phase, the thigh
  *  swings about +-26 deg, the foot clears the floor by a few cm. */
 export const GAIT = { duty: 0.6, hipMax: 0.45, lift: 0.022, reach: 0.985 } as const;
-/** Body-space distance the body travels per full gait cycle (two steps) at full stride. */
-export const strideOf = (g: LegGeom) => (2 * (g.depth * Math.tan(GAIT.hipMax))) / GAIT.duty;
+/** Body-space distance the body travels per full gait cycle (two steps): 2 x leg length x STRIDE_K, a calm walk
+ *  (about 1.6-1.9 steps / s at WALK_SPEED_RANGE for his short legs). */
+export const STRIDE_K = 0.65;
+export const strideOf = (g: LegGeom) => 2 * (g.l1 + g.l2) * STRIDE_K;
 /** Gait cycles per second for a walking speed (world units / s): cadence is constant, the stride shortens when
  *  he speeds up or slows down at the ends of a walk, so a planted foot never slides. */
 export const cadenceOf = (g: LegGeom, speed: number) => speed / (strideOf(g) * WAITER_SCALE);

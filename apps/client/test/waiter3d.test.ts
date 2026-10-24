@@ -15,6 +15,11 @@ import {
   cupStopForSeat,
   waiterObstacles,
   waiterClearance,
+  seatClearances,
+  obstacleDist,
+  WALK_MARGIN,
+  WAITER_BODY_R,
+  WALK_SPEED,
   buildShiftPlan,
   buildEventPlan,
   samplePlan,
@@ -100,7 +105,7 @@ describe('Orange waiter: outfits, shift / break cycle, walking plan round the ta
         const plan = buildShiftPlan(L, P.tea);
         // about one minute, all of it spent walking or pouring
         expect(plan.total).toBeGreaterThan(50);
-        expect(plan.total).toBeLessThanOrEqual(WAITER_ACTIVE_SEC + 1e-6);
+        expect(plan.total).toBeLessThanOrEqual(WAITER_ACTIVE_SEC + 20); // about a minute (a calm pace needs a bit more for 4)
         expect(plan.speed).toBeGreaterThanOrEqual(WALK_SPEED_RANGE[0]);
         expect(plan.speed).toBeLessThanOrEqual(WALK_SPEED_RANGE[1]);
         expect(plan.pour).toBeGreaterThanOrEqual(POUR_MIN);
@@ -114,14 +119,19 @@ describe('Orange waiter: outfits, shift / break cycle, walking plan round the ta
           const c = L.chars[st.seat]!.p;
           const r = Math.hypot(st.standPos[0], st.standPos[2]);
           expect(r).toBeGreaterThan(TABLE_R + 0.07 + 0.3); // body never over the table
-          expect(Math.hypot(st.standPos[0] - c[0], st.standPos[2] - c[2])).toBeLessThan(1.0); // right beside the player
-          expect(waiterClearance(obs, st.standPos[0], st.standPos[2])).toBeGreaterThan(0);
+          expect(Math.hypot(st.standPos[0] - c[0], st.standPos[2] - c[2])).toBeLessThan(1.45); // beside the player (in the gap next to them)
+          expect(waiterClearance(obs, st.standPos[0], st.standPos[2])).toBeGreaterThanOrEqual(WALK_MARGIN - 1e-9);
           expect(st.standPos[2]).toBeGreaterThan(HEDGE_Z);
           // the cup he pours is that player's own cup
           expect(st.face[0]).toBeCloseTo(P.tea[st.seat]!.p[0], 6);
         }
         // the whole route keeps clear of the table rim, every chair and every seated player
-        expect(planClearance(L, plan)).toBeGreaterThan(0);
+        expect(planClearance(L, plan, 0.02)).toBeGreaterThanOrEqual(WALK_MARGIN - 0.005);
+        // invariant per seat: every path point keeps his body WALK_MARGIN clear of that seat's chair box and body circle
+        const per = seatClearances(L, plan);
+        expect(Object.keys(per)).toHaveLength(n);
+        for (const v of Object.values(per)) expect(v).toBeGreaterThanOrEqual(WALK_MARGIN - 0.005);
+        console.log(`clearance ${n}p${portrait ? ' phone' : ''}: total ${plan.total.toFixed(1)} s, speed ${plan.speed.toFixed(3)}, pour ${plan.pour.toFixed(2)}, per seat ` + JSON.stringify(Object.fromEntries(Object.entries(per).map(([k, v]) => [k, +v.toFixed(3)]))));
         // starts and ends at the exit, goes all the way round the table (angle swept >= one lap)
         const a = samplePlan(plan, 0), z = samplePlan(plan, plan.total);
         expect(Math.hypot(a.x - KITCHEN_DOOR[0], a.z - KITCHEN_DOOR[2])).toBeLessThan(1e-6);
@@ -158,12 +168,18 @@ describe('Orange waiter: outfits, shift / break cycle, walking plan round the ta
   });
 
   it('walking gait: feet planted on the ground do not slide, stride follows speed, no running (no flight phase)', () => {
-    const v = 0.58;
+    const v = WALK_SPEED;
     const cad = cadenceOf(G, v);
-    // calm walking cadence: about 2-2.8 steps a second, a full stride a bit under half a metre
-    expect(cad * 2).toBeGreaterThan(1.8);
-    expect(cad * 2).toBeLessThan(2.9);
-    expect(strideOf(G) * WAITER_SCALE).toBeGreaterThan(0.3);
+    // stride per cycle = 2 x leg length x ~0.6-0.7; calm cadence 1.6-1.9 steps / s over the whole pace range
+    const leg = G.l1 + G.l2;
+    expect(strideOf(G) / (2 * leg)).toBeGreaterThan(0.55);
+    expect(strideOf(G) / (2 * leg)).toBeLessThan(0.72);
+    for (const sp of [...WALK_SPEED_RANGE, v]) {
+      expect(cadenceOf(G, sp) * 2).toBeGreaterThanOrEqual(1.6);
+      expect(cadenceOf(G, sp) * 2).toBeLessThanOrEqual(1.9);
+    }
+    console.log(`cadence: ${(cad * 2).toFixed(2)} steps/s at ${v} u/s (range ${WALK_SPEED_RANGE.map((x) => (cadenceOf(G, x) * 2).toFixed(2)).join('-')}), stride ${(strideOf(G) * WAITER_SCALE).toFixed(3)} u per cycle, leg ${(leg * WAITER_SCALE).toFixed(3)} u`);
+    expect(strideOf(G) * WAITER_SCALE).toBeGreaterThan(0.25);
     // thigh swing stays within a walk (no big running kicks)
     let maxHip = 0, minDown = 1, airborne = 0;
     const N = 400;
