@@ -156,6 +156,7 @@
  "status.paused": "En pause : on attend {{names}}",
  "status.pausedHint": "Rien ne se passe tant qu'ils ne sont pas revenus. Il n'y a pas de minuteur.",
  "status.windowOpen": "Assortir {{t}} est ouvert. {{name}} pioche ensuite.",
+ "status.windowOpenYou": "Assortir {{t}} est ouvert. Tu pioches ensuite.",
  "power.J": "Valet (J)",
  "power.Q": "Dame (Q)",
  "power.10": "Dix",

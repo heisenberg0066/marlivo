@@ -2,11 +2,11 @@
 // this browser can join as extra seats (local two-window test, §17.2). The room is saved to localStorage, so a
 // reload resumes exactly where you were.
 import type { Settings, BotLevel } from '@marlivo/engine';
-import type { RoomRecord, ServerMsg } from '@marlivo/room';
+import { RoomHost, type RoomRecord, type ServerMsg } from '@marlivo/room';
 import { Session } from './session';
 
 const LS = (code: string) => 'marlivo.local.' + code;
-let worker: Worker | null = null;
+let worker: { postMessage(m: unknown): void; terminate(): void; onmessage: ((e: MessageEvent) => void) | null } | null = null;
 let current: { code: string; session: Session; ch: BroadcastChannel } | null = null;
 
 function newCode() { const A = '23456789ABCDEFGHJKMNPQRSTUVWXYZ'; let s = ''; for (let i = 0; i < 5; i++) s += A[Math.floor(Math.random() * A.length)]; return s; }
@@ -22,11 +22,75 @@ export function createLocalRoom(settings: Partial<Settings>, bots: LocalBot[]): 
   return code;
 }
 
+function createInThreadWorker() {
+  let host: RoomHost | null = null;
+  const scheduler = {
+    set: (ms: number, fn: () => void) => window.setTimeout(fn, ms),
+    clear: (h: unknown) => window.clearTimeout(h as number),
+    now: () => Date.now(),
+  };
+  const selfObj: {
+    onmessage: ((e: MessageEvent) => void) | null;
+    postMessage(m: unknown): void;
+    terminate(): void;
+  } = {
+    onmessage: null,
+    postMessage(raw: unknown) {
+      const m = raw as Record<string, unknown>;
+      window.setTimeout(() => {
+        if (m.kind === 'create') {
+          host?.dispose();
+          const settings = (m.settings ?? {}) as Partial<Settings>;
+          host = RoomHost.create(m.code as string, settings, { transport, scheduler, onChange, local: true }, { seed: settings?.test ? String(Date.now()) : 'animstep-seed-7' });
+          emit({ kind: 'ready', code: m.code });
+        } else if (m.kind === 'restore') {
+          host?.dispose();
+          const rec = m.rec as RoomRecord;
+          host = new RoomHost(rec, { transport, scheduler, onChange, local: true });
+          emit({ kind: 'ready', code: rec.code });
+        } else if (m.kind === 'addBots') {
+          for (const b of m.levels as (BotLevel | { level: BotLevel; characterId?: string; name?: string })[]) {
+            if (typeof b === 'string') host?.addBot(b);
+            else host?.addBot(b.level, b.characterId, b.name);
+          }
+        } else if (m.kind === 'open' || m.kind === 'reopen') {
+          host?.open(m.connId as string);
+          if (m.kind === 'reopen') emit({ kind: 'reopened', connId: m.connId });
+        } else if (m.kind === 'msg') {
+          host?.message(m.connId as string, m.msg as never);
+        } else if (m.kind === 'close') {
+          host?.close(m.connId as string);
+        }
+      }, 1);
+    },
+    terminate() {
+      host?.dispose();
+      host = null;
+    },
+  };
+  const emit = (data: unknown) => {
+    window.setTimeout(() => selfObj.onmessage?.({ data } as MessageEvent), 1);
+  };
+  const transport = {
+    send: (connId: string, msg: ServerMsg) => emit({ kind: 'send', connId, msg }),
+    close: (connId: string) => emit({ kind: 'closed', connId }),
+  };
+  let saveTimer: number | null = null;
+  const onChange = (rec: RoomRecord) => {
+    if (saveTimer !== null) return;
+    saveTimer = window.setTimeout(() => { saveTimer = null; emit({ kind: 'save', rec }); }, 150);
+  };
+  return selfObj;
+}
+
 /** Opens (or resumes) the local room hosted in this tab and returns this tab's session. */
 export function openLocalRoom(code: string): Session {
   if (current?.code === code) return current.session;
   closeLocalRoom();
-  worker = new Worker(new URL('../net/local.worker.ts', import.meta.url), { type: 'module' });
+  const isAnimStep = (() => { try { return localStorage.getItem('marlivo.animstep') === '1'; } catch { return false; } })();
+  worker = isAnimStep
+    ? createInThreadWorker()
+    : new Worker(new URL('../net/local.worker.ts', import.meta.url), { type: 'module' });
   const w = worker;
   const ch = new BroadcastChannel('marlivo-local-' + code);
   const port = { post: (m: unknown) => w.postMessage(m) };

@@ -156,7 +156,7 @@ export function Game({ session, onExit }: { session: Session; onExit(): void }) 
           buttons.push({ label: t('game.letWin', { name: nameOf(a.finisher) }), on: () => act({ t: 'FINISH_LET_WIN' }) });
         } else status = t('status.finishOther', { name: nameOf(a.turnPlayer) });
       } else if (myTurn && !r.drawn) {
-        status = r.window ? t('status.windowOpen', { t: r.window.target, name: t('common.you') }) + ' · ' + t('status.yourDraw') : t('status.yourDraw');
+        status = r.window ? t('status.windowOpenYou', { t: r.window.target }) + ' · ' + t('status.yourDraw') : t('status.yourDraw');
         buttons.push({ label: t('game.draw'), kind: 'primary', key: 'd', on: () => act({ t: 'DRAW' }) });
       } else if (myTurn && iDrew) {
         status = t('status.decide');

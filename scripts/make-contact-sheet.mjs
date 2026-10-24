@@ -18,3 +18,13 @@ execSync(
   `ffmpeg -y -i /workspace/sb/keyframes/04-waiter-pouring-cup3-and-badminton-net-lunge.png -vf "crop=760:440:260:30,scale=1280:741" /workspace/sb/closeup-waiter-pouring-and-badminton-lunge.png`,
   { stdio: 'inherit' }
 );
+
+// Also generate 2x2 and 5-panel comparison grids: keyframes-comparison-1-to-4.png and keyframes-comparison-5-to-9.png
+execSync(
+  `ffmpeg -y -i /workspace/sb/keyframes/01-no-log-waiter-stepping-walk-full-outfit.png -i /workspace/sb/keyframes/02-waiter-pouring-cup2-and-opponent-peek-reach.png -i /workspace/sb/keyframes/03-waiter-walking-arc-and-badminton-jump-smash.png -i /workspace/sb/keyframes/04-waiter-pouring-cup3-and-badminton-net-lunge.png -filter_complex "[0:v][1:v][2:v][3:v]xstack=inputs=4:layout=0_0|w0_0|0_h0|w0_h0[v]" -map "[v]" -frames:v 1 -update 1 /workspace/sb/keyframes-comparison-1-to-4.png`,
+  { stdio: 'inherit' }
+);
+execSync(
+  `ffmpeg -y -i /workspace/sb/keyframes/05-waiter-new-outfit-chef-toque-and-table-draw.png -i /workspace/sb/keyframes/06-opponent-holding-card-scanning-slots.png -i /workspace/sb/keyframes/07-waiter-new-outfit-fez-suit-and-two-hand-swap.png -i /workspace/sb/keyframes/08-waiter-splash-bandana-and-seated-leg-kicks.png -i /workspace/sb/keyframes/09-pepper-choco-sugar-3bone-legs-and-tuxedo-tophat-medal.png -filter_complex "[0:v][1:v][2:v][3:v][4:v]xstack=inputs=5:layout=0_0|w0_0|0_h0|w0_h0|0_h0+h2[v]" -map "[v]" -frames:v 1 -update 1 /workspace/sb/keyframes-comparison-5-to-9.png`,
+  { stdio: 'inherit' }
+);

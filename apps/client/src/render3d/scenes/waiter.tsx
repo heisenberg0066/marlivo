@@ -1,6 +1,7 @@
 // The Orange waiter (sketch book v8 p22–27, W1–W6): a third Orange guy who strolls in from the kitchen door
-// along the safe terrace loop, visiting EVERY seated player's teacup one by one around the table perimeter to pour
-// hot amber tea, then stepping off-stage for a short 7–10s break and returning in a brand-new outfit!
+// along the outer stone patio corridors (STOP_R = 2.46, LOOP_R = 2.62 on the patio floor y = -0.42, strictly outside
+// the table and chairs with >150px screen-space separation from the tabletop), visiting EVERY seated player's teacup
+// one by one during a 60-second active tour, then stepping off-screen for a 60-second break and returning in the next outfit!
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
@@ -27,20 +28,27 @@ import {
 import type { FaceShaderUniform } from '../Figures';
 import { attachBlinkShader } from '../Figures';
 import { propLayout } from './propLayout';
-import { refillTea, teaLevel } from './tea';
+import { refillTea } from './tea';
 import { shadowMat } from './props';
 import {
   WAITER_OUTFITS,
+  OUTFIT_ORDER,
+  waiterOutfitForCycle,
+  evaluateWaiterCycle,
   pickWaiterOutfit,
   pickRefillOrder,
   cupStopForSeat,
   computeWaiterStops,
   nearestStop,
   KITCHEN_DOOR,
+  KITCHEN_DOOR_R,
+  WAITER_FLOOR_Y,
   LOOP_R,
   REFILL_POUR,
   REFILL_WALK,
-  WAITER_BREAK_RANGE,
+  WAITER_ACTIVE_SEC,
+  WAITER_AWAY_SEC,
+  WAITER_CYCLE_SEC,
   type WaiterOutfit,
   type WaiterStop,
 } from './waiterPath';
@@ -56,6 +64,7 @@ export interface WaiterJob {
   loser?: number;
   lockedProgress?: number;
   refillOrder?: number[];
+  cycleIndex?: number;
 }
 
 const clamp = (x: number, a = 0, b = 1) => Math.min(b, Math.max(a, x));
@@ -67,10 +76,91 @@ const normAngle = (a: number) => {
   return a;
 };
 
+/** Builds a contoured 3D garment shell matching the exact measured cross-section of orange-guy.glb (height=0.80, baseY=0),
+ *  rising up over the chest/shoulders/back (yMax ~ 0.49) and dipping smoothly below the mouth at the front center (y ~ 0.38). */
+function makeTorsoShell(
+  yMin: number,
+  yMax: number,
+  pad = 0.006,
+  openFrontW = 0,
+  frontOnly = false,
+  frontDip = 0,
+): THREE.BufferGeometry {
+  const PROF = [
+    { y: 0.300, rx: 0.216, cz: -0.020, rz: 0.172 },
+    { y: 0.320, rx: 0.222, cz: -0.017, rz: 0.195 },
+    { y: 0.340, rx: 0.228, cz: -0.016, rz: 0.208 },
+    { y: 0.360, rx: 0.238, cz: -0.016, rz: 0.216 },
+    { y: 0.380, rx: 0.252, cz: -0.016, rz: 0.224 },
+    { y: 0.400, rx: 0.270, cz: -0.015, rz: 0.232 },
+    { y: 0.425, rx: 0.280, cz: -0.012, rz: 0.242 },
+    { y: 0.450, rx: 0.285, cz: -0.008, rz: 0.250 },
+    { y: 0.480, rx: 0.286, cz: -0.006, rz: 0.255 },
+    { y: 0.515, rx: 0.280, cz: -0.008, rz: 0.254 },
+    { y: 0.550, rx: 0.268, cz: -0.010, rz: 0.248 },
+  ];
+  const interp = (y: number) => {
+    if (y <= PROF[0]!.y) return PROF[0]!;
+    if (y >= PROF[PROF.length - 1]!.y) return PROF[PROF.length - 1]!;
+    for (let i = 0; i < PROF.length - 1; i++) {
+      const a = PROF[i]!, b = PROF[i + 1]!;
+      if (y >= a.y && y <= b.y) {
+        const t = (y - a.y) / (b.y - a.y);
+        return { y, rx: a.rx + (b.rx - a.rx) * t, cz: a.cz + (b.cz - a.cz) * t, rz: a.rz + (b.rz - a.rz) * t };
+      }
+    }
+    return PROF[0]!;
+  };
+  const rings = 12, segs = 32;
+  const pos: number[] = [], idx: number[] = [];
+  for (let ir = 0; ir <= rings; ir++) {
+    const f = ir / rings;
+    for (let is = 0; is <= segs; is++) {
+      let ang: number;
+      if (frontOnly) {
+        const halfSpan = Math.max(0.24, openFrontW * (0.65 + 0.35 * f));
+        ang = -halfSpan + (is / segs) * (2 * halfSpan);
+      } else {
+        const a0 = openFrontW * (0.22 + 0.78 * f);
+        ang = a0 + (is / segs) * (Math.PI * 2 - 2 * a0);
+      }
+      const angNorm = Math.atan2(Math.sin(ang), Math.cos(ang));
+      const dip = frontDip * Math.exp(-Math.pow(angNorm / 0.46, 2));
+      const yTop = yMax - dip;
+      const y = yMin + (yTop - yMin) * f;
+      const p = interp(y);
+      const rx = p.rx + pad, rz = p.rz + pad;
+      pos.push(Math.sin(ang) * rx, y, p.cz + Math.cos(ang) * rz);
+    }
+  }
+  const stride = segs + 1;
+  for (let ir = 0; ir < rings; ir++) {
+    for (let is = 0; is < segs; is++) {
+      const i0 = ir * stride + is;
+      const i1 = i0 + 1;
+      const i2 = i0 + stride;
+      const i3 = i2 + 1;
+      idx.push(i0, i1, i2, i1, i3, i2);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  return g;
+}
+
 const WG = {
-  sph: new THREE.SphereGeometry(1, 16, 12),
-  cyl: new THREE.CylinderGeometry(1, 1, 1, 16),
-  cone: new THREE.ConeGeometry(1, 1, 12),
+  shirtBib: makeTorsoShell(0.312, 0.516, 0.012, 0.62, true, 0.056),
+  vestShell: makeTorsoShell(0.308, 0.542, 0.017, 0.30, false, 0.082),
+  jacketShell: makeTorsoShell(0.304, 0.548, 0.019, 0.28, false, 0.086),
+  chefShell: makeTorsoShell(0.304, 0.546, 0.017, 0.0, false, 0.084),
+  apronShell: makeTorsoShell(0.302, 0.382, 0.021, 0.0, false, 0.0),
+  apronFront: makeTorsoShell(0.304, 0.378, 0.025, 0.54, true, 0.0),
+  fez: new THREE.CylinderGeometry(0.78, 1.0, 1, 20),
+  sph: new THREE.SphereGeometry(1, 18, 14),
+  cyl: new THREE.CylinderGeometry(1, 1, 1, 20),
+  cone: new THREE.ConeGeometry(1, 1, 14),
   box: new THREE.BoxGeometry(1, 1, 1),
   rbox: new RoundedBoxGeometry(1, 1, 1, 2, 0.12),
   torus: new THREE.TorusGeometry(1, 0.22, 8, 24),
@@ -107,7 +197,11 @@ const WM = {
   wink: new THREE.MeshBasicMaterial({ color: '#d8761c' }),
 };
 
-/** 6 bold, visually distinct waiter outfits: each includes BOTH a signature hat/headpiece AND a distinct vest/jacket/apron! */
+/** 6 bold, visually distinct waiter outfits contoured directly to the exact surface of `orange-guy.glb` (height=0.80, baseY=0):
+ *  - Crown dome sits at y = 0.735..0.800 (radius 0.160 at y=0.738); forehead above eyes sits at y = 0.632 (rx=0.228, rz=0.220);
+ *  - Chest / torso shell rises from y = 0.304 (above the leg hip joints at y=0.255) up to y = 0.495 across the shoulders/sides/back,
+ *    with a tailored V-neck dipping to y = 0.382 right below the mouth (y=0.395..0.415) so the vest, jacket, chef coat, shirt bib,
+ *    bow-tie, necktie, and apron hug his orange torso snugly from every camera angle without floating or sagging! */
 function OutfitMeshes({
   outfit,
   showTowel,
@@ -117,125 +211,153 @@ function OutfitMeshes({
   showTowel: boolean;
   towelRef?: React.RefObject<THREE.Group>;
 }) {
-  const hasBowTie = outfit === "full" || outfit === "tuxedo";
-  const hasNeckTie = outfit === "suit" || outfit === "tie";
-  const hasShirt = outfit === "full" || outfit === "suit" || outfit === "tuxedo" || outfit === "tie";
-  const hasVest = outfit === "full" || outfit === "tie";
-  const vestMat = outfit === "tie" ? WM.crimson : WM.black;
-  const hasApron = outfit === "full" || outfit === "plain" || outfit === "chef";
-  const apronMat = outfit === "plain" ? WM.emerald : WM.white;
-  const hasJacket = outfit === "suit" || outfit === "tuxedo" || outfit === "chef";
-  const jacketMat = outfit === "tuxedo" ? WM.black : outfit === "chef" ? WM.white : WM.navy;
+  const hasBowTie = outfit === 'full' || outfit === 'tuxedo';
+  const hasNeckTie = outfit === 'suit' || outfit === 'tie';
+  const hasShirt = outfit === 'full' || outfit === 'suit' || outfit === 'tuxedo' || outfit === 'tie';
+  const hasVest = outfit === 'full' || outfit === 'tie';
+  const vestMat = outfit === 'tie' ? WM.crimson : WM.black;
+  const hasApron = outfit === 'full' || outfit === 'plain' || outfit === 'chef';
+  const apronMat = outfit === 'plain' ? WM.emerald : WM.white;
+  const hasJacket = outfit === 'suit' || outfit === 'tuxedo' || outfit === 'chef';
+  const jacketMat = outfit === 'tuxedo' ? WM.black : outfit === 'chef' ? WM.white : WM.navy;
 
   return (
     <group>
-      {/* ---- DISTINCT HEADPIECES / HATS (fitted to orange-guy height=0.80: crown at y=0.78..0.82, forehead at y=0.65) ---- */}
-      {outfit === "full" && (
-        // Classic Bellhop / Waiter Pillbox Cap in black & gold on top of crown
-        <group position={[0, 0.79, 0.01]} rotation={[-0.06, 0, 0.04]}>
-          <mesh geometry={WG.cyl} material={WM.black} scale={[0.145, 0.068, 0.145]} />
-          <mesh geometry={WG.cyl} material={WM.gold} position={[0, -0.024, 0]} scale={[0.149, 0.016, 0.149]} />
-          <mesh geometry={WG.sph} material={WM.gold} position={[0, 0.038, 0]} scale={0.020} />
+      {/* ---- DISTINCT HEADPIECES / HATS (snugly enclosing the crown dome y=0.736..0.800 or forehead y=0.632) ---- */}
+      {outfit === 'full' && (
+        // Classic Bellhop / Waiter Pillbox Cap in black & gold seated snugly over the crown (y=0.738..0.814, r=0.162)
+        <group position={[0, 0.752, -0.022]} rotation={[-0.03, 0, 0.03]}>
+          <mesh geometry={WG.cyl} material={WM.black} scale={[0.178, 0.076, 0.178]} />
+          <mesh geometry={WG.sph} material={WM.black} position={[0, 0.032, 0]} scale={[0.178, 0.026, 0.178]} />
+          <mesh geometry={WG.cyl} material={WM.gold} position={[0, -0.029, 0]} scale={[0.182, 0.018, 0.182]} />
+          <mesh geometry={WG.sph} material={WM.gold} position={[0, 0.056, 0]} scale={0.020} />
         </group>
       )}
-      {outfit === "suit" && (
-        // Tall Burgundy Fez Hat with Gold Tassel on top of crown
-        <group position={[0, 0.81, 0.01]} rotation={[-0.05, 0, -0.04]}>
-          <mesh geometry={WG.cyl} material={WM.fezRed} scale={[0.125, 0.115, 0.125]} />
-          <mesh geometry={WG.sph} material={WM.gold} position={[0, 0.062, 0]} scale={0.020} />
-          <mesh geometry={WG.cyl} material={WM.gold} position={[0.082, 0.015, 0.02]} rotation={[0, 0, -0.55]} scale={[0.014, 0.08, 0.014]} />
+      {outfit === 'suit' && (
+        // Tall Burgundy Tapered Fez Hat with Gold Tassel seated snugly over the crown (y=0.737..0.855, base r=0.164)
+        <group position={[0, 0.772, -0.022]} rotation={[-0.03, 0, -0.03]}>
+          <mesh geometry={WG.fez} material={WM.fezRed} scale={[0.178, 0.114, 0.178]} />
+          <mesh geometry={WG.cyl} material={WM.gold} position={[0, -0.048, 0]} scale={[0.181, 0.016, 0.181]} />
+          <mesh geometry={WG.sph} material={WM.gold} position={[0, 0.060, 0]} scale={0.020} />
+          <mesh geometry={WG.cyl} material={WM.gold} position={[0.112, 0.010, 0.02]} rotation={[0, 0, -0.48]} scale={[0.014, 0.082, 0.014]} />
         </group>
       )}
-      {outfit === "tie" && (
-        // Sporty Crimson & Gold Headband / Bandana around forehead above the eyes
-        <group position={[0, 0.655, 0.02]}>
-          <mesh geometry={WG.cyl} material={WM.redTie} scale={[0.218, 0.038, 0.208]} />
-          <mesh geometry={WG.cyl} material={WM.gold} scale={[0.221, 0.013, 0.211]} />
-          <mesh geometry={WG.sph} material={WM.redTie} position={[-0.20, -0.005, -0.06]} scale={[0.035, 0.030, 0.035]} />
-          <mesh geometry={WG.cone} material={WM.redTie} position={[-0.23, -0.045, -0.07]} rotation={[0.2, 0, 0.45]} scale={[0.024, 0.068, 0.016]} />
+      {outfit === 'tie' && (
+        // Sporty Crimson & Gold Headband / Bandana hugging the forehead above the eyes (y=0.632, rx=0.228, rz=0.220)
+        <group position={[0, 0.632, -0.024]}>
+          <mesh geometry={WG.cyl} material={WM.redTie} scale={[0.232, 0.036, 0.224]} />
+          <mesh geometry={WG.cyl} material={WM.gold} scale={[0.235, 0.012, 0.227]} />
+          <mesh geometry={WG.sph} material={WM.redTie} position={[-0.225, -0.004, -0.04]} scale={[0.032, 0.028, 0.032]} />
+          <mesh geometry={WG.cone} material={WM.redTie} position={[-0.252, -0.042, -0.05]} rotation={[0.18, 0, 0.45]} scale={[0.022, 0.064, 0.015]} />
         </group>
       )}
-      {outfit === "plain" && (
-        // Emerald Bistro Sun Visor Cap with Gold Trim above the eyes
-        <group position={[0, 0.655, 0.02]} rotation={[0.06, 0, 0]}>
-          <mesh geometry={WG.cyl} material={WM.emerald} scale={[0.216, 0.035, 0.206]} />
-          <mesh geometry={WG.cyl} material={WM.emerald} position={[0, -0.010, 0.155]} scale={[0.175, 0.014, 0.115]} />
-          <mesh geometry={WG.cyl} material={WM.gold} position={[0, 0.012, 0]} scale={[0.219, 0.009, 0.209]} />
+      {outfit === 'plain' && (
+        // Emerald Bistro Sun Visor Cap with Gold Trim hugging the forehead above the eyes (y=0.632)
+        <group position={[0, 0.632, -0.024]} rotation={[0.05, 0, 0]}>
+          <mesh geometry={WG.cyl} material={WM.emerald} scale={[0.232, 0.036, 0.224]} />
+          <mesh geometry={WG.cyl} material={WM.emerald} position={[0, -0.008, 0.168]} scale={[0.178, 0.012, 0.108]} />
+          <mesh geometry={WG.cyl} material={WM.gold} position={[0, 0.010, 0]} scale={[0.235, 0.010, 0.227]} />
         </group>
       )}
-      {outfit === "tuxedo" && (
-        // Sleek Black & Gold Silk Top Hat on top of crown
-        <group position={[0, 0.82, 0.01]} rotation={[-0.06, 0, 0.03]}>
-          <mesh geometry={WG.cyl} material={WM.black} position={[0, -0.055, 0]} scale={[0.205, 0.015, 0.205]} />
-          <mesh geometry={WG.cyl} material={WM.satin} position={[0, 0.022, 0]} scale={[0.132, 0.14, 0.132]} />
-          <mesh geometry={WG.cyl} material={WM.gold} position={[0, -0.032, 0]} scale={[0.136, 0.024, 0.136]} />
+      {outfit === 'tuxedo' && (
+        // Sleek Black & Gold Silk Top Hat seated snugly over the crown (brim at y=0.740, cylinder r=0.160 covering y=0.740..0.885)
+        <group position={[0, 0.718, -0.022]} rotation={[-0.03, 0, 0.02]}>
+          <mesh geometry={WG.cyl} material={WM.black} position={[0, 0, 0]} scale={[0.236, 0.016, 0.236]} />
+          <mesh geometry={WG.cyl} material={WM.gold} position={[0, 0.018, 0]} scale={[0.180, 0.026, 0.180]} />
+          <mesh geometry={WG.cyl} material={WM.satin} position={[0, 0.074, 0]} scale={[0.176, 0.138, 0.176]} />
         </group>
       )}
-      {outfit === "chef" && (
-        // Tall White Pleated Chef Toque Hat on top of crown
-        <group position={[0, 0.82, 0.01]} rotation={[-0.05, 0, 0]}>
-          <mesh geometry={WG.cyl} material={WM.white} position={[0, -0.03, 0]} scale={[0.142, 0.072, 0.142]} />
-          <mesh geometry={WG.sph} material={WM.white} position={[0, 0.05, 0]} scale={[0.175, 0.10, 0.175]} />
-          <mesh geometry={WG.sph} material={WM.white} position={[-0.065, 0.06, 0.04]} scale={0.08} />
-          <mesh geometry={WG.sph} material={WM.white} position={[0.065, 0.06, 0.04]} scale={0.08} />
+      {outfit === 'chef' && (
+        // Tall White Pleated Chef Toque Hat seated snugly over the crown (base r=0.164 covering y=0.736..0.810)
+        <group position={[0, 0.718, -0.022]} rotation={[-0.03, 0, 0]}>
+          <mesh geometry={WG.cyl} material={WM.white} position={[0, 0.032, 0]} scale={[0.178, 0.072, 0.178]} />
+          <mesh geometry={WG.cyl} material={WM.gold} position={[0, 0.002, 0]} scale={[0.181, 0.012, 0.181]} />
+          <mesh geometry={WG.sph} material={WM.white} position={[0, 0.096, 0]} scale={[0.204, 0.098, 0.204]} />
+          <mesh geometry={WG.sph} material={WM.white} position={[-0.076, 0.106, 0.035]} scale={0.086} />
+          <mesh geometry={WG.sph} material={WM.white} position={[0.076, 0.106, 0.035]} scale={0.086} />
         </group>
       )}
 
-      {/* ---- LOWER-CHEST VESTS, JACKETS, TIES & APRONS (y=0.22..0.36, strictly below mouth at y=0.39) ---- */}
+      {/* ---- CONTOURED TORSO SHELLS (y=0.304..0.496, hugging the chest/shoulders and dipping below mouth at y=0.382) ---- */}
       {hasShirt && (
-        <mesh geometry={WG.sph} material={WM.white} position={[0, 0.30, 0.165]} scale={[0.14, 0.11, 0.078]} />
+        // Crisp white dress-shirt front bib contoured directly to the chest surface
+        <mesh geometry={WG.shirtBib} material={WM.white} />
       )}
       {hasVest && (
-        <>
-          <mesh geometry={WG.sph} material={vestMat} position={[-0.105, 0.295, 0.155]} scale={[0.118, 0.115, 0.088]} />
-          <mesh geometry={WG.sph} material={vestMat} position={[0.105, 0.295, 0.155]} scale={[0.118, 0.115, 0.088]} />
-          {[0.25, 0.29, 0.33].map((y, i) => (
-            <mesh key={i} geometry={WG.sph} material={WM.gold} position={[0, y, 0.238]} scale={0.013} />
+        // Tailored V-neck waiter waistcoat wrapping around the contoured chest & shoulders
+        <group>
+          <mesh geometry={WG.vestShell} material={vestMat} />
+          {[
+            [0.350, 0.222],
+            [0.390, 0.240],
+            [0.430, 0.254],
+          ].map(([y, z], i) => (
+            <mesh key={i} geometry={WG.sph} material={WM.gold} position={[0, y!, z!]} scale={0.012} />
           ))}
-        </>
-      )}
-      {hasApron && (
-        <group position={[0, 0.225, 0.035]}>
-          <mesh geometry={WG.cyl} material={apronMat} scale={[0.235, 0.085, 0.205]} />
-          <mesh geometry={WG.box} material={outfit === "plain" ? WM.gold : WM.towel} position={[0, 0.0, 0.198]} scale={[0.21, 0.085, 0.02]} />
         </group>
       )}
       {hasJacket && (
-        <>
-          <mesh geometry={WG.sph} material={jacketMat} position={[-0.11, 0.295, 0.155]} scale={[0.126, 0.12, 0.092]} />
-          <mesh geometry={WG.sph} material={jacketMat} position={[0.11, 0.295, 0.155]} scale={[0.126, 0.12, 0.092]} />
-          <mesh geometry={WG.box} material={outfit === "tuxedo" ? WM.satin : outfit === "chef" ? WM.redTie : jacketMat} position={[-0.058, 0.32, 0.228]} rotation={[0, 0, -0.32]} scale={[0.038, 0.10, 0.018]} />
-          <mesh geometry={WG.box} material={outfit === "tuxedo" ? WM.satin : outfit === "chef" ? WM.redTie : jacketMat} position={[0.058, 0.32, 0.228]} rotation={[0, 0, 0.32]} scale={[0.038, 0.10, 0.018]} />
-          {outfit === "suit" && (
-            <mesh geometry={WG.box} material={WM.redTie} position={[-0.115, 0.325, 0.222]} rotation={[0, 0, 0.2]} scale={[0.038, 0.024, 0.014]} />
+        // Tailored tuxedo / suit / double-breasted chef jacket contoured to the chest & shoulders
+        <group>
+          <mesh geometry={outfit === 'chef' ? WG.chefShell : WG.jacketShell} material={jacketMat} />
+          {outfit !== 'chef' && (
+            <>
+              <mesh geometry={WG.box} material={outfit === 'tuxedo' ? WM.satin : WM.navy}
+                position={[-0.068, 0.452, 0.252]} rotation={[-0.18, 0.22, -0.42]} scale={[0.032, 0.096, 0.010]} />
+              <mesh geometry={WG.box} material={outfit === 'tuxedo' ? WM.satin : WM.navy}
+                position={[0.068, 0.452, 0.252]} rotation={[-0.18, -0.22, 0.42]} scale={[0.032, 0.096, 0.010]} />
+            </>
           )}
-          {(outfit === "tuxedo" || outfit === "chef") && [0.255, 0.29, 0.325].map((y, i) => (
-            <mesh key={i} geometry={WG.sph} material={outfit === "chef" ? WM.black : WM.gold} position={[-0.028, y, 0.238]} scale={0.012} />
+          {outfit === 'chef' && (
+            // Red chef neckerchief around the collar under the chin
+            <group position={[0, 0.448, 0.256]} rotation={[-0.12, 0, 0]}>
+              <mesh geometry={WG.box} material={WM.redTie} position={[-0.042, 0.010, -0.004]} rotation={[0, 0, 0.42]} scale={[0.052, 0.018, 0.010]} />
+              <mesh geometry={WG.box} material={WM.redTie} position={[0.042, 0.010, -0.004]} rotation={[0, 0, -0.42]} scale={[0.052, 0.018, 0.010]} />
+              <mesh geometry={WG.sph} material={WM.redTie} scale={[0.018, 0.016, 0.014]} />
+            </group>
+          )}
+          {(outfit === 'tuxedo' || outfit === 'chef') && [
+            [0.370, 0.234],
+            [0.418, 0.252],
+          ].map(([y, z], i) => (
+            <mesh key={i} geometry={WG.sph} material={outfit === 'chef' ? WM.black : WM.gold} position={[-0.034, y!, z!]} scale={0.012} />
           ))}
-          {outfit === "chef" && [0.255, 0.29, 0.325].map((y, i) => (
-            <mesh key={i} geometry={WG.sph} material={WM.black} position={[0.028, y, 0.238]} scale={0.012} />
+          {outfit === 'chef' && [
+            [0.370, 0.234],
+            [0.418, 0.252],
+          ].map(([y, z], i) => (
+            <mesh key={i} geometry={WG.sph} material={WM.black} position={[0.034, y!, z!]} scale={0.012} />
           ))}
-        </>
+        </group>
+      )}
+      {hasApron && (
+        // Contoured bistro waist apron hugging the lower belly above the hips (y=0.300..0.370)
+        <group>
+          <mesh geometry={WG.apronShell} material={apronMat} />
+          <mesh geometry={WG.apronFront} material={outfit === 'plain' ? WM.gold : WM.towel} />
+        </group>
       )}
       {hasBowTie && (
-        <group position={[0, 0.355, 0.228]}>
-          <mesh geometry={WG.cone} material={outfit === "tuxedo" ? WM.redTie : WM.black} position={[-0.036, 0, 0]} rotation={[0, 0, -Math.PI / 2]} scale={[0.028, 0.052, 0.018]} />
-          <mesh geometry={WG.cone} material={outfit === "tuxedo" ? WM.redTie : WM.black} position={[0.036, 0, 0]} rotation={[0, 0, Math.PI / 2]} scale={[0.028, 0.052, 0.018]} />
-          <mesh geometry={WG.sph} material={WM.gold} scale={[0.017, 0.017, 0.016]} />
+        // Bow-tie seated flush on the V-neck shirt collar right below the mouth (y=0.380, z=0.200)
+        <group position={[0, 0.446, 0.256]} rotation={[-0.14, 0, 0]}>
+          <mesh geometry={WG.cone} material={outfit === 'tuxedo' ? WM.redTie : WM.black} position={[-0.034, 0, 0]} rotation={[0, 0, -Math.PI / 2]} scale={[0.025, 0.048, 0.014]} />
+          <mesh geometry={WG.cone} material={outfit === 'tuxedo' ? WM.redTie : WM.black} position={[0.034, 0, 0]} rotation={[0, 0, Math.PI / 2]} scale={[0.025, 0.048, 0.014]} />
+          <mesh geometry={WG.sph} material={WM.gold} scale={[0.015, 0.015, 0.014]} />
         </group>
       )}
       {hasNeckTie && (
-        <group position={[0, 0.355, 0.228]}>
-          <mesh geometry={WG.box} material={WM.white} position={[-0.036, 0.010, -0.004]} rotation={[0, 0, 0.35]} scale={[0.045, 0.020, 0.014]} />
-          <mesh geometry={WG.box} material={WM.white} position={[0.036, 0.010, -0.004]} rotation={[0, 0, -0.35]} scale={[0.045, 0.020, 0.014]} />
-          <mesh geometry={WG.sph} material={WM.redTie} scale={[0.020, 0.020, 0.016]} />
-          <mesh geometry={WG.box} material={WM.redTie} position={[0, -0.055, 0.008]} scale={[0.030, 0.10, 0.012]} />
-          <mesh geometry={WG.cone} material={WM.redTie} position={[0, -0.115, 0.008]} rotation={[0, 0, Math.PI]} scale={[0.022, 0.030, 0.012]} />
-          <mesh geometry={WG.box} material={WM.gold} position={[0, -0.05, 0.015]} rotation={[0, 0, 0.45]} scale={[0.032, 0.010, 0.005]} />
+        // Silk necktie seated flush down the contoured shirt bib (y=0.380, z=0.200)
+        <group position={[0, 0.446, 0.256]} rotation={[-0.18, 0, 0]}>
+          <mesh geometry={WG.box} material={WM.white} position={[-0.034, 0.008, -0.004]} rotation={[0, 0, 0.38]} scale={[0.042, 0.018, 0.010]} />
+          <mesh geometry={WG.box} material={WM.white} position={[0.034, 0.008, -0.004]} rotation={[0, 0, -0.38]} scale={[0.042, 0.018, 0.010]} />
+          <mesh geometry={WG.sph} material={WM.redTie} scale={[0.017, 0.017, 0.014]} />
+          <mesh geometry={WG.box} material={WM.redTie} position={[0, -0.034, 0.001]} scale={[0.026, 0.062, 0.008]} />
+          <mesh geometry={WG.cone} material={WM.redTie} position={[0, -0.072, 0.001]} rotation={[0, 0, Math.PI]} scale={[0.019, 0.020, 0.008]} />
+          <mesh geometry={WG.box} material={WM.gold} position={[0, -0.032, 0.007]} rotation={[0, 0, 0.45]} scale={[0.028, 0.008, 0.004]} />
         </group>
       )}
-      {(showTowel || outfit === "full" || outfit === "tuxedo") && (
-        <group ref={towelRef} position={[-0.28, 0.33, 0.18]} rotation={[0.1, 0.1, -0.05]}>
+      {(showTowel || outfit === 'full' || outfit === 'tuxedo') && (
+        <group ref={towelRef} position={[-0.28, 0.38, 0.18]} rotation={[0.1, 0.1, -0.05]}>
           {/* Silver serving tray balanced on the left hand + folded white waiter towel */}
           <mesh geometry={WG.cyl} material={WM.silver} position={[0, 0.025, 0.03]} scale={[0.125, 0.008, 0.125]} />
           <mesh geometry={WG.torus} material={WM.gold} position={[0, 0.03, 0.03]} rotation={[Math.PI / 2, 0, 0]} scale={0.125} />
@@ -249,7 +371,7 @@ function OutfitMeshes({
 
 function TeapotProp({ pouring, propRef }: { pouring: boolean; propRef?: React.RefObject<THREE.Group> }) {
   return (
-    <group ref={propRef} position={[0.25, 0.37, 0.18]} rotation={[pouring ? 0.72 : 0.08, -0.22, pouring ? -0.78 : 0]}>
+    <group ref={propRef} position={[0.25, 0.40, 0.18]} rotation={[pouring ? 0.72 : 0.08, -0.22, pouring ? -0.78 : 0]}>
       <mesh geometry={WG.sph} material={WM.porcelain} scale={[0.082, 0.074, 0.082]} />
       <mesh geometry={WG.torus} material={WM.gold} position={[0, 0.056, 0]} rotation={[Math.PI / 2, 0, 0]} scale={0.048} />
       <mesh geometry={WG.sph} material={WM.porcelain} position={[0, 0.065, 0]} scale={[0.045, 0.022, 0.045]} />
@@ -258,9 +380,9 @@ function TeapotProp({ pouring, propRef }: { pouring: boolean; propRef?: React.Re
       <mesh geometry={WG.arc} material={WM.porcelain} position={[-0.076, 0.005, -0.01]} rotation={[0, 0, Math.PI * 0.45]} scale={0.038} />
       {pouring && (
         <group>
-          {/* Golden-amber tea stream pouring from spout into the player's cup */}
+          {/* Golden-amber tea stream pouring from spout toward the player's cup */}
           <mesh geometry={WG.cyl} material={WM.amber} position={[0.145, -0.13, 0.045]} rotation={[0.12, 0, -0.18]} scale={[0.010, 0.30, 0.010]} />
-          {/* Rising warm steam puffs above the cup */}
+          {/* Rising warm steam puffs */}
           <mesh geometry={WG.sph} material={WM.steam} position={[0.16, -0.05, 0.05]} scale={0.022} />
           <mesh geometry={WG.sph} material={WM.steam} position={[0.175, 0.01, 0.06]} scale={0.028} />
           <mesh geometry={WG.sph} material={WM.steam} position={[0.155, 0.07, 0.04]} scale={0.034} />
@@ -273,7 +395,7 @@ function TeapotProp({ pouring, propRef }: { pouring: boolean; propRef?: React.Re
 function CardFlourishProp({ phase }: { phase: 'gather' | 'bridge' | 'set' }) {
   const cards = useMemo(() => Array.from({ length: 11 }, (_, i) => i / 10 - 0.5), []);
   return (
-    <group position={[0, 0.38, 0.28]}>
+    <group position={[0, 0.40, 0.28]}>
       {phase === 'bridge' ? (
         <>
           {cards.map((u, i) => {
@@ -296,7 +418,7 @@ function CardFlourishProp({ phase }: { phase: 'gather' | 'bridge' | 'set' }) {
 
 function CushionAndMedal({ hasMedal, propRef }: { hasMedal: boolean; propRef?: React.RefObject<THREE.Group> }) {
   return (
-    <group ref={propRef} position={[0, 0.35, 0.26]} rotation={[0.18, 0, 0]}>
+    <group ref={propRef} position={[0, 0.38, 0.26]} rotation={[0.18, 0, 0]}>
       <mesh geometry={WG.rbox} material={WM.velvet} scale={[0.22, 0.055, 0.18]} />
       {[[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([sx, sz], i) => (
         <mesh key={i} geometry={WG.sph} material={WM.gold} position={[sx! * 0.105, -0.005, sz! * 0.085]} scale={[0.018, 0.026, 0.018]} />
@@ -387,8 +509,6 @@ export const OrangeWaiter = memo(function OrangeWaiter({ L, view, level }: { L: 
   const [job, setJob] = useState<WaiterJob | null>(null);
   const [medalWinner, setMedalWinner] = useState<number | null>(null);
   const clockRef = useRef(0);
-  // Start the waiter's first refill tour almost immediately (0.5s after mount)!
-  const nextVisitRef = useRef(0.5);
   const lastOutfitRef = useRef<WaiterOutfit | undefined>(undefined);
   const prevPosRef = useRef<V3>([...KITCHEN_DOOR] as V3);
   const walkPhaseRef = useRef(0);
@@ -399,16 +519,14 @@ export const OrangeWaiter = memo(function OrangeWaiter({ L, view, level }: { L: 
 
   const startJob = (
     kind: WaiterActionKind,
-    opts: { outfit?: WaiterOutfit; winner?: number; loser?: number; progress?: number } = {}
+    opts: { outfit?: WaiterOutfit; winner?: number; loser?: number; progress?: number; duration?: number; cycleIndex?: number } = {}
   ) => {
-    const outfit = opts.outfit ?? pickWaiterOutfit(Math.random, lastOutfitRef.current);
+    const outfit = opts.outfit ?? (opts.cycleIndex !== undefined ? waiterOutfitForCycle(opts.cycleIndex) : pickWaiterOutfit(Math.random, lastOutfitRef.current));
     lastOutfitRef.current = outfit;
     const cupSeats = pickRefillOrder(L, Object.keys(props.tea).map(Number));
-    const nCups = Math.max(1, cupSeats.length);
     const durations: Record<WaiterActionKind, number> = {
       visit: 11,
-      // Full table tour: entry walk (2.0s) + N * REFILL_POUR (2.2s) + (N-1) * REFILL_WALK (2.3s) + exit walk (2.0s)
-      refill: 4.0 + nCups * REFILL_POUR + Math.max(0, nCups - 1) * REFILL_WALK,
+      refill: opts.duration ?? WAITER_ACTIVE_SEC,
       shuffle: 10,
       roundEnd: 12,
       medal: 13,
@@ -426,25 +544,27 @@ export const OrangeWaiter = memo(function OrangeWaiter({ L, view, level }: { L: 
       loser,
       lockedProgress: opts.progress,
       refillOrder: cupSeats,
+      cycleIndex: opts.cycleIndex,
     });
   };
 
   useEffect(() => {
     const api = {
       outfits: WAITER_OUTFITS,
+      outfitOrder: OUTFIT_ORDER,
       stops,
       job,
+      cycleSpec: { activeSec: WAITER_ACTIVE_SEC, awaySec: WAITER_AWAY_SEC, cycleSec: WAITER_CYCLE_SEC },
       state: () => ({
         job,
         lastOutfit: lastOutfitRef.current,
         refillOrder: pickRefillOrder(L, Object.keys(props.tea).map(Number)),
-        nextVisitAt: nextVisitRef.current,
         pos: rootRef.current ? [rootRef.current.position.x, rootRef.current.position.y, rootRef.current.position.z] : null,
         yaw: rootRef.current ? rootRef.current.rotation.y : 0,
         legL: (() => { const l = model.userData.waiterRig?.legs?.L; return l ? { hip: l.hip.quaternion.toArray(), knee: l.knee.quaternion.toArray(), foot: l.foot.quaternion.toArray() } : null; })(),
         legR: (() => { const l = model.userData.waiterRig?.legs?.R; return l ? { hip: l.hip.quaternion.toArray(), knee: l.knee.quaternion.toArray(), foot: l.foot.quaternion.toArray() } : null; })(),
       }),
-      trigger: (kind: WaiterActionKind, opts?: { outfit?: WaiterOutfit; winner?: number; loser?: number; progress?: number }) => startJob(kind, opts),
+      trigger: (kind: WaiterActionKind, opts?: { outfit?: WaiterOutfit; winner?: number; loser?: number; progress?: number; duration?: number }) => startJob(kind, opts),
       setProgress: (p?: number) => setJob((cur) => (cur ? { ...cur, lockedProgress: p } : cur)),
       stop: () => setJob(null),
     };
@@ -455,7 +575,7 @@ export const OrangeWaiter = memo(function OrangeWaiter({ L, view, level }: { L: 
     if (!view) return;
     if (view.phase !== 'MATCH_END') setMedalWinner(null);
     if (view.phase === 'MATCH_END' && prevPhaseRef.current !== 'MATCH_END' && view.matchWinner !== null) {
-      startJob('medal', { winner: view.matchWinner });
+      startJob('medal', { winner: view.matchWinner, outfit: 'tuxedo' });
     } else if (view.round?.result && !prevResultRef.current) {
       const w = view.round.result.winner;
       const seats = Object.keys(L.seats).map(Number);
@@ -510,51 +630,88 @@ export const OrangeWaiter = memo(function OrangeWaiter({ L, view, level }: { L: 
     const d = dt > 0 && dt < 0.25 ? dt : 1 / 60;
     clockRef.current = now;
 
+    // Optional showcase/test time multiplier (default 1.0 in real gameplay: 60s active tour + 60s off-screen break)
+    const timeScale = (typeof window !== 'undefined' && (window as unknown as { __MARLIVO_WAITER_TIME_SCALE__?: number }).__MARLIVO_WAITER_TIME_SCALE__) || 1;
+    const cyc = evaluateWaiterCycle(now, timeScale);
+
+    // If no manual/event job is locked, drive the automatic 60s-active / 60s-away refill cycle!
     if (!job) {
-      const seats = Object.keys(props.tea).map(Number);
-      const anyNeedRefill = seats.some((s) => teaLevel(s) < 0.75);
-      if (now >= nextVisitRef.current) {
-        // Return from short break (7–10s) wearing a NEW outfit to refill every player's cup!
-        nextVisitRef.current = now + WAITER_BREAK_RANGE[0] + Math.random() * (WAITER_BREAK_RANGE[1] - WAITER_BREAK_RANGE[0]);
-        startJob(anyNeedRefill || seats.length > 0 ? 'refill' : 'visit');
+      if (cyc.active) {
+        startJob('refill', { outfit: cyc.outfit, cycleIndex: cyc.cycleIndex, duration: WAITER_ACTIVE_SEC / timeScale });
         return;
       }
+      if (rootRef.current) rootRef.current.visible = false;
       if (flags.visible) setFlags((f) => ({ ...f, visible: false, splash: false, confetti: 'none' }));
       return;
     }
 
-    const u = job.lockedProgress !== undefined ? clamp(job.lockedProgress) : clamp((now - job.startedAt) / job.duration);
-    if (job.lockedProgress === undefined && u >= 1) {
-      if (job.kind === 'refill') refillTea();
-      // Step off-stage for a short 7 to 10 second break, then return in a different outfit!
-      nextVisitRef.current = now + WAITER_BREAK_RANGE[0] + Math.random() * (WAITER_BREAK_RANGE[1] - WAITER_BREAK_RANGE[0]);
-      setJob(null);
-      return;
+    // For an automatic refill tour (no lockedProgress), sync directly with the 60s active window
+    let u: number;
+    if (job.lockedProgress !== undefined) {
+      u = clamp(job.lockedProgress);
+    } else if (job.kind === 'refill' && job.cycleIndex !== undefined) {
+      if (!cyc.active || cyc.cycleIndex !== job.cycleIndex) {
+        refillTea();
+        setJob(null);
+        if (rootRef.current) rootRef.current.visible = false;
+        return;
+      }
+      u = cyc.progress;
+    } else {
+      u = clamp((now - job.startedAt) / job.duration);
+      if (u >= 1) {
+        if (job.kind === 'refill') refillTea();
+        setJob(null);
+        return;
+      }
     }
+
+    const doorForX = (x: number): V3 => (x >= 0 ? KITCHEN_DOOR_R : KITCHEN_DOOR);
+
+    // Always keep waiter angled toward the table/camera so his face and front outfit are clearly visible
+    const faceTableYaw = (x: number, z: number, moveDx = 0): number => {
+      const baseYaw = Math.atan2(-x * 0.55, 0.45 - z);
+      return baseYaw + clamp(moveDx * 0.45, -0.28, 0.28);
+    };
 
     const walkPos = (from: V3, to: V3, k: number): [V3, number] => {
       const t = ease(k);
       const x = lerp(from[0], to[0], t);
       const z = lerp(from[2], to[2], t);
-      const yaw = Math.atan2(to[0] - from[0], to[2] - from[2]);
-      return [[x, from[1], z], yaw];
+      const yaw = faceTableYaw(x, z, to[0] - from[0]);
+      return [[x, WAITER_FLOOR_Y, z], yaw];
     };
 
-    const walkArc = (stFrom: WaiterStop, stTo: WaiterStop, k: number): [V3, number] => {
+    // Route between stops strictly within the left or right open stone patio corridors (|x| >= 1.66),
+    // never crossing x = 0 behind Seat 2 over the tabletop rim!
+    const walkPatioCorridor = (stFrom: WaiterStop, stTo: WaiterStop, k: number): [V3, number] => {
+      const x0 = stFrom.standPos[0], z0 = stFrom.standPos[2];
+      const x1 = stTo.standPos[0], z1 = stTo.standPos[2];
+      if (x0 * x1 < 0) {
+        if (k < 0.5) {
+          const doorL = doorForX(x0);
+          return walkPos(stFrom.standPos, doorL, k / 0.5);
+        }
+        const doorR = doorForX(x1);
+        return walkPos(doorR, stTo.standPos, (k - 0.5) / 0.5);
+      }
       const t = ease(k);
       const da = normAngle(stTo.angle - stFrom.angle);
       const a = stFrom.angle + da * t;
-      // Bow outward onto LOOP_R at mid-walk so the waiter clears every chair & player cleanly
-      const rFrom = Math.hypot(stFrom.standPos[0], stFrom.standPos[2]);
-      const rTo = Math.hypot(stTo.standPos[0], stTo.standPos[2]);
-      const r = lerp(rFrom, rTo, t) + Math.sin(Math.PI * t) * (LOOP_R - 0.5 * (rFrom + rTo) + 0.12);
+      const rFrom = Math.hypot(x0, z0);
+      const rTo = Math.hypot(x1, z1);
+      const r = lerp(rFrom, rTo, t) + Math.sin(Math.PI * t) * 0.06;
       const x = Math.sin(a) * r;
       const z = Math.cos(a) * r;
-      const aNext = stFrom.angle + da * Math.min(1, t + 0.04);
-      const xNext = Math.sin(aNext) * r;
-      const zNext = Math.cos(aNext) * r;
-      const yaw = Math.hypot(xNext - x, zNext - z) > 1e-4 ? Math.atan2(xNext - x, zNext - z) : stTo.faceYaw;
-      return [[x, stFrom.standPos[1], z], yaw];
+      const yaw = faceTableYaw(x, z, x1 - x0);
+      return [[x, WAITER_FLOOR_Y, z], yaw];
+    };
+
+    // Angle waiter 3/4 toward the camera & table so his front outfit (bow-tie/tie, shirt, vest/jacket) is always visible
+    const presentYaw = (standPos: V3, targetX: number, targetZ: number): number => {
+      const lookX = lerp(targetX, 0, 0.35);
+      const lookZ = Math.max(targetZ, 0.25);
+      return Math.atan2(lookX - standPos[0], lookZ - standPos[2]);
     };
 
     const targetPosForSeat = (seat: number): V3 => {
@@ -582,23 +739,24 @@ export const OrangeWaiter = memo(function OrangeWaiter({ L, view, level }: { L: 
 
     if (job.kind === 'visit') {
       const stp = stops.A;
+      const door = doorForX(stp.standPos[0]);
       if (u < 0.28) {
-        [pos, yaw] = walkPos(KITCHEN_DOOR, stp.standPos, u / 0.28);
+        [pos, yaw] = walkPos(door, stp.standPos, u / 0.28);
         isWalkingSeg = true;
       } else if (u < 0.55) {
         pos = stp.standPos;
-        yaw = stp.faceYaw;
-        lean = 0.22;
+        yaw = presentYaw(pos, 0, 0);
+        lean = 0.06;
       } else if (u < 0.78) {
         pos = stp.standPos;
-        yaw = Math.atan2(0 - pos[0], 2.5 - pos[2]);
+        yaw = Math.atan2(0 - pos[0], 2.2 - pos[2]);
         wink = true;
       } else {
-        [pos, yaw] = walkPos(stp.standPos, KITCHEN_DOOR, (u - 0.78) / 0.22);
+        [pos, yaw] = walkPos(stp.standPos, door, (u - 0.78) / 0.22);
         isWalkingSeg = true;
       }
     } else if (job.kind === 'refill') {
-      // Visit EVERY seated player's cup in circular order around the table perimeter!
+      // Visit EVERY seated player's cup in circular order along the left and right open stone patio corridors!
       const order = job.refillOrder && job.refillOrder.length > 0
         ? job.refillOrder
         : pickRefillOrder(L, Object.keys(props.tea).map(Number));
@@ -610,11 +768,13 @@ export const OrangeWaiter = memo(function OrangeWaiter({ L, view, level }: { L: 
       const curT = u * totalT;
 
       if (curT < tEntry) {
-        [pos, yaw] = walkPos(KITCHEN_DOOR, seatStops[0]!.standPos, curT / tEntry);
+        const st0 = seatStops[0]!;
+        [pos, yaw] = walkPos(doorForX(st0.standPos[0]), st0.standPos, curT / tEntry);
         isWalkingSeg = true;
       } else if (curT >= totalT - tExit) {
+        const stLast = seatStops[n - 1]!;
         const k = (curT - (totalT - tExit)) / tExit;
-        [pos, yaw] = walkPos(seatStops[n - 1]!.standPos, KITCHEN_DOOR, k);
+        [pos, yaw] = walkPos(stLast.standPos, doorForX(stLast.standPos[0]), k);
         isWalkingSeg = true;
       } else {
         const bodyT = curT - tEntry;
@@ -627,61 +787,65 @@ export const OrangeWaiter = memo(function OrangeWaiter({ L, view, level }: { L: 
 
         if (localT < REFILL_POUR) {
           pos = stCur.standPos;
-          yaw = Math.atan2(cup[0] - pos[0], cup[2] - pos[2]);
+          yaw = presentYaw(pos, cup[0], cup[2]);
           const pourU = clamp(localT / REFILL_POUR);
           const bowEnv = Math.sin(Math.PI * 0.5 * Math.min(1, pourU / 0.22) * Math.min(1, (1 - pourU) / 0.18));
-          lean = 0.28 * bowEnv;
+          lean = 0.06 * bowEnv;
           pouring = pourU >= 0.12 && pourU <= 0.88;
           pourCupWorld = [cup[0], cup[1] + 0.15, cup[2]];
           if (pouring) refillTea(targetSeat);
         } else {
           const walkK = (localT - REFILL_POUR) / REFILL_WALK;
           const stNext = seatStops[seatIdx + 1]!;
-          [pos, yaw] = walkArc(stCur, stNext, walkK);
+          [pos, yaw] = walkPatioCorridor(stCur, stNext, walkK);
           isWalkingSeg = true;
         }
       }
     } else if (job.kind === 'shuffle') {
       const stp = stops.A;
+      const door = doorForX(stp.standPos[0]);
       if (u < 0.24) {
-        [pos, yaw] = walkPos(KITCHEN_DOOR, stp.standPos, u / 0.24);
+        [pos, yaw] = walkPos(door, stp.standPos, u / 0.24);
         isWalkingSeg = true;
       } else if (u < 0.42) {
         pos = stp.standPos;
-        yaw = stp.faceYaw;
-        lean = 0.28;
+        yaw = presentYaw(pos, 0, 0);
+        lean = 0.22;
         flourish = 'gather';
       } else if (u < 0.68) {
         pos = stp.standPos;
-        yaw = stp.faceYaw;
-        lean = 0.1;
+        yaw = presentYaw(pos, 0, 0);
+        lean = 0.10;
         flourish = 'bridge';
       } else if (u < 0.8) {
         pos = stp.standPos;
-        yaw = stp.faceYaw;
-        lean = 0.32;
+        yaw = presentYaw(pos, 0, 0);
+        lean = 0.24;
         flourish = 'set';
       } else {
-        [pos, yaw] = walkPos(stp.standPos, KITCHEN_DOOR, (u - 0.8) / 0.2);
+        [pos, yaw] = walkPos(stp.standPos, door, (u - 0.8) / 0.2);
         isWalkingSeg = true;
       }
     } else if (job.kind === 'roundEnd') {
       const loserPos = targetPosForSeat(job.loser ?? 1);
       const winnerPos = targetPosForSeat(job.winner ?? 0);
-      const stLoser = nearestStop(stops, loserPos[0], loserPos[2]);
-      const stWinner = nearestStop(stops, winnerPos[0], winnerPos[2]);
+      const stLoser = stops.A;
+      const stWinner = stops.B;
       if (u < 0.2) {
-        [pos, yaw] = walkPos(KITCHEN_DOOR, stLoser.standPos, u / 0.2);
+        [pos, yaw] = walkPos(doorForX(stLoser.standPos[0]), stLoser.standPos, u / 0.2);
         isWalkingSeg = true;
         glass = true;
       } else if (u < 0.52) {
         pos = stLoser.standPos;
-        yaw = Math.atan2(loserPos[0] - pos[0], loserPos[2] - pos[2]);
+        yaw = presentYaw(pos, loserPos[0], loserPos[2]);
         glass = true;
         const su = (u - 0.2) / 0.32;
-        lean = su < 0.22 ? -0.2 : 0.22;
+        lean = su < 0.22 ? -0.10 : 0.08;
         if (su >= 0.18) {
-          showSplash = false; confettiKind = 'multi'; confettiU = (u - 0.2) / 0.35; confettiAt = [st.standPos[0], 0.55, st.standPos[2]];
+          showSplash = false;
+          confettiKind = 'multi';
+          confettiU = (u - 0.2) / 0.35;
+          confettiAt = [stLoser.standPos[0], 0.55, stLoser.standPos[2]];
           splashFrom = [pos[0] + Math.sin(yaw) * 0.28, pos[1] + 0.48, pos[2] + Math.cos(yaw) * 0.28];
           splashTo = loserPos;
           splashU = (su - 0.18) / 0.82;
@@ -690,35 +854,36 @@ export const OrangeWaiter = memo(function OrangeWaiter({ L, view, level }: { L: 
         }
       } else if (u < 0.84) {
         pos = stWinner.standPos;
-        yaw = Math.atan2(winnerPos[0] - pos[0], winnerPos[2] - pos[2]);
+        yaw = presentYaw(pos, winnerPos[0], winnerPos[2]);
         confettiKind = 'multi';
         confettiAt = [winnerPos[0], 0, winnerPos[2]];
         confettiU = (u - 0.52) / 0.32;
       } else {
-        [pos, yaw] = walkPos(stWinner.standPos, KITCHEN_DOOR, (u - 0.84) / 0.16);
+        [pos, yaw] = walkPos(stWinner.standPos, doorForX(stWinner.standPos[0]), (u - 0.84) / 0.16);
         isWalkingSeg = true;
       }
     } else if (job.kind === 'medal') {
       const winnerPos = targetPosForSeat(job.winner ?? 0);
-      const stWinner = nearestStop(stops, winnerPos[0], winnerPos[2]);
+      const stWinner = stops.B;
+      const door = doorForX(stWinner.standPos[0]);
       if (u < 0.25) {
-        [pos, yaw] = walkPos(KITCHEN_DOOR, stWinner.standPos, u / 0.25);
+        [pos, yaw] = walkPos(door, stWinner.standPos, u / 0.25);
         isWalkingSeg = true;
         cushionMedal = 'with';
       } else if (u < 0.55) {
         pos = stWinner.standPos;
-        yaw = Math.atan2(winnerPos[0] - pos[0], winnerPos[2] - pos[2]);
-        lean = 0.26;
+        yaw = presentYaw(pos, winnerPos[0], winnerPos[2]);
+        lean = 0.20;
         cushionMedal = 'with';
       } else if (u < 0.85) {
         pos = stWinner.standPos;
-        yaw = Math.atan2(winnerPos[0] - pos[0], winnerPos[2] - pos[2]);
+        yaw = presentYaw(pos, winnerPos[0], winnerPos[2]);
         cushionMedal = 'empty';
         confettiKind = 'gold';
         confettiAt = [winnerPos[0], 0, winnerPos[2]];
         confettiU = (u - 0.55) / 0.3;
       } else {
-        [pos, yaw] = walkPos(stWinner.standPos, KITCHEN_DOOR, (u - 0.85) / 0.15);
+        [pos, yaw] = walkPos(stWinner.standPos, door, (u - 0.85) / 0.15);
         isWalkingSeg = true;
         cushionMedal = 'empty';
       }
@@ -728,7 +893,7 @@ export const OrangeWaiter = memo(function OrangeWaiter({ L, view, level }: { L: 
     const dist = Math.hypot(pos[0] - prevPosRef.current[0], pos[2] - prevPosRef.current[2]);
     prevPosRef.current = [...pos] as V3;
     const rawSpeed = dist / d;
-    const targetStride = isWalkingSeg ? (job.lockedProgress !== undefined ? 1.0 : clamp(rawSpeed / 0.85, 0.45, 1.25)) : 0;
+    const targetStride = isWalkingSeg ? (job.lockedProgress !== undefined ? 1.0 : clamp(rawSpeed / 0.75, 0.55, 1.25)) : 0;
     if (job.lockedProgress !== undefined) {
       strideSmoothRef.current = targetStride;
     } else {
@@ -736,7 +901,7 @@ export const OrangeWaiter = memo(function OrangeWaiter({ L, view, level }: { L: 
     }
     const stride = strideSmoothRef.current;
     if (job.lockedProgress !== undefined) {
-      walkPhaseRef.current = u * job.duration * 7.5;
+      walkPhaseRef.current = u * 18.0 * 7.5;
     } else if (stride > 0.03) {
       walkPhaseRef.current += d * (5.5 + stride * 3.5);
     }
@@ -744,7 +909,8 @@ export const OrangeWaiter = memo(function OrangeWaiter({ L, view, level }: { L: 
 
     if (rootRef.current) {
       rootRef.current.visible = true;
-      rootRef.current.position.set(pos[0], -0.20, pos[2]);
+      // Place waiter's feet on the patio floor plane WAITER_FLOOR_Y (-0.42), strictly in the outer stone patio corridors!
+      rootRef.current.position.set(pos[0], WAITER_FLOOR_Y, pos[2]);
       rootRef.current.rotation.set(0, yaw, 0);
     }
     if (bodyRef.current) {
@@ -766,8 +932,8 @@ export const OrangeWaiter = memo(function OrangeWaiter({ L, view, level }: { L: 
           poseLeg(rig.legs.R, gait.R.hipPitch, gait.R.kneeBend, gait.R.footPitch, gait.R.hipRoll, job.lockedProgress !== undefined ? undefined : d);
         } else {
           // Polite balanced pouring/standing stance with slight knee flexion
-          const bowKnee = lean > 0.1 ? 0.22 : 0.08;
-          const bowHip = lean > 0.1 ? 0.12 : 0.04;
+          const bowKnee = lean > 0.1 ? 0.20 : 0.08;
+          const bowHip = lean > 0.1 ? 0.10 : 0.04;
           poseLeg(rig.legs.L, bowHip, bowKnee, 0.05, -0.04, job.lockedProgress !== undefined ? undefined : d);
           poseLeg(rig.legs.R, bowHip, bowKnee, 0.05, 0.04, job.lockedProgress !== undefined ? undefined : d);
         }
@@ -775,76 +941,74 @@ export const OrangeWaiter = memo(function OrangeWaiter({ L, view, level }: { L: 
 
       const ph = (now + 1.1) % 3.8;
       const bl = wink ? 0 : ph < 0.14 ? Math.sin((ph / 0.14) * Math.PI) : 0;
-      const mOpen = wink ? 0.65 : job.kind === 'roundEnd' && u >= 0.52 ? 0.80 : job.kind === 'medal' ? 0.55 : pouring ? 0.52 : 0.28;
-      const mSmile = wink || pouring || (job.kind === 'roundEnd' && u >= 0.52) || job.kind === 'medal' ? 0.42 : 0.30;
-      const mCov = THREE.MathUtils.smoothstep(mOpen, 0.02, 0.14);
       for (const bu of rig.blinkU) {
         bu.value = bl;
-        bu.mouth?.set(mOpen, mSmile, 1.04, mCov);
+        // Keep mouth shader overlay off on the waiter so his sculpted 3D mouth at y=0.40 is clean above his bowtie/collar
+        bu.mouth?.set(0, 0.25, 1.0, 0);
       }
 
       const swing = gait.armSwing;
-      let tL: V3 = [-0.28, 0.28, 0.08 + swing], wL = 0.78, cL = 0.35;
-      let tR: V3 = [0.28, 0.28, 0.08 - swing], wR = 0.78, cR = 0.35;
+      let tL: V3 = [-0.28, 0.34, 0.08 + swing], wL = 0.78, cL = 0.35;
+      let tR: V3 = [0.28, 0.34, 0.08 - swing], wR = 0.78, cR = 0.35;
 
       if (job.kind === 'visit') {
         if (u >= 0.28 && u < 0.55) {
           tR = [0.22, 0.42, 0.24]; wR = 0.95; cR = 0.55;
-          tL = [-0.26, 0.31, 0.16]; wL = 0.85; cL = 0.45;
+          tL = [-0.26, 0.36, 0.16]; wL = 0.85; cL = 0.45;
         } else if (u >= 0.55 && u < 0.78) {
           const wv = Math.sin((u - 0.55) * 58) * 0.085;
           tR = [0.30 + wv, 0.56, 0.22]; wR = 1.0; cR = 0.12;
-          tL = [-0.28, 0.30, 0.12]; wL = 0.88; cL = 0.6;
+          tL = [-0.28, 0.36, 0.12]; wL = 0.88; cL = 0.6;
         }
       } else if (job.kind === 'refill') {
         // Left hand holds the silver tray & folded towel steady outside his left flank
-        tL = [-0.30, 0.35, 0.20]; wL = 0.96; cL = 0.48;
+        tL = [-0.30, 0.39, 0.18]; wL = 0.96; cL = 0.48;
         if (pouring && pourCupWorld) {
           // Right hand extends forward-right outside his body toward the player's teacup to pour
-          tR = [0.28, 0.40, 0.28]; wR = 1.0; cR = 0.92;
+          tR = [0.27, 0.44, 0.26]; wR = 1.0; cR = 0.92;
         } else {
-          tR = [0.29, 0.35, 0.20 - swing * 0.5]; wR = 0.95; cR = 0.85;
+          tR = [0.28, 0.39, 0.18 - swing * 0.5]; wR = 0.95; cR = 0.85;
         }
       } else if (job.kind === 'shuffle') {
         if (flourish === 'gather') {
           const g = Math.sin((u - 0.24) * 45) * 0.03;
-          tL = [-0.09 - g, 0.38, 0.26]; tR = [0.09 + g, 0.38, 0.26];
+          tL = [-0.09 - g, 0.38, 0.25]; tR = [0.09 + g, 0.38, 0.25];
           wL = wR = 1.0; cL = cR = 0.75;
         } else if (flourish === 'bridge') {
-          tL = [-0.18, 0.41, 0.26]; tR = [0.18, 0.41, 0.26];
+          tL = [-0.18, 0.41, 0.25]; tR = [0.18, 0.41, 0.25];
           wL = wR = 1.0; cL = cR = 0.85;
         } else if (flourish === 'set') {
-          tL = [-0.11, 0.31, 0.28]; tR = [0.11, 0.31, 0.28];
+          tL = [-0.11, 0.34, 0.26]; tR = [0.11, 0.34, 0.26];
           wL = wR = 0.95; cL = cR = 0.4;
         }
       } else if (job.kind === 'roundEnd') {
         if (u < 0.2) {
-          tR = [0.21, 0.40, 0.20]; wR = 0.95; cR = 0.85;
+          tR = [0.21, 0.40, 0.18]; wR = 0.95; cR = 0.85;
         } else if (u < 0.52) {
           const su = (u - 0.2) / 0.32;
-          tR = su < 0.22 ? [0.26, 0.48, 0.06] : [0.15, 0.48, 0.31];
+          tR = su < 0.22 ? [0.26, 0.48, 0.06] : [0.15, 0.48, 0.28];
           wR = 1.0; cR = su < 0.22 ? 0.9 : 0.45;
-          tL = [-0.20, 0.35, 0.14]; wL = 0.85; cL = 0.4;
+          tL = [-0.20, 0.36, 0.14]; wL = 0.85; cL = 0.4;
         } else if (u < 0.84) {
           const clap = Math.abs(Math.sin((u - 0.52) * 75)) * 0.075;
-          tL = [-0.045 - clap, 0.45, 0.25]; tR = [0.045 + clap, 0.45, 0.25];
+          tL = [-0.045 - clap, 0.45, 0.24]; tR = [0.045 + clap, 0.45, 0.24];
           wL = wR = 1.0; cL = cR = 0.25;
         }
       } else if (job.kind === 'medal') {
         if (u < 0.46) {
-          tL = [-0.12, 0.35, 0.25]; tR = [0.12, 0.35, 0.25];
+          tL = [-0.12, 0.38, 0.24]; tR = [0.12, 0.38, 0.24];
           wL = wR = 1.0; cL = cR = 0.55;
         } else if (u < 0.62) {
-          tL = [-0.11, 0.48, 0.31]; tR = [0.11, 0.48, 0.31];
+          tL = [-0.11, 0.46, 0.28]; tR = [0.11, 0.46, 0.28];
           wL = wR = 1.0; cL = cR = 0.4;
         } else if (u < 0.85) {
-          tL = [-0.15, 0.34, 0.23]; wL = 0.95; cL = 0.55;
-          tR = [0.22, 0.52, 0.22]; wR = 0.95; cR = 0.3;
+          tL = [-0.15, 0.36, 0.22]; wL = 0.95; cL = 0.55;
+          tR = [0.22, 0.52, 0.20]; wR = 0.95; cR = 0.3;
         } else {
-          tL = [-0.15, 0.34, 0.22]; wL = 0.9; cL = 0.55;
+          tL = [-0.15, 0.36, 0.20]; wL = 0.9; cL = 0.55;
         }
       } else if (job.outfit === 'full' || job.outfit === 'tuxedo') {
-        tL = [-0.19, 0.35, 0.18]; wL = 0.9; cL = 0.45;
+        tL = [-0.19, 0.36, 0.18]; wL = 0.9; cL = 0.45;
       }
 
       rootRef.current.updateMatrixWorld(true);
@@ -952,7 +1116,7 @@ export const OrangeWaiter = memo(function OrangeWaiter({ L, view, level }: { L: 
 
   return (
     <group>
-      <group ref={rootRef} scale={0.82} visible={flags.visible && !!job}>
+      <group ref={rootRef} scale={0.86} visible={flags.visible && !!job}>
         <mesh geometry={WG.shadow} material={shadowMat()} position={[0, 0.004, 0]} renderOrder={1} />
         <group ref={bodyRef}>
           <primitive object={model} />

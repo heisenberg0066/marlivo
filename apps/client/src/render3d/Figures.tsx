@@ -21,6 +21,7 @@ import {
   resetArm,
   stepArmSmoothing,
   clampArmTarget,
+  type ArmClampXf,
   activeEmoteFor,
   computeEmotePose,
   computeIdlePose,
@@ -256,6 +257,7 @@ function ModelFigure({ e, id, mood, seed, pose: stance, fallback, onFail }: { e:
       });
       const blinkU = attachBlinkShader(root, id, e.rotationY ?? 0);
       normalise(root, stance === 'stand' && e.chair !== false ? { ...e, baseY: -0.12 } : e);
+      lk.current.bodyQ.clear();
       setObj({
         root,
         mixer: new THREE.AnimationMixer(root),
@@ -293,6 +295,22 @@ function ModelFigure({ e, id, mood, seed, pose: stance, fallback, onFail }: { e:
       cmd: newCmd(),
       lowDetail: level !== 'high',
     };
+    // Capture where the head and torso bones sit (seat frame) in the rest pose; the arm clamp follows them as the body moves.
+    const fr0 = obj.root.parent;
+    const headBone = obj.bones.head?.bone ?? obj.bones.body?.bone ?? null;
+    const torsoBone = obj.bones.spine?.bone ?? obj.bones.body?.bone ?? null;
+    if (fr0 && headBone && torsoBone) {
+      const saved = Object.values(obj.bones).map((br) => [br, br.bone.quaternion.clone()] as const);
+      for (const br of Object.values(obj.bones)) br.bone.quaternion.copy(br.rest);
+      const p0 = obj.root.position.clone();
+      obj.root.position.set(obj.x0, obj.y0, obj.z0);
+      fr0.updateMatrixWorld(true);
+      const inv = fr0.matrixWorld.clone().invert();
+      a.rest = { headBone, headM: inv.clone().multiply(headBone.matrixWorld), torsoBone, torsoM: inv.clone().multiply(torsoBone.matrixWorld) };
+      for (const [br, q] of saved) br.bone.quaternion.copy(q);
+      obj.root.position.copy(p0);
+      fr0.updateMatrixWorld(true);
+    }
     actor.current = a;
     const un = registerActor(a);
     return () => { un(); actor.current = null; };
@@ -373,6 +391,9 @@ function ModelFigure({ e, id, mood, seed, pose: stance, fallback, onFail }: { e:
   return obj ? <primitive object={obj.root} /> : <>{fallback}</>;
 }
 
+const mFrInv = new THREE.Matrix4(), mCur = new THREE.Matrix4(), mTmp = new THREE.Matrix4();
+const xfS: ArmClampXf = { headIn: new THREE.Matrix4(), headOut: new THREE.Matrix4(), torsoIn: new THREE.Matrix4(), torsoOut: new THREE.Matrix4() };
+const vSh = new THREE.Vector3(), vEl = new THREE.Vector3(), vHd = new THREE.Vector3();
 const vT = new THREE.Vector3(), vIdleArm = new THREE.Vector3(), vH = new THREE.Vector3(), vC0 = new THREE.Vector3(), vIdle = new THREE.Vector3(), vLocReach = new THREE.Vector3(), qT = new THREE.Quaternion();
 function applyActor(
   a: Actor | null,
@@ -529,6 +550,17 @@ function applyActor(
 
   fr.updateMatrixWorld(true);
   a.root.getWorldPosition(vC0); vC0.y += 0.25;
+  let xf: ArmClampXf | null = null;
+  if (a.rest) {
+    mFrInv.copy(fr.matrixWorld).invert();
+    mCur.copy(mFrInv).multiply(a.rest.headBone.matrixWorld);
+    xfS.headOut.copy(mCur).multiply(mTmp.copy(a.rest.headM).invert());
+    xfS.headIn.copy(xfS.headOut).invert();
+    mCur.copy(mFrInv).multiply(a.rest.torsoBone.matrixWorld);
+    xfS.torsoOut.copy(mCur).multiply(mTmp.copy(a.rest.torsoM).invert());
+    xfS.torsoIn.copy(xfS.torsoOut).invert();
+    xf = xfS;
+  }
   for (const sd of ['L', 'R'] as const) {
     const arm = a.arms[sd]; if (!arm) continue;
     arm.up.quaternion.copy(arm.restUp);
@@ -597,7 +629,13 @@ function applyActor(
     }
 
     fr.worldToLocal(vT);
-    const clamped = clampArmTarget([vT.x, vT.y, vT.z], sd, a.id);
+    // Clamp against the body/face using where the IK hand will actually land (targets beyond reach slide along the shoulder ray).
+    arm.up.getWorldPosition(vSh); fr.worldToLocal(vSh);
+    arm.fore.getWorldPosition(vEl); fr.worldToLocal(vEl);
+    (arm.curl ?? arm.hand).getWorldPosition(vHd); fr.worldToLocal(vHd);
+    const reach = vSh.distanceTo(vEl) + vEl.distanceTo(vHd);
+    const clamped = clampArmTarget([vT.x, vT.y, vT.z], sd, a.id, [vSh.x, vSh.y, vSh.z], reach, xf);
+    if (a.dbg) a.dbg[sd] = { raw: [vT.x, vT.y, vT.z], out: clamped, sh: [vSh.x, vSh.y, vSh.z], reach, mode: cmd && cmd.w > 0.001 && !ep ? (cmd.hold ? 'hold' : 'reach') : ep ? 'emote' : otherCmd && otherCmd.w > 0.1 ? 'other' : 'idle' };
     vT.set(clamped[0], clamped[1], clamped[2]);
     fr.localToWorld(vT);
     for (let k = 0; k < 2; k++) solveArm(arm, vT, 1.0, vC0);
@@ -617,6 +655,6 @@ export function Figure({ id, mood, seed = 0, pose = 'sit' }: { id: string; mood:
   const [failed, setFailed] = useState(false);
   const kind: Placeholder = useMemo(() => entry?.placeholder ?? ({ biscuit: 'bear', mint: 'cat', pepper: 'owl', tango: 'orange', ammar: 'ammar' } as Record<string, Placeholder>)[id] ?? 'generic', [entry, id]);
   const builtin = kind === 'orange' ? <OrangeGuy mood={mood} seed={seed} pose={pose} /> : kind === 'ammar' ? <AmmarFigure mood={mood} seed={seed} pose={pose} /> : <PlaceholderFigure kind={kind} mood={mood} seed={seed} />;
-  if (entry?.model && !failed) return <ModelFigure e={entry} id={id} mood={mood} seed={seed} pose={pose} fallback={builtin} onFail={() => setFailed(true)} />;
+  if (entry?.model && !failed) return <ModelFigure key={id} e={entry} id={id} mood={mood} seed={seed} pose={pose} fallback={builtin} onFail={() => setFailed(true)} />;
   return builtin;
 }

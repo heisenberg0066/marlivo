@@ -65,13 +65,13 @@ export const Ground = memo(function Ground({ scene }: { scene: SceneKey }) {
   const stones = useMemo(() => {
     const r = rng(5), out: Inst[] = [];
     const cols = scene === 'dusk' ? ['#6a6258', '#5e574e', '#746a5e'] : ['#b9ab92', '#a89a82', '#c4b69c'];
-    for (let i = 0; i < 64; i++) { const a = (i / 64) * Math.PI * 2; const R = 2.42; out.push({ p: [Math.sin(a) * R, FLOOR_Y + 0.04, Math.cos(a) * R], s: [0.2 + r() * 0.04, 0.09 + r() * 0.03, 0.13], r: [0, a + (r() - 0.5) * 0.1, 0], c: cols[i % 3] }); }
+    for (let i = 0; i < 84; i++) { const a = (i / 84) * Math.PI * 2; const R = 3.60; out.push({ p: [Math.sin(a) * R, FLOOR_Y + 0.04, Math.cos(a) * R], s: [0.2 + r() * 0.04, 0.09 + r() * 0.03, 0.13], r: [0, a + (r() - 0.5) * 0.1, 0], c: cols[i % 3] }); }
     return out;
   }, [scene]);
   return (
     <group>
       <mesh geometry={GEO.disc} material={m.grass} position={[0, FLOOR_Y - 0.003, 0]} scale={[8.75, 1, 8.75]} />
-      {m.pav && <mesh material={m.pav} position={[0, FLOOR_Y + 0.001, 0]} rotation={[-Math.PI / 2, 0, 0]}><circleGeometry args={[2.38, 48]} /></mesh>}
+      {m.pav && <mesh material={m.pav} position={[0, FLOOR_Y + 0.001, 0]} rotation={[-Math.PI / 2, 0, 0]}><circleGeometry args={[3.56, 56]} /></mesh>}
       {m.pav && <Instances geo={GEO.box} mat={m.stone} items={stones} />}
     </group>
   );
@@ -157,7 +157,7 @@ export const Greenery = memo(function Greenery({ scene, lo }: { scene: SceneKey;
     // lavender beds (golden: lots; dusk: some), clumps of spikes over a green tuft
     const clumps: [number, number][] = [];
     if (scene !== 'picnic') {
-      for (const sx of [-1, 1]) for (let i = 0; i < (lo ? 5 : 8); i++) clumps.push([sx * (2.75 + r() * 0.9), -2.6 + i * 0.55 + r() * 0.2]);
+      for (const sx of [-1, 1]) for (let i = 0; i < (lo ? 5 : 8); i++) clumps.push([sx * (3.72 + r() * 0.8), -2.6 + i * 0.55 + r() * 0.2]);
       for (let i = 0; i < (lo ? 4 : 7); i++) clumps.push([-5.2 + i * 1.6 + r() * 0.3, -9.0]);
     }
     for (const [x, z] of clumps) {
@@ -165,7 +165,7 @@ export const Greenery = memo(function Greenery({ scene, lo }: { scene: SceneKey;
       for (let k = 0; k < (lo ? 7 : 12); k++) { const a = r() * Math.PI * 2, d = r() * 0.2; lav.push({ p: [x + Math.cos(a) * d, FLOOR_Y + 0.12, z + Math.sin(a) * d], s: [0.022, 0.26 + r() * 0.16, 0.022], r: [(r() - 0.5) * 0.5, 0, (r() - 0.5) * 0.5], c: pick(P.lav) }); }
     }
     // rose bushes in pots by the terrace (golden + dusk)
-    if (scene !== 'picnic') for (const [x, z, s] of [[-2.2, -2.3, 1], [2.3, -2.2, 1.1], [-3.4, 0.6, 0.9], [3.5, 0.8, 1]] as const) {
+    if (scene !== 'picnic') for (const [x, z, s] of [[-3.6, -2.6, 1], [3.6, -2.6, 1.1], [-3.8, 0.6, 0.9], [3.8, 0.8, 1]] as const) {
       pots.push({ p: [x, FLOOR_Y + 0.18 * s, z], s: [0.24 * s, 0.36 * s, 0.24 * s], c: '#ffffff' });
       for (let k = 0; k < 4; k++) hedge.push({ p: [x + (r() - 0.5) * 0.3 * s, FLOOR_Y + (0.5 + r() * 0.35) * s, z + (r() - 0.5) * 0.3 * s], s: 0.24 * s, r: [r(), r(), r()], c: pick(P.hedge) });
       for (let k = 0; k < (lo ? 8 : 16); k++) { const a = r() * Math.PI * 2; rose.push({ p: [x + Math.cos(a) * 0.3 * s, FLOOR_Y + (0.5 + r() * 0.45) * s, z + Math.sin(a) * 0.3 * s], s: 0.032 + r() * 0.02, c: pick(P.rose) }); }

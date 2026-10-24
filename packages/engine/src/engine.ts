@@ -111,8 +111,33 @@ function newDeck(c: Ctx): Card[] {
  * empty, keeping the current target and open-match cards on the pile. Last resort: the kept cards too.
  * Returns null when truly no card exists outside the players' areas.
  */
+/**
+ * If the draw pile is empty and the discard pile has more than 1 card, reshuffles the thrown cards
+ * (keeping the current target / top discard card on the pile) back into the draw pile so the deck never
+ * appears empty at 0 while thrown cards are available.
+ */
+function ensureDeckHasCards(c: Ctx) {
+  const r = c.s.round;
+  if (!r || r.deck.length > 0 || r.discard.length <= 1) return;
+  const keep = new Set(
+    r.window && r.window.openIds.length < r.discard.length
+      ? r.window.openIds
+      : [r.discard[r.discard.length - 1]!.id]
+  );
+  const pool = r.discard.filter((x) => !keep.has(x.id));
+  if (!pool.length) return;
+  const poolIds = new Set(pool.map((x) => x.id));
+  r.discard = r.discard.filter((x) => !poolIds.has(x.id));
+  r.deck = shuffle(c.rng, pool);
+  r.reshuffles++;
+  emit(c, 'RESHUFFLED', { deckCount: r.deck.length, lastResort: false, kept: r.discard.length });
+}
+
 function takeCard(c: Ctx): Card | null {
   const r = c.s.round!;
+  if (!r.deck.length) {
+    ensureDeckHasCards(c);
+  }
   if (!r.deck.length) {
     const keep = new Set(r.window ? r.window.openIds : r.discard.length ? [r.discard[r.discard.length - 1]!.id] : []);
     let pool = r.discard.filter((x) => !keep.has(x.id));
@@ -125,7 +150,11 @@ function takeCard(c: Ctx): Card | null {
     r.reshuffles++;
     emit(c, 'RESHUFFLED', { deckCount: r.deck.length, lastResort, kept: r.discard.length });
   }
-  return r.deck.shift()!;
+  const card = r.deck.shift() ?? null;
+  if (card && !r.deck.length) {
+    ensureDeckHasCards(c);
+  }
+  return card;
 }
 
 // ---------- round lifecycle ----------

@@ -80,6 +80,10 @@ export interface Actor {
   head: THREE.Bone | null;
   cmd: ActorCmd;
   lowDetail: boolean;
+  /** Rest-pose seat-frame matrices of the bones that carry the head and torso volumes (for body-relative clamping). */
+  /** Debug probe (only filled when a test harness sets it to {}). */
+  dbg?: Record<string, unknown>;
+  rest?: { headBone: THREE.Object3D; headM: THREE.Matrix4; torsoBone: THREE.Object3D; torsoM: THREE.Matrix4 };
 }
 
 /** Table cards a staged action is carrying right now (the sprite in the hand stands in for them). */
@@ -210,11 +214,11 @@ export function poseLeg(
 ) {
   if (!leg) return;
   resetLeg(leg);
-  // Expressive Pixar stride & knee lift: combine bone rotation with socket excursion so compact cartoon legs step clearly past the torso silhouette
+  // Keep hip pivot anchored at the bottom of the torso (y = 0.32 of normalized height) with subtle socket excursion
   leg.hip.position.set(
-    leg.restPosHip.x + hipRoll * 0.045,
-    leg.restPosHip.y + Math.max(0, kneeBend - 0.15) * 0.065 + Math.max(0, hipPitch) * 0.042,
-    leg.restPosHip.z + Math.sin(hipPitch) * 0.115,
+    leg.restPosHip.x + hipRoll * 0.025,
+    leg.restPosHip.y + Math.max(0, hipPitch) * 0.018,
+    leg.restPosHip.z + Math.sin(hipPitch) * 0.048,
   );
   if (Math.abs(hipPitch) > 1e-4) {
     leg.hip.quaternion.multiply(qLeg1.setFromAxisAngle(leg.axHip[0], -hipPitch));
@@ -254,13 +258,13 @@ export function computeWalkGait(phase: number, stride = 1.0): {
   const sR = -sL;
   const cR = -cL;
 
-  const hipL = sL * 0.88 * k;
-  const hipR = sR * 0.88 * k;
-  // Bend knee strongly during back-to-forward recovery lift (max(0, -s) + max(0, c)) so the shoe lifts high clear of the floor!
-  const kneeL = (Math.max(0, -sL) * 1.05 + Math.max(0, cL) * 0.68 + 0.10) * k;
-  const kneeR = (Math.max(0, -sR) * 1.05 + Math.max(0, cR) * 0.68 + 0.10) * k;
-  const footL = (sL * 0.44 - Math.max(0, -sL) * 0.36) * k;
-  const footR = (sR * 0.44 - Math.max(0, -sR) * 0.36) * k;
+  // Thigh swings ±55° (0.96 rad) forward/back; knee bends up to 65° (1.13 rad) during recovery swing
+  const hipL = sL * 0.96 * k;
+  const hipR = sR * 0.96 * k;
+  const kneeL = (Math.max(0, -sL) * 1.13 + Math.max(0, cL) * 0.65 + 0.08) * k;
+  const kneeR = (Math.max(0, -sR) * 1.13 + Math.max(0, cR) * 0.65 + 0.08) * k;
+  const footL = (sL * 0.46 - Math.max(0, -sL) * 0.38) * k;
+  const footR = (sR * 0.46 - Math.max(0, -sR) * 0.38) * k;
   const rollL = -0.08 * cL * k;
   const rollR = 0.08 * cR * k;
 
@@ -341,16 +345,16 @@ export function computeSeatedLegPose(
   const sw2 = Math.cos(t * 1.55 + s0 * 0.7);
   return {
     L: {
-      hipPitch: (0.22 + sw * 0.28) * scale,
-      kneeBend: (0.28 + Math.max(0, -sw) * 0.42) * scale,
-      footPitch: (sw * 0.26 + sw2 * 0.08) * scale,
-      hipRoll: -0.05 * scale,
+      hipPitch: (0.52 + sw * 0.32) * scale,
+      kneeBend: (0.32 + Math.max(0, -sw) * 0.45) * scale,
+      footPitch: (sw * 0.28 + sw2 * 0.10) * scale,
+      hipRoll: -0.08 * scale,
     },
     R: {
-      hipPitch: (0.22 - sw * 0.28) * scale,
-      kneeBend: (0.28 + Math.max(0, sw) * 0.42) * scale,
-      footPitch: (-sw * 0.26 + sw2 * 0.08) * scale,
-      hipRoll: 0.05 * scale,
+      hipPitch: (0.52 - sw * 0.32) * scale,
+      kneeBend: (0.32 + Math.max(0, sw) * 0.45) * scale,
+      footPitch: (-sw * 0.28 + sw2 * 0.10) * scale,
+      hipRoll: 0.08 * scale,
     },
   };
 }
@@ -502,22 +506,163 @@ export function activeEmoteFor(seat: number, now = performance.now()): (ActiveEm
   return { ...e, u };
 }
 
-export function clampArmTarget(tLoc: [number, number, number], sd: Side, id?: string): [number, number, number] {
-  const sgn = sd === 'L' ? -1 : 1;
-  let [x, y, z] = tLoc;
-  if (id === 'tango') {
-    const minLat = z < 0.22 ? 0.36 : 0.30;
-    if (sgn * x < minLat) x = sgn * minLat;
-    if (z < 0.08) z = 0.08;
-  } else if (id === 'sugar' || id === 'choco') {
-    const minLat = z < 0.18 ? 0.18 : 0.12;
-    if (sgn * x < minLat) x = sgn * minLat;
-    if (z < 0.08) z = 0.08;
-  } else {
-    const minLat = z < 0.18 ? 0.155 : 0.085;
-    if (sgn * x < minLat) x = sgn * minLat;
+/** Ellipsoid (p=2) or rounded box (p=4) volume in the seat frame (root.parent local space). */
+interface BodyVol { c: [number, number, number]; r: [number, number, number]; p: number }
+/**
+ * Per-character body/face volumes measured from the skinned GLBs in the seat frame (root.parent local).
+ * head: the head (for Orange guy the whole round body, which *is* his head) — gloves are pushed out of it.
+ * torso: chest/belly — gloves are pushed out horizontally so arms never sink into the tummy.
+ * faceLo: lowest height a glove centre may have while hovering in front of the face (just below the chin/mouth);
+ * faceZ: forward extent of the face surface; faceHalfW: half width of the face/head front; browY: just above the eyes.
+ */
+export interface BodySpec {
+  cx: number;
+  head: BodyVol;
+  torso: BodyVol | null;
+  glove: number;
+  faceLo: number;
+  faceZ: number;
+  faceHalfW: number;
+  browY: number;
+  floorY: number;
+  /** Optional: raised hands are kept at/behind this depth (beside the head, not in front of a face that fills the body). */
+  raiseZ?: number;
+}
+export const BODY_SPECS: Record<string, BodySpec> = {
+  tango:   { cx: 0, head: { c: [0, 0.17, -0.02], r: [0.35, 0.37, 0.32], p: 2 }, torso: null, glove: 0.06, faceLo: 0.05, faceZ: 0.36, faceHalfW: 0.34, browY: 0.335, floorY: 0.035, raiseZ: 0.06 },
+  ammar:   { cx: 0, head: { c: [0, 0.42, 0.10], r: [0.19, 0.24, 0.22], p: 2 }, torso: { c: [0, -0.10, -0.02], r: [0.21, 0.30, 0.22], p: 2 }, glove: 0.045, faceLo: 0.19, faceZ: 0.31, faceHalfW: 0.17, browY: 0.42, floorY: 0.0 },
+  biscuit: { cx: 0, head: { c: [0, 0.37, 0], r: [0.26, 0.21, 0.25], p: 2 }, torso: { c: [0, 0.04, 0], r: [0.25, 0.18, 0.20], p: 2 }, glove: 0.05, faceLo: 0.17, faceZ: 0.25, faceHalfW: 0.24, browY: 0.39, floorY: 0.0 },
+  mint:    { cx: -0.066, head: { c: [-0.05, 0.34, 0.08], r: [0.23, 0.20, 0.20], p: 2 }, torso: { c: [-0.066, 0.0, 0], r: [0.21, 0.16, 0.22], p: 2 }, glove: 0.05, faceLo: 0.15, faceZ: 0.28, faceHalfW: 0.25, browY: 0.34, floorY: 0.0 },
+  pepper:  { cx: 0, head: { c: [0, 0.36, 0.02], r: [0.27, 0.20, 0.27], p: 2 }, torso: { c: [0, 0.03, -0.01], r: [0.24, 0.15, 0.26], p: 2 }, glove: 0.05, faceLo: 0.17, faceZ: 0.29, faceHalfW: 0.24, browY: 0.37, floorY: 0.0 },
+  choco:   { cx: 0, head: { c: [0.02, 0.38, -0.04], r: [0.28, 0.19, 0.15], p: 4 }, torso: { c: [0.02, 0.06, -0.06], r: [0.30, 0.15, 0.17], p: 4 }, glove: 0.05, faceLo: 0.12, faceZ: 0.10, faceHalfW: 0.26, browY: 0.32, floorY: 0.0 },
+  sugar:   { cx: 0, head: { c: [0.02, 0.14, -0.02], r: [0.30, 0.29, 0.23], p: 4 }, torso: null, glove: 0.05, faceLo: 0.045, faceZ: 0.21, faceHalfW: 0.28, browY: 0.22, floorY: 0.03 },
+};
+const DEFAULT_SPEC = BODY_SPECS.biscuit;
+export const bodySpecFor = (id?: string): BodySpec => (id && BODY_SPECS[id]) || DEFAULT_SPEC;
+
+/** Normalised "radius" of a point inside a volume (<1 = inside). */
+export function volRadius(v: BodyVol, x: number, y: number, z: number, inflate = 0): number {
+  const p = v.p;
+  const a = Math.abs((x - v.c[0]) / (v.r[0] + inflate)), b = Math.abs((y - v.c[1]) / (v.r[1] + inflate)), c = Math.abs((z - v.c[2]) / (v.r[2] + inflate));
+  return Math.pow(Math.pow(a, p) + Math.pow(b, p) + Math.pow(c, p), 1 / p);
+}
+function pushOut(v: BodyVol, pt: [number, number, number], inflate: number, horizontal: boolean) {
+  const [x, y, z] = pt;
+  const s = volRadius(v, x, y, z, inflate);
+  if (s >= 1) return;
+  const dx = x - v.c[0], dy = y - v.c[1], dz = z - v.c[2];
+  if (!horizontal) {
+    if (s < 1e-5) { pt[2] = v.c[2] + v.r[2] + inflate; return; }
+    const k = 1 / s;
+    pt[0] = v.c[0] + dx * k; pt[1] = v.c[1] + dy * k; pt[2] = v.c[2] + dz * k;
+    return;
   }
-  return [x, y, z];
+  const p = v.p;
+  const by = Math.pow(Math.abs(dy / (v.r[1] + inflate)), p);
+  if (by >= 1) return;
+  const hx = Math.pow(Math.abs(dx / (v.r[0] + inflate)), p), hz = Math.pow(Math.abs(dz / (v.r[2] + inflate)), p);
+  if (hx + hz < 1e-8) { pt[2] = v.c[2] + (v.r[2] + inflate) * Math.pow(1 - by, 1 / p); return; }
+  const k = Math.pow((1 - by) / (hx + hz), 1 / p);
+  pt[0] = v.c[0] + dx * k; pt[2] = v.c[2] + dz * k;
+}
+/** Maps the current seat-frame target into the rest pose frame of the head/torso bones and back (follows lean, yaw, hop). */
+export interface ArmClampXf { headIn: THREE.Matrix4; headOut: THREE.Matrix4; torsoIn: THREE.Matrix4; torsoOut: THREE.Matrix4 }
+const vXf = new THREE.Vector3();
+function xfApply(m: THREE.Matrix4 | undefined, pt: [number, number, number]) {
+  if (!m) return;
+  vXf.set(pt[0], pt[1], pt[2]).applyMatrix4(m);
+  pt[0] = vXf.x; pt[1] = vXf.y; pt[2] = vXf.z;
+}
+const smooth01 = (x: number, a: number, b: number) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+
+function faceShield(pt: [number, number, number], sp: BodySpec, sgn: number) {
+  const cx = sp.cx;
+  const lat = Math.abs(pt[0] - cx);
+  const zClear = sp.faceZ + sp.glove + 0.18;
+  const w = (1 - smooth01(pt[2], zClear, zClear + 0.08)) * (1 - smooth01(lat, sp.faceHalfW, sp.faceHalfW + 0.12));
+  if (w <= 0 || pt[1] <= sp.faceLo) return;
+  if (pt[1] < sp.browY) {
+    pt[1] -= w * (pt[1] - sp.faceLo);
+  } else {
+    // Raised hand: swing it out past the side of the head and up above the cheeks (never a glove pressed on the cheek).
+    const want = sp.faceHalfW + sp.glove + 0.06;
+    if (lat < want) pt[0] = cx + sgn * (lat + w * (want - lat));
+    const upY = sp.browY + 0.08;
+    if (pt[1] < upY) pt[1] += w * (upY - pt[1]);
+    if (sp.raiseZ !== undefined && pt[2] > sp.raiseZ) pt[2] -= w * (pt[2] - sp.raiseZ);
+  }
+}
+
+/**
+ * Keeps an arm target (seat frame) out of the character's own body: never inside the head/face volume, never in
+ * front of the face (a hovering hand drops to just under the chin/table unless it is clearly forward of the face,
+ * a raised hand swings out past the side of the head), never sunk into the belly, and never in the body midline.
+ * shoulder/reach (optional): where the IK hand will really end up when the target is beyond arm's length.
+ */
+export function clampArmTarget(
+  tLoc: [number, number, number],
+  sd: Side,
+  id?: string,
+  shoulder?: [number, number, number] | null,
+  reach = 0,
+  xf?: ArmClampXf | null,
+): [number, number, number] {
+  const sgn = sd === 'L' ? -1 : 1;
+  const sp = bodySpecFor(id);
+  const cx = sp.cx;
+  const pt: [number, number, number] = [tLoc[0], tLoc[1], tLoc[2]];
+  for (let pass = 0; pass < 2; pass++) {
+    if (shoulder && reach > 0) {
+      const dx = pt[0] - shoulder[0], dy = pt[1] - shoulder[1], dz = pt[2] - shoulder[2];
+      const d = Math.hypot(dx, dy, dz), m = reach * 0.97;
+      if (d > m) { const k = m / d; pt[0] = shoulder[0] + dx * k; pt[1] = shoulder[1] + dy * k; pt[2] = shoulder[2] + dz * k; }
+      // A target hugging the shoulder folds the arm and leaves the glove against the cheek: keep at least ~60% extension.
+      const mn = reach * 0.6;
+      if (d < mn) {
+        // Extend outward/forward at the same height (extending straight down would bury the glove in the table and fold the elbow up).
+        const ady = Math.min(Math.abs(dy), mn * 0.8);
+        const h = Math.sqrt(mn * mn - ady * ady), hl = Math.hypot(dx, dz);
+        let ux = hl > 1e-4 ? dx / hl : 0, uz = hl > 1e-4 ? dz / hl : 1;
+        if (uz < 0.3) { uz = 0.3; const n = Math.hypot(ux, uz); ux /= n; uz /= n; }
+        pt[0] = shoulder[0] + ux * h; pt[2] = shoulder[2] + uz * h; pt[1] = shoulder[1] + Math.sign(dy || -1) * ady;
+      }
+    }
+    xfApply(xf?.headIn, pt);
+    // 1) Face shield: in front of the face but not clearly forward of it -> lower to chin height (or swing a raised hand outward).
+    faceShield(pt, sp, sgn);
+    // 2) Never inside the head (the glove surface keeps a clear gap from the face/cheek/ears).
+    pushOut(sp.head, pt, sp.glove + 0.035, false);
+    xfApply(xf?.headOut, pt);
+    // ...and once more in the seat frame, so a bobbing/rolling body can never carry the face onto a resting glove.
+    if (xf) { faceShield(pt, sp, sgn); pushOut(sp.head, pt, sp.glove + 0.02, false); }
+    // 3) Never sunk into the chest/belly.
+    if (sp.torso) { xfApply(xf?.torsoIn, pt); pushOut(sp.torso, pt, sp.glove + 0.02, true); xfApply(xf?.torsoOut, pt); }
+    // 4) Original per-character midline / depth / table clearances.
+    let [x, y, z] = pt;
+    if (id === 'tango') {
+      const minLat = z < 0.30 ? 0.31 : 0.21;
+      if (sgn * (x - cx) < minLat) x = cx + sgn * minLat;
+      if (z < 0.20 && y < sp.browY) z = 0.20;
+    } else if (id === 'sugar' || id === 'choco') {
+      const minLat = z < 0.22 ? 0.24 : 0.14;
+      if (sgn * (x - cx) < minLat) x = cx + sgn * minLat;
+      if (z < 0.14) z = 0.14;
+    } else {
+      const minLat = z < 0.20 ? 0.15 : 0.085;
+      if (sgn * (x - cx) < minLat) x = cx + sgn * minLat;
+      if (z < 0.12) z = 0.12;
+    }
+    if (y < sp.floorY) y = sp.floorY;
+    pt[0] = x; pt[1] = y; pt[2] = z;
+    // 5) Raising a glove back onto the table must not slide it into a face that leans/bobs down toward the table:
+    //    resolve against the head horizontally (outward/forward), in the head's own frame.
+    xfApply(xf?.headIn, pt);
+    pushOut(sp.head, pt, sp.glove + 0.03, true);
+    xfApply(xf?.headOut, pt);
+    if (pt[1] < sp.floorY) pt[1] = sp.floorY;
+    if (!shoulder || reach <= 0) break;
+  }
+  return pt;
 }
 
 export interface EmotePose {
@@ -655,27 +800,29 @@ export function computeIdlePose(id: string | undefined, seat: number, t: number,
 
   const isOrange = id === 'tango';
   const isBlocky = id === 'sugar' || id === 'choco';
-  const downX = isOrange ? 0.37 : isBlocky ? 0.19 : id === 'ammar' ? 0.175 : 0.21;
-  const downY = isOrange ? -0.04 : isBlocky ? 0.02 : id === 'ammar' ? -0.07 : -0.04;
-  const downZ = isOrange ? 0.18 : isBlocky ? 0.18 : 0.12;
+  const cx = id === 'mint' ? -0.066 : 0;
+  const downX = isOrange ? 0.28 : isBlocky ? 0.24 : id === 'ammar' ? 0.18 : id === 'mint' ? 0.17 : 0.21;
+  // Resting glove heights sit at/below each character's chin line (Orange guy's face reaches almost to the table).
+  const downY = isOrange ? 0.045 : id === 'sugar' ? 0.05 : id === 'choco' ? 0.12 : id === 'ammar' ? 0.09 : id === 'mint' ? 0.12 : 0.14;
+  const downZ = isOrange ? 0.34 : isBlocky ? 0.28 : 0.29;
 
   const br = Math.sin(t * 2.1);
-  const dxL = Math.sin(u2) * 0.028;
-  const dyL = Math.cos(u3) * 0.026 + br * 0.012;
-  const dzL = Math.sin(u2 * 0.8) * 0.028;
+  const dxL = Math.sin(u2) * 0.040;
+  const dyL = Math.cos(u3) * 0.036 + br * 0.016;
+  const dzL = Math.sin(u2 * 0.8) * 0.038;
 
-  const dxR = Math.cos(u2 + 1.2) * 0.028;
-  const dyR = Math.sin(u3 + 0.9) * 0.026 + br * 0.012;
-  const dzR = Math.cos(u2 * 0.85 + 0.5) * 0.028;
+  const dxR = Math.cos(u2 + 1.2) * 0.040;
+  const dyR = Math.sin(u3 + 0.9) * 0.036 + br * 0.016;
+  const dzR = Math.cos(u2 * 0.85 + 0.5) * 0.038;
 
-  const lx = -downX + dxL + wGestL * (isOrange ? 0.03 : 0.05);
+  const lx = cx - downX + dxL + wGestL * (isOrange ? 0.04 : 0.05);
   const ly = downY + dyL + wGestL * (mood === 'think' ? 0.26 : 0.22);
   const lz = downZ + dzL + wGestL * 0.14;
   const cL = 0.28 - wGestL * 0.14 + Math.sin(u3) * 0.08;
 
-  const tap = wRimR > 0.35 ? Math.max(0, Math.sin(t * 6.0)) * 0.024 : 0;
-  const rx = downX + dxR - wRimR * (isOrange ? 0.03 : 0.04);
-  const ry = downY + dyR + wRimR * 0.14 + tap;
+  const tap = wRimR > 0.35 ? Math.max(0, Math.sin(t * 6.0)) * 0.028 : 0;
+  const rx = cx + downX + dxR - wRimR * (isOrange ? 0.04 : 0.04);
+  const ry = downY + dyR + wRimR * 0.16 + tap;
   const rz = downZ + dzR + wRimR * 0.14;
   const cR = 0.32 + (wRimR * 0.16 - tap * 6) + Math.cos(u3) * 0.08;
 
@@ -767,5 +914,6 @@ if (typeof window !== 'undefined') {
     mouth: computeMouthTarget,
     walkGait: computeWalkGait,
     seatedLegs: computeSeatedLegPose,
+    actors: reg,
   };
 }

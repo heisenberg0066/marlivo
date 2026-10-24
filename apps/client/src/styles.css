@@ -355,7 +355,7 @@ details { margin: 10px 0; } summary { cursor: pointer; color: var(--cream-2); }
 .stage3d canvas { display: block; }
 .loading3d { display: grid; place-items: center; }
 .ov3d { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
-.ov3d-item { position: absolute; left: 0; top: 0; will-change: transform; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.ov3d-item { position: absolute; left: 0; top: 0; will-change: transform; visibility: hidden; /* shown once the frame loop has projected it (no flash at the top-left corner) */ display: flex; flex-direction: column; align-items: center; gap: 2px; }
 .plate3d .nameplate { transform: scale(.92); }
 .plus-badge.in3d, .target-badge.in3d { position: static; transform: none; }
 .deck-count.in3d { position: static; transform: none; }

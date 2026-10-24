@@ -156,6 +156,7 @@
  "status.paused": "Paused: waiting for {{names}}",
  "status.pausedHint": "Nothing happens until they're back. There is no timer.",
  "status.windowOpen": "Match {{t}} is open. {{name}} draws next.",
+ "status.windowOpenYou": "Match {{t}} is open. You draw next.",
  "power.J": "Jack",
  "power.Q": "Queen",
  "power.10": "Ten",

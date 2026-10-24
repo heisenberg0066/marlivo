@@ -505,6 +505,47 @@ describe('§7 placement and reshuffle (R27, Q12, Q13, Q25)', () => {
     expect(ofType(run, 'NO_CARDS').length).toBe(1); // only 1 card existed, 2 were due
     expect(run.s.round!.result!.winner).toBeNull();
   });
+  it('immediately reshuffles thrown cards (discard minus top card) when the draw pile reaches 0 on DRAW so the round continues', () => {
+    const run = play(2, [['2S', '3S', '4S', '5S', '6S', '7S'], ['2H', '3H', '4H', '5H', '6H', '7H']], ['8C', '9D']);
+    const r = run.s.round!;
+    // Leave only 1 card in the deck and move the rest to the discard pile (as thrown cards)
+    const thrown = r.deck.splice(1);
+    r.discard.push(...thrown);
+    const topBefore = r.discard[r.discard.length - 1]!;
+    expect(r.deck.length).toBe(1);
+    expect(r.discard.length).toBeGreaterThan(10);
+
+    // Drawing the last card immediately triggers a reshuffle of the thrown cards (keeping the top discard card)
+    act(run, 0, { t: 'DRAW' });
+    const rAfter = run.s.round!;
+    expect(run.s.phase).toBe('PLAY');
+    expect(rAfter.reshuffles).toBe(1);
+    expect(rAfter.deck.length).toBe(thrown.length - 1);
+    expect(rAfter.discard.map((c) => c.id)).toEqual([topBefore.id]);
+    expect(total(run)).toBe(52);
+  });
+  it('reshuffles thrown cards mid-penalty when only 1 card is left in drawPile and 2 penalty cards are due', () => {
+    const run = play(2, [['KS', '2H', '3C', '4D', '5S', '6H'], ['2D', '3D', '4C', '5C', '6C', '7C']], ['9C']);
+    drawThrow(run);
+    const r = run.s.round!;
+    // Leave exactly 1 card in the deck and put the rest in discard below the 9C target
+    const extra = r.deck.splice(1);
+    r.discard.unshift(...extra);
+    expect(r.deck.length).toBe(1);
+
+    // Seat 0 claims match, flips KS (wrong), and gives up -> 2 penalty cards needed!
+    act(run, 0, { t: 'CLAIM_MATCH' });
+    act(run, 0, { t: 'FLIP', slot: sid(0, 1) });
+    act(run, 0, { t: 'GIVE_UP' });
+
+    const rAfter = run.s.round!;
+    expect(run.s.phase).toBe('PLAY');
+    expect(rAfter.reshuffles).toBe(1);
+    expect(count(run, 0)).toBe(8);
+    expect(rAfter.deck.length).toBeGreaterThan(0);
+    expect(rAfter.discard.at(-1)).toMatchObject({ r: 9, s: 'C' });
+    expect(total(run)).toBe(52);
+  });
 });
 
 describe('§3.5 scoring and round end (R23, R26, Q16)', () => {

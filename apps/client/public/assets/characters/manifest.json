@@ -11,11 +11,11 @@
       "placeholder": "bear",
       "pickable": true,
       "modelLow": "biscuit-low.glb",
-      "height": 0.95,
-      "baseY": -0.32,
+      "height": 0.98,
+      "baseY": -0.44,
       "motion": "animal",
       "glow": 0.2,
-      "rotationY": -2.0
+      "rotationY": -2
     },
     "mint": {
       "name": {
@@ -26,8 +26,8 @@
       "placeholder": "cat",
       "pickable": true,
       "modelLow": "mint-low.glb",
-      "height": 0.95,
-      "baseY": -0.32,
+      "height": 0.98,
+      "baseY": -0.44,
       "motion": "animal",
       "glow": 0.2,
       "rotationY": 9.8
@@ -41,11 +41,11 @@
       "placeholder": "owl",
       "pickable": true,
       "modelLow": "pepper-low.glb",
-      "height": 0.95,
-      "baseY": -0.32,
+      "height": 0.98,
+      "baseY": -0.44,
       "motion": "animal",
       "glow": 0.2,
-      "rotationY": 0.0
+      "rotationY": 0
     },
     "tango": {
       "name": {
@@ -56,11 +56,11 @@
       "placeholder": "orange",
       "pickable": true,
       "modelLow": "orange-guy-low.glb",
-      "height": 0.9,
-      "baseY": -0.32,
+      "height": 0.96,
+      "baseY": -0.44,
       "motion": "creature",
       "glow": 0.15,
-      "rotationY": -3.0
+      "rotationY": -3
     },
     "ammar": {
       "name": {
@@ -87,11 +87,11 @@
       "placeholder": "generic",
       "pickable": true,
       "modelLow": "choco-low.glb",
-      "height": 0.95,
-      "baseY": -0.32,
+      "height": 0.98,
+      "baseY": -0.44,
       "motion": "animal",
       "glow": 0.2,
-      "rotationY": 2.0
+      "rotationY": 2
     },
     "sugar": {
       "name": {
@@ -102,8 +102,8 @@
       "placeholder": "generic",
       "pickable": true,
       "modelLow": "sugar-low.glb",
-      "height": 0.78,
-      "baseY": -0.32,
+      "height": 0.86,
+      "baseY": -0.44,
       "motion": "animal",
       "glow": 0.2,
       "rotationY": -2.4
@@ -111,7 +111,7 @@
     "guest": {
       "name": {
         "en": "Guest",
-        "fr": "Invit\u00e9"
+        "fr": "Invité"
       },
       "model": null,
       "placeholder": "generic",

@@ -12,6 +12,9 @@ import {
   computeMouthTarget,
   computeWalkGait,
   computeSeatedLegPose,
+  clampArmTarget,
+  bodySpecFor,
+  volRadius,
   type EmoteKind,
 } from '../src/render3d/actors';
 import { computeBadmintonState, PERIOD as BADMINTON_PERIOD } from '../src/render3d/scenes/badminton';
@@ -185,5 +188,38 @@ describe('All 7 characters 4-bone arm + 3-bone leg GLB rigs, animations, badmint
     });
     expect(mSlam.open).toBeGreaterThan(0.65);
     expect(mSlam.smile).toBeLessThan(-0.25);
+  });
+
+  it('keeps every hand target out of the head/face for all 7 characters (idle, think, every emote)', () => {
+    const ids = ['tango', 'ammar', 'biscuit', 'mint', 'pepper', 'choco', 'sugar'];
+    const kinds: EmoteKind[] = ['wave', 'cheer', 'boo', 'slam', 'win', 'sputter'];
+    for (const id of ids) {
+      const sp = bodySpecFor(id);
+      const check = (t: [number, number, number]) => {
+        // never inside the inflated head volume
+        expect(volRadius(sp.head, t[0], t[1], t[2], sp.glove)).toBeGreaterThan(0.999);
+        // never hovering right in front of the face (between chin and brow, within the face width, not clearly forward)
+        const inFront = t[1] > sp.faceLo + 1e-6 && t[1] < sp.browY && Math.abs(t[0] - sp.cx) < sp.faceHalfW && t[2] < sp.faceZ + sp.glove + 0.18;
+        expect(inFront).toBe(false);
+      };
+      for (const mood of ['idle', 'think', 'happy', 'sad']) {
+        for (let t = 0; t < 12; t += 0.37) {
+          const p = computeIdlePose(id, 1, t, mood, 0);
+          check(p.tL); check(p.tR);
+        }
+      }
+      for (const k of kinds) {
+        for (let u = 0; u <= 1; u += 0.05) {
+          const e = computeEmotePose(k, u);
+          if (e.tL) check(clampArmTarget(e.tL, 'L', id));
+          if (e.tR) check(clampArmTarget(e.tR, 'R', id));
+        }
+      }
+      // Orange guy: a resting/thinking glove never rises to his eyes (his face reaches almost down to the table)
+      if (id === 'tango') {
+        const p = computeIdlePose('tango', 1, 0.5, 'think', 0);
+        expect(Math.max(p.tL[1], p.tR[1])).toBeLessThanOrEqual(sp.faceLo + 1e-6);
+      }
+    }
   });
 });

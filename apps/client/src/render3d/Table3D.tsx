@@ -186,7 +186,7 @@ function Deck({ L, onDeck, clickable }: { L: Layout3; onDeck(): void; clickable:
   }, []);
   const glowM = useMemo(() => new THREE.MeshBasicMaterial({ map: glowTexture(), transparent: true, depthWrite: false, color: '#ffae42', opacity: 0 }), []);
   useFrame((s) => { glowM.opacity = clickable ? 0.5 + 0.3 * Math.sin(s.clock.elapsedTime * 5) : 0; });
-  if (n <= 0) return null;
+  if (n <= 0 && !clickable) return null;
   return (
     <group position={[L.deck.p[0], 0, L.deck.p[2]]} rotation={[0, L.deck.yaw, 0]} onClick={(e) => { e.stopPropagation(); onDeck(); }}>
       <mesh geometry={PLANE} material={glowM} scale={[L.deck.w * 1.6, 1, L.deck.h * 1.45]} position={[0, 0.0003, 0]} renderOrder={1} />
@@ -285,7 +285,7 @@ const Scene = memo(function Scene({ p, L, stage, points, els, portrait, scene }:
             {!isMe && si && L.chars[seat] && (
               <group position={L.chars[seat]!.p} rotation={[0, L.chars[seat]!.yaw, 0]} scale={CHAR_SCALE} onClick={(e) => { if (pick) { e.stopPropagation(); p.onSeat(seat); } }}>
                 <SeatChair id={si.characterId} scene={scene} />
-                <Suspense fallback={null}><Figure id={si.characterId} mood={moodOf(v, ov, seat)} seed={seat} /></Suspense>
+                <Suspense fallback={null}><Figure key={si.characterId} id={si.characterId} mood={moodOf(v, ov, seat)} seed={seat} /></Suspense>
               </group>
             )}
             {!isMe && r?.drawn?.by === seat && !ov.hideHand[seat] && L.hands[seat] && (
