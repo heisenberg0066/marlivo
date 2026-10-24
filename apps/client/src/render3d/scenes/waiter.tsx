@@ -602,6 +602,35 @@ export const OrangeWaiter = memo(function OrangeWaiter({ L, view, level }: { L: 
           })(),
         };
       },
+      // debug: floor footprint of every seated group (character + chair + props) and of the waiter himself, from the
+      // real (skinned) vertices: max distance from the root per 10-degree bin, in world units
+      footprints: () => {
+        const rt = rootRef.current; if (!rt) return null;
+        let scene: THREE.Object3D = rt; while (scene.parent) scene = scene.parent;
+        scene.updateMatrixWorld(true);
+        const v = new THREE.Vector3();
+        const prof = (obj: THREE.Object3D, cx: number, cz: number) => {
+          const bins = new Array(36).fill(0); let max = 0;
+          obj.traverse((o) => {
+            const m = o as THREE.Mesh; if (!m.isMesh || !m.visible || !m.geometry?.attributes?.position) return;
+            const pos = m.geometry.attributes.position; const step = Math.max(1, Math.floor(pos.count / 4000));
+            for (let i = 0; i < pos.count; i += step) {
+              m.getVertexPosition(i, v); m.localToWorld(v);
+              const dx = v.x - cx, dz = v.z - cz, d = Math.hypot(dx, dz);
+              const b = Math.floor(((Math.atan2(dx, dz) + Math.PI * 2) % (Math.PI * 2)) / (Math.PI * 2) * 36) % 36;
+              if (d > bins[b]) bins[b] = d; if (d > max) max = d;
+            }
+          });
+          return { max: +max.toFixed(3), bins: bins.map((b: number) => +b.toFixed(3)) };
+        };
+        const seats: Record<string, unknown> = {};
+        for (const [sk, c] of Object.entries(L.chars)) {
+          let found: THREE.Object3D | null = null;
+          scene.traverse((o) => { if (found || o === scene) return; o.getWorldPosition(v); if (Math.abs(v.x - c.p[0]) < 1e-3 && Math.abs(v.z - c.p[2]) < 1e-3 && Math.abs(o.scale.x - 0.85) < 1e-3) found = o; });
+          seats[sk] = found ? { p: c.p, yaw: c.yaw, ...prof(found, c.p[0], c.p[2]) } : null;
+        }
+        return { seats, waiter: rt.visible ? prof(rt, rt.position.x, rt.position.z) : null };
+      },
       trigger,
       setProgress: (p?: number) => { if (manualRef.current) manualRef.current = { ...manualRef.current, locked: p }; },
       stop: () => { manualRef.current = null; },
@@ -793,8 +822,9 @@ export const OrangeWaiter = memo(function OrangeWaiter({ L, view, level }: { L: 
       let tL: V3 = [-0.28, 0.33, 0.06 - swing], wL = 0.78, cL = 0.35;
       let tR: V3 = [0.28, 0.33, 0.06 + swing], wR = 0.78, cR = 0.35;
       if (run.kind === 'refill') {
-        tL = [-0.30, 0.39, 0.18 + swing * 0.15]; wL = 0.96; cL = 0.48;
-        tR = pouring ? [0.26, 0.45, 0.29] : [0.28, 0.39, 0.18 + swing * 0.2]; wR = 1.0; cR = pouring ? 0.92 : 0.85;
+        // tray and teapot held in close to the body (a compact footprint between the chairs)
+        tL = [-0.24, 0.39, 0.12 + swing * 0.15]; wL = 0.96; cL = 0.48;
+        tR = pouring ? [0.2, 0.45, 0.27] : [0.23, 0.39, 0.12 + swing * 0.2]; wR = 1.0; cR = pouring ? 0.92 : 0.85;
       } else if (smp.tag === 'visit') {
         if (hu < 0.5) { tR = [0.22, 0.42, 0.24]; wR = 0.95; cR = 0.55; tL = [-0.26, 0.36, 0.16]; wL = 0.85; cL = 0.45; }
         else { const wv = Math.sin(hu * 40) * 0.085; tR = [0.30 + wv, 0.56, 0.22]; wR = 1.0; cR = 0.12; tL = [-0.28, 0.36, 0.12]; wL = 0.88; cL = 0.6; }
