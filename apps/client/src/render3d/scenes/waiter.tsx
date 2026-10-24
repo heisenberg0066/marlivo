@@ -1,7 +1,11 @@
-// The Orange waiter (sketch book v8 p22–27, W1–W6): a third Orange guy who strolls in from the kitchen door
-// along the outer stone patio corridors (STOP_R = 2.46, LOOP_R = 2.62 on the patio floor y = -0.42, strictly outside
-// the table and chairs with >150px screen-space separation from the tabletop), visiting EVERY seated player's teacup
-// one by one during a 60-second active tour, then stepping off-screen for a 60-second break and returning in the next outfit!
+// The Orange waiter (sketch book v8 p22–27, W1–W6): a third Orange guy who works the table in shifts. On a shift
+// (~60 s) he walks in from the kitchen exit (off-screen, front-left of the terrace), goes round the WHOLE table on
+// a ring behind the chairs, stops beside every seated player to pour their tea, then walks out through the exit,
+// takes a 60 s break off-screen and comes back in the next outfit. Game events (a round winner's cheer, the match
+// medal) are short visits that start while he is standing at a cup and bring him back to the same spot.
+// Motion is planned in waiterPath.ts (time-indexed walk / hold segments): position, speed and the leg cycle all come
+// from the plan at the current clock time, the legs use 2-bone IK with a walking foot path whose stride is tied to
+// the distance walked (no foot sliding, no stepping in place), and he turns smoothly to face where he walks.
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
@@ -9,22 +13,7 @@ import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeom
 import type { PlayerView } from '@marlivo/engine';
 import type { Layout3, V3 } from '../layout3d';
 import { loadManifest, entryFor, loadModel, normalise } from '../registry';
-import {
-  findArms,
-  findLegs,
-  poseLeg,
-  computeWalkGait,
-  solveArm,
-  curlArm,
-  resetArm,
-  stepArmSmoothing,
-  handPos,
-  triggerEmote,
-  activeEmoteFor,
-  type ArmChain,
-  type LegChain,
-  type Side,
-} from '../actors';
+import { findArms, findLegs, resetLeg, solveArm, curlArm, resetArm, stepArmSmoothing, handPos, type ArmChain, type LegChain, type Side } from '../actors';
 import type { FaceShaderUniform } from '../Figures';
 import { attachBlinkShader } from '../Figures';
 import { propLayout } from './propLayout';
@@ -34,47 +23,30 @@ import {
   WAITER_OUTFITS,
   OUTFIT_ORDER,
   waiterOutfitForCycle,
-  evaluateWaiterCycle,
   pickWaiterOutfit,
-  pickRefillOrder,
   cupStopForSeat,
-  computeWaiterStops,
-  nearestStop,
+  waiterObstacles,
+  buildShiftPlan,
+  buildEventPlan,
+  samplePlan,
+  legGeomFrom,
+  walkPose,
+  cadenceOf,
   KITCHEN_DOOR,
-  KITCHEN_DOOR_R,
   WAITER_FLOOR_Y,
-  LOOP_R,
-  REFILL_POUR,
-  REFILL_WALK,
+  WAITER_MODEL_H,
+  WAITER_SCALE,
+  WALK_SPEED,
   WAITER_ACTIVE_SEC,
   WAITER_AWAY_SEC,
   WAITER_CYCLE_SEC,
   type WaiterOutfit,
-  type WaiterStop,
+  type WaiterPlan,
+  type LegGeom,
+  type LegPose,
 } from './waiterPath';
 
 export type WaiterActionKind = 'visit' | 'refill' | 'shuffle' | 'roundEnd' | 'medal';
-
-export interface WaiterJob {
-  kind: WaiterActionKind;
-  outfit: WaiterOutfit;
-  startedAt: number;
-  duration: number;
-  winner?: number;
-  loser?: number;
-  lockedProgress?: number;
-  refillOrder?: number[];
-  cycleIndex?: number;
-}
-
-const clamp = (x: number, a = 0, b = 1) => Math.min(b, Math.max(a, x));
-const ease = (x: number) => { x = clamp(x); return x * x * (3 - 2 * x); };
-const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
-const normAngle = (a: number) => {
-  while (a <= -Math.PI) a += Math.PI * 2;
-  while (a > Math.PI) a -= Math.PI * 2;
-  return a;
-};
 
 /** Builds a contoured 3D garment shell matching the exact measured cross-section of orange-guy.glb (height=0.80, baseY=0),
  *  rising up over the chest/shoulders/back (yMax ~ 0.49) and dipping smoothly below the mouth at the front center (y ~ 0.38). */
@@ -369,23 +341,20 @@ function OutfitMeshes({
   );
 }
 
-function TeapotProp({ pouring, propRef }: { pouring: boolean; propRef?: React.RefObject<THREE.Group> }) {
+function TeapotProp({ pouring, propRef, spoutRef }: { pouring: boolean; propRef?: React.RefObject<THREE.Group>; spoutRef?: React.RefObject<THREE.Object3D> }) {
   return (
-    <group ref={propRef} position={[0.25, 0.40, 0.18]} rotation={[pouring ? 0.72 : 0.08, -0.22, pouring ? -0.78 : 0]}>
+    <group ref={propRef} position={[0.25, 0.40, 0.18]} rotation={[pouring ? 0.5 : 0.08, -0.22, pouring ? -0.62 : 0]}>
       <mesh geometry={WG.sph} material={WM.porcelain} scale={[0.082, 0.074, 0.082]} />
       <mesh geometry={WG.torus} material={WM.gold} position={[0, 0.056, 0]} rotation={[Math.PI / 2, 0, 0]} scale={0.048} />
       <mesh geometry={WG.sph} material={WM.porcelain} position={[0, 0.065, 0]} scale={[0.045, 0.022, 0.045]} />
       <mesh geometry={WG.sph} material={WM.gold} position={[0, 0.086, 0]} scale={0.014} />
       <mesh geometry={WG.cyl} material={WM.porcelain} position={[0.082, 0.02, 0.02]} rotation={[0.2, 0, -0.75]} scale={[0.014, 0.082, 0.018]} />
       <mesh geometry={WG.arc} material={WM.porcelain} position={[-0.076, 0.005, -0.01]} rotation={[0, 0, Math.PI * 0.45]} scale={0.038} />
+      <object3D ref={spoutRef} position={[0.112, 0.048, 0.028]} />
       {pouring && (
         <group>
-          {/* Golden-amber tea stream pouring from spout toward the player's cup */}
-          <mesh geometry={WG.cyl} material={WM.amber} position={[0.145, -0.13, 0.045]} rotation={[0.12, 0, -0.18]} scale={[0.010, 0.30, 0.010]} />
-          {/* Rising warm steam puffs */}
-          <mesh geometry={WG.sph} material={WM.steam} position={[0.16, -0.05, 0.05]} scale={0.022} />
-          <mesh geometry={WG.sph} material={WM.steam} position={[0.175, 0.01, 0.06]} scale={0.028} />
-          <mesh geometry={WG.sph} material={WM.steam} position={[0.155, 0.07, 0.04]} scale={0.034} />
+          <mesh geometry={WG.sph} material={WM.steam} position={[0.12, 0.09, 0.03]} scale={0.022} />
+          <mesh geometry={WG.sph} material={WM.steam} position={[0.135, 0.14, 0.04]} scale={0.028} />
         </group>
       )}
     </group>
@@ -450,6 +419,13 @@ export function GoldMedalMesh({ worn = false }: { worn?: boolean }) {
   );
 }
 
+interface WaiterRig {
+  arms: Partial<Record<Side, ArmChain>>;
+  legs: Partial<Record<Side, LegChain>>;
+  geom: Partial<Record<Side, LegGeom>>;
+  blinkU: FaceShaderUniform[];
+}
+
 function useWaiterModel(level: 'high' | 'low') {
   const container = useMemo(() => {
     const g = new THREE.Group();
@@ -463,6 +439,7 @@ function useWaiterModel(level: 'high' | 'low') {
 
   useEffect(() => {
     let alive = true;
+    let added: THREE.Object3D | null = null;
     (async () => {
       const m = await loadManifest();
       const e = entryFor(m, 'tango');
@@ -479,134 +456,172 @@ function useWaiterModel(level: 'high' | 'low') {
         }
       });
       const blinkU = attachBlinkShader(obj, 'tango', e.rotationY ?? 0);
-      normalise(obj, { ...e, height: 0.80, baseY: 0 });
+      normalise(obj, { ...e, height: WAITER_MODEL_H, baseY: 0 });
       const arms = findArms(obj);
       const legs = findLegs(obj);
+      // measure the leg bones in body space (obj has no parent yet, so its world space is the body space)
+      obj.updateMatrixWorld(true);
+      const geom: Partial<Record<Side, LegGeom>> = {};
+      for (const sd of ['L', 'R'] as Side[]) {
+        const l = legs[sd];
+        if (!l) continue;
+        const w = (b: THREE.Object3D): V3 => { const v = b.getWorldPosition(new THREE.Vector3()); return [v.x, v.y, v.z]; };
+        geom[sd] = legGeomFrom(w(l.hip), w(l.knee), w(l.foot));
+      }
       const fb = container.getObjectByName('fallback-egg');
       if (fb) container.remove(fb);
-      container.userData.waiterRig = { arms, legs, blinkU };
+      for (const ch of [...container.children]) container.remove(ch);
+      container.userData.waiterRig = { arms, legs, geom, blinkU } satisfies WaiterRig;
       container.add(obj);
+      added = obj;
     })();
-    return () => { alive = false; };
+    return () => { alive = false; if (added) container.remove(added); };
   }, [container, level]);
 
   return container;
 }
 
+const qA = new THREE.Quaternion();
+/** Sets one leg from the gait (no smoothing needed: the pose is an exact function of the distance walked). */
+function applyLeg(leg: LegChain | undefined, pose: LegPose) {
+  if (!leg) return;
+  resetLeg(leg);
+  if (Math.abs(pose.hipPitch) > 1e-5) leg.hip.quaternion.multiply(qA.setFromAxisAngle(leg.axHip[0], -pose.hipPitch));
+  if (Math.abs(pose.kneeBend) > 1e-5) leg.knee.quaternion.multiply(qA.setFromAxisAngle(leg.axKnee[0], pose.kneeBend));
+  if (Math.abs(pose.footPitch) > 1e-5) leg.foot.quaternion.multiply(qA.setFromAxisAngle(leg.axFoot[0], -pose.footPitch));
+}
+
+type Flags = {
+  visible: boolean;
+  pouring: boolean;
+  wink: boolean;
+  flourish: 'gather' | 'bridge' | 'set' | null;
+  cushionMedal: 'none' | 'with' | 'empty';
+  confetti: 'none' | 'multi' | 'gold';
+};
+const NO_FLAGS: Flags = { visible: false, pouring: false, wink: false, flourish: null, cushionMedal: 'none', confetti: 'none' };
+
+/** What he is doing right now: a work shift, a short event visit (medal / cheer / shuffle / wave), or a manual
+ *  test job. All of them are time-indexed WaiterPlans, so he always walks from where he is to where he goes. */
+interface Run {
+  kind: WaiterActionKind;
+  outfit: WaiterOutfit;
+  plan: WaiterPlan;
+  /** clock time at which plan time 0 happened (shift pauses for an event push this later) */
+  t0: number;
+  /** locked plan progress 0..1 (manual showcase / test scrubbing) */
+  locked?: number;
+  winner?: number;
+  loser?: number;
+  cycleIndex?: number;
+}
+type Pending = { kind: 'roundEnd' | 'medal'; winner: number; loser?: number; at: number };
+
 export const OrangeWaiter = memo(function OrangeWaiter({ L, view, level }: { L: Layout3; view?: PlayerView; level: 'high' | 'low' }) {
   const model = useWaiterModel(level);
   const rootRef = useRef<THREE.Group>(null);
   const bodyRef = useRef<THREE.Group>(null);
-  const splashRef = useRef<THREE.Group>(null);
   const confettiRef = useRef<THREE.Group>(null);
   const towelRef = useRef<THREE.Group>(null);
   const teapotRef = useRef<THREE.Group>(null);
+  const spoutRef = useRef<THREE.Object3D>(null);
+  const streamRef = useRef<THREE.Mesh>(null);
   const cushionRef = useRef<THREE.Group>(null);
-  const glassRef = useRef<THREE.Mesh>(null);
 
-  const stops = useMemo(() => computeWaiterStops(L), [L]);
   const props = useMemo(() => propLayout(L), [L]);
-  const [job, setJob] = useState<WaiterJob | null>(null);
-  const [medalWinner, setMedalWinner] = useState<number | null>(null);
+  const obs = useMemo(() => waiterObstacles(L), [L]);
   const clockRef = useRef(0);
-  const lastOutfitRef = useRef<WaiterOutfit | undefined>(undefined);
-  const prevPosRef = useRef<V3>([...KITCHEN_DOOR] as V3);
-  const walkPhaseRef = useRef(0);
-  const strideSmoothRef = useRef(0);
-  const prevRoundRef = useRef<number>(view?.roundNo ?? 0);
-  const prevResultRef = useRef<boolean>(false);
+  const camRef = useRef<THREE.Camera | null>(null);
+  // the shift / break state machine (refs: it runs inside useFrame)
+  const shiftRef = useRef<Run | null>(null);
+  const eventRef = useRef<(Run & { during: 'shift' | 'break' }) | null>(null);
+  const manualRef = useRef<Run | null>(null);
+  const breakUntilRef = useRef(0);
+  const cycleRef = useRef(0);
+  const pendingRef = useRef<Pending | null>(null);
+  const yawRef = useRef<number | null>(null);
+  const lastRef = useRef<{ x: number; z: number; t: number; speed: number; amt: number; cyc: number; mode: string; tag: string | null }>({ x: 0, z: 0, t: 0, speed: 0, amt: 0, cyc: 0, mode: 'break', tag: null });
+  const [shown, setShown] = useState<{ kind: WaiterActionKind; outfit: WaiterOutfit } | null>(null);
+  const [flags, setFlags] = useState<Flags>(NO_FLAGS);
+  const [medalWinner, setMedalWinner] = useState<number | null>(null);
+  const prevResultRef = useRef<boolean>(!!view?.round?.result);
   const prevPhaseRef = useRef<string>(view?.phase ?? '');
 
-  const startJob = (
-    kind: WaiterActionKind,
-    opts: { outfit?: WaiterOutfit; winner?: number; loser?: number; progress?: number; duration?: number; cycleIndex?: number } = {}
-  ) => {
-    const outfit = opts.outfit ?? (opts.cycleIndex !== undefined ? waiterOutfitForCycle(opts.cycleIndex) : pickWaiterOutfit(Math.random, lastOutfitRef.current));
-    lastOutfitRef.current = outfit;
-    const cupSeats = pickRefillOrder(L, Object.keys(props.tea).map(Number));
-    const durations: Record<WaiterActionKind, number> = {
-      visit: 11,
-      refill: opts.duration ?? WAITER_ACTIVE_SEC,
-      shuffle: 10,
-      roundEnd: 12,
-      medal: 13,
-    };
-    const seats = Object.keys(L.seats).map(Number).sort((a, b) => a - b);
-    const winner = opts.winner ?? view?.matchWinner ?? view?.round?.result?.winner ?? seats[0] ?? 0;
-    const loser = opts.loser ?? seats.find((s) => s !== winner) ?? seats[seats.length - 1] ?? 1;
-    if (kind === 'medal') setMedalWinner(winner);
-    setJob({
-      kind,
-      outfit,
-      startedAt: clockRef.current,
-      duration: durations[kind],
-      winner,
-      loser,
-      lockedProgress: opts.progress,
-      refillOrder: cupSeats,
-      cycleIndex: opts.cycleIndex,
-    });
+  const seatsAll = () => Object.keys(L.seats).map(Number).sort((a, b) => a - b);
+  const charPos = (seat: number): V3 => L.chars[seat]?.p ?? [0, 0, 1.2];
+  const shiftPlan = () => buildShiftPlan(L, props.tea, WAITER_ACTIVE_SEC);
+  /** Plan for a short event visit, from `start` back to `end`. */
+  const eventPlan = (kind: WaiterActionKind, start: [number, number], end: [number, number], winner?: number): WaiterPlan => {
+    const seat = winner ?? seatsAll()[0] ?? 0;
+    const st = cupStopForSeat(L, seat, props.tea[seat]?.p, obs);
+    const c = charPos(seat);
+    if (kind === 'visit') return buildEventPlan(start, [st.standPos[0], st.standPos[2]], [0, 3], 5, 'visit', end, seat);
+    if (kind === 'shuffle') return buildEventPlan(start, [st.standPos[0], st.standPos[2]], [0, 0], 5, 'shuffle', end, seat);
+    if (kind === 'roundEnd') return buildEventPlan(start, [st.standPos[0], st.standPos[2]], [c[0], c[2]], 5, 'cheer', end, seat);
+    return buildEventPlan(start, [st.standPos[0], st.standPos[2]], [c[0], c[2]], 7, 'medal', end, seat);
+  };
+  const doorXZ: [number, number] = [KITCHEN_DOOR[0], KITCHEN_DOOR[2]];
+
+  const trigger = (kind: WaiterActionKind, opts: { outfit?: WaiterOutfit; winner?: number; loser?: number; progress?: number } = {}) => {
+    const outfit = opts.outfit ?? (kind === 'medal' ? 'tuxedo' : pickWaiterOutfit(Math.random, shown?.outfit));
+    const plan = kind === 'refill' ? shiftPlan() : eventPlan(kind, doorXZ, doorXZ, opts.winner);
+    manualRef.current = { kind, outfit, plan, t0: clockRef.current, locked: opts.progress, winner: opts.winner, loser: opts.loser };
+    if (kind === 'medal') setMedalWinner(opts.winner ?? seatsAll()[0] ?? 0);
   };
 
   useEffect(() => {
     const api = {
       outfits: WAITER_OUTFITS,
       outfitOrder: OUTFIT_ORDER,
-      stops,
-      job,
       cycleSpec: { activeSec: WAITER_ACTIVE_SEC, awaySec: WAITER_AWAY_SEC, cycleSec: WAITER_CYCLE_SEC },
-      state: () => ({
-        job,
-        lastOutfit: lastOutfitRef.current,
-        refillOrder: pickRefillOrder(L, Object.keys(props.tea).map(Number)),
-        pos: rootRef.current ? [rootRef.current.position.x, rootRef.current.position.y, rootRef.current.position.z] : null,
-        yaw: rootRef.current ? rootRef.current.rotation.y : 0,
-        legL: (() => { const l = model.userData.waiterRig?.legs?.L; return l ? { hip: l.hip.quaternion.toArray(), knee: l.knee.quaternion.toArray(), foot: l.foot.quaternion.toArray() } : null; })(),
-        legR: (() => { const l = model.userData.waiterRig?.legs?.R; return l ? { hip: l.hip.quaternion.toArray(), knee: l.knee.quaternion.toArray(), foot: l.foot.quaternion.toArray() } : null; })(),
-      }),
-      trigger: (kind: WaiterActionKind, opts?: { outfit?: WaiterOutfit; winner?: number; loser?: number; progress?: number; duration?: number }) => startJob(kind, opts),
-      setProgress: (p?: number) => setJob((cur) => (cur ? { ...cur, lockedProgress: p } : cur)),
-      stop: () => setJob(null),
+      plan: () => shiftPlan(),
+      get job() { const r = manualRef.current ?? eventRef.current ?? shiftRef.current; return r ? { kind: r.kind, outfit: r.outfit, cycleIndex: r.cycleIndex, lockedProgress: r.locked } : null; },
+      state: () => {
+        const r = manualRef.current ?? eventRef.current ?? shiftRef.current;
+        const rig = model.userData.waiterRig as WaiterRig | undefined;
+        const fp = (sd: Side) => { const l = rig?.legs[sd]; if (!l) return null; const v = l.foot.getWorldPosition(new THREE.Vector3()); return [+v.x.toFixed(4), +v.y.toFixed(4), +v.z.toFixed(4)]; };
+        const lr = lastRef.current;
+        return {
+          mode: manualRef.current ? 'manual' : eventRef.current ? 'event' : shiftRef.current ? 'shift' : 'break',
+          job: r ? { kind: r.kind, outfit: r.outfit, cycleIndex: r.cycleIndex } : null,
+          visible: !!rootRef.current?.visible,
+          pos: rootRef.current ? [rootRef.current.position.x, rootRef.current.position.y, rootRef.current.position.z] : null,
+          yaw: rootRef.current ? rootRef.current.rotation.y : 0,
+          speed: lr.speed, stride: lr.amt, cycle: lr.cyc, tag: lr.tag,
+          breakLeft: Math.max(0, breakUntilRef.current - clockRef.current),
+          clock: clockRef.current,
+          footL: fp('L'), footR: fp('R'),
+          rigReady: !!rig,
+          // on-screen test: fraction of a few body points (feet .. head) inside the view (NDC within +-1)
+          onScreen: (() => {
+            const cam = camRef.current, rt = rootRef.current;
+            if (!cam || !rt || !rt.visible) return 0;
+            let n = 0; const pts = [[0, 0.05, 0], [0, 0.4, 0], [0, 0.75, 0], [0.25, 0.4, 0], [-0.25, 0.4, 0]];
+            for (const q of pts) { const v = rt.localToWorld(new THREE.Vector3(q[0], q[1], q[2])).project(cam); if (Math.abs(v.x) <= 1 && Math.abs(v.y) <= 1 && v.z < 1) n++; }
+            return n / pts.length;
+          })(),
+        };
+      },
+      trigger,
+      setProgress: (p?: number) => { if (manualRef.current) manualRef.current = { ...manualRef.current, locked: p }; },
+      stop: () => { manualRef.current = null; },
     };
     (window as unknown as { __mlWaiter?: typeof api }).__mlWaiter = api;
   });
 
+  // game events: a cheer for the round winner, the gold medal at the end of the match (queued until he is standing
+  // still, so he never stops dead in the middle of a step)
   useEffect(() => {
     if (!view) return;
     if (view.phase !== 'MATCH_END') setMedalWinner(null);
-    if (view.phase === 'MATCH_END' && prevPhaseRef.current !== 'MATCH_END' && view.matchWinner !== null) {
-      startJob('medal', { winner: view.matchWinner, outfit: 'tuxedo' });
-    } else if (view.round?.result && !prevResultRef.current) {
-      const w = view.round.result.winner;
-      const seats = Object.keys(L.seats).map(Number);
-      const l = seats.find((s) => s !== w) ?? 0;
-      startJob('roundEnd', { winner: w ?? 0, loser: l });
-    } else if (view.roundNo && view.roundNo !== prevRoundRef.current && prevRoundRef.current > 0) {
-      startJob('shuffle');
+    if (view.phase === 'MATCH_END' && prevPhaseRef.current !== 'MATCH_END' && view.matchWinner !== null && view.matchWinner !== undefined) {
+      pendingRef.current = { kind: 'medal', winner: view.matchWinner, at: clockRef.current };
+    } else if (view.round?.result && !prevResultRef.current && view.round.result.winner !== null && view.round.result.winner !== undefined) {
+      pendingRef.current = { kind: 'roundEnd', winner: view.round.result.winner, at: clockRef.current };
     }
-    prevRoundRef.current = view.roundNo ?? 0;
     prevResultRef.current = !!view.round?.result;
     prevPhaseRef.current = view.phase;
   }, [view?.phase, view?.roundNo, !!view?.round?.result, view?.matchWinner]);
-
-  const [flags, setFlags] = useState<{
-    visible: boolean;
-    pouring: boolean;
-    wink: boolean;
-    flourish: 'gather' | 'bridge' | 'set' | null;
-    cushionMedal: 'none' | 'with' | 'empty';
-    glass: boolean;
-    splash: boolean;
-    confetti: 'none' | 'multi' | 'gold';
-  }>({ visible: false, pouring: false, wink: false, flourish: null, cushionMedal: 'none', glass: false, splash: false, confetti: 'none' });
-
-  const dropsSpec = useMemo(() => Array.from({ length: 18 }, (_, i) => ({
-    phase: (i / 18) * 0.4,
-    ox: ((i * 7) % 11 - 5) * 0.025,
-    oy: ((i * 5) % 9 - 4) * 0.022,
-    oz: ((i * 3) % 7 - 3) * 0.025,
-    r: 0.02 + (i % 3) * 0.008,
-  })), []);
 
   const confettiSpec = useMemo(() => {
     const multiCols = ['#ffd23f', '#ff5a6e', '#3fb8ff', '#5ce07a', '#f78ae0'];
@@ -625,390 +640,175 @@ export const OrangeWaiter = memo(function OrangeWaiter({ L, view, level }: { L: 
     });
   }, []);
 
-  useFrame((st, dt) => {
+  useFrame((st, rawDt) => {
     const now = st.clock.elapsedTime;
-    const d = dt > 0 && dt < 0.25 ? dt : 1 / 60;
+    const dt = Math.min(0.25, Math.max(0, rawDt));
     clockRef.current = now;
+    camRef.current = st.camera;
 
-    // Optional showcase/test time multiplier (default 1.0 in real gameplay: 60s active tour + 60s off-screen break)
-    const timeScale = (typeof window !== 'undefined' && (window as unknown as { __MARLIVO_WAITER_TIME_SCALE__?: number }).__MARLIVO_WAITER_TIME_SCALE__) || 1;
-    const cyc = evaluateWaiterCycle(now, timeScale);
-
-    // If no manual/event job is locked, drive the automatic 60s-active / 60s-away refill cycle!
-    if (!job) {
-      if (cyc.active) {
-        startJob('refill', { outfit: cyc.outfit, cycleIndex: cyc.cycleIndex, duration: WAITER_ACTIVE_SEC / timeScale });
-        return;
+    // ---- which plan runs now ----
+    let run: Run | null = null;
+    let t = 0;
+    if (manualRef.current) {
+      run = manualRef.current;
+      t = run.locked !== undefined ? Math.min(1, Math.max(0, run.locked)) * run.plan.total : now - run.t0;
+      if (run.locked === undefined && t >= run.plan.total) { manualRef.current = null; run = null; }
+    }
+    if (!run && !manualRef.current) {
+      const sh = shiftRef.current, ev = eventRef.current;
+      if (ev) {
+        if (now - ev.t0 >= ev.plan.total) {
+          // back exactly where he left the shift (or at the exit): the shift carries on from there
+          if (ev.during === 'shift' && sh) sh.t0 += ev.plan.total;
+          eventRef.current = null;
+        } else { run = ev; t = now - ev.t0; }
       }
+      if (!run && sh) {
+        const ts = now - sh.t0;
+        if (ts >= sh.plan.total) {
+          refillTea();
+          shiftRef.current = null;
+          // the break: 60 s off-screen (plus whatever was left of the shift minute)
+          breakUntilRef.current = now + WAITER_AWAY_SEC + Math.max(0, WAITER_ACTIVE_SEC - sh.plan.total);
+          cycleRef.current += 1;
+        } else {
+          // a queued event starts when he is standing still at a cup (or straight away for the medal)
+          const pd = pendingRef.current;
+          const cur = samplePlan(sh.plan, ts);
+          if (pd && now - pd.at > 45 && pd.kind !== 'medal') pendingRef.current = null;
+          else if (pd && !cur.moving && cur.tag === 'pour' && ts > 1) {
+            pendingRef.current = null;
+            const here: [number, number] = [cur.x, cur.z];
+            const outfit = sh.outfit;
+            eventRef.current = { kind: pd.kind, outfit, plan: eventPlan(pd.kind, here, here, pd.winner), t0: now, winner: pd.winner, during: 'shift' };
+            if (pd.kind === 'medal') setMedalWinner(pd.winner);
+            run = eventRef.current; t = 0;
+          }
+          if (!run) { run = sh; t = ts; }
+        }
+      }
+      if (!run && !shiftRef.current && !eventRef.current) {
+        const pd = pendingRef.current;
+        if (pd && pd.kind === 'medal') {
+          // the medal is worth interrupting the break for: walk in, present it, walk out again
+          pendingRef.current = null;
+          eventRef.current = { kind: 'medal', outfit: 'tuxedo', plan: eventPlan('medal', doorXZ, doorXZ, pd.winner), t0: now, winner: pd.winner, during: 'break' };
+          setMedalWinner(pd.winner);
+          run = eventRef.current; t = 0;
+        } else if (now >= breakUntilRef.current) {
+          if (pd) pendingRef.current = null;
+          shiftRef.current = { kind: 'refill', outfit: waiterOutfitForCycle(cycleRef.current), plan: shiftPlan(), t0: now, cycleIndex: cycleRef.current };
+          run = shiftRef.current; t = 0;
+        }
+      }
+    }
+
+    if (!run) {
       if (rootRef.current) rootRef.current.visible = false;
-      if (flags.visible) setFlags((f) => ({ ...f, visible: false, splash: false, confetti: 'none' }));
+      if (streamRef.current) streamRef.current.visible = false;
+      yawRef.current = null;
+      lastRef.current = { ...lastRef.current, speed: 0, amt: 0, mode: 'break', tag: null };
+      if (flags.visible) setFlags(NO_FLAGS);
+      if (shown) setShown(null);
       return;
     }
+    if (!shown || shown.kind !== run.kind || shown.outfit !== run.outfit) setShown({ kind: run.kind, outfit: run.outfit });
 
-    // For an automatic refill tour (no lockedProgress), sync directly with the 60s active window
-    let u: number;
-    if (job.lockedProgress !== undefined) {
-      u = clamp(job.lockedProgress);
-    } else if (job.kind === 'refill' && job.cycleIndex !== undefined) {
-      if (!cyc.active || cyc.cycleIndex !== job.cycleIndex) {
-        refillTea();
-        setJob(null);
-        if (rootRef.current) rootRef.current.visible = false;
-        return;
-      }
-      u = cyc.progress;
-    } else {
-      u = clamp((now - job.startedAt) / job.duration);
-      if (u >= 1) {
-        if (job.kind === 'refill') refillTea();
-        setJob(null);
-        return;
-      }
+    // ---- where he is, how fast he walks, where he looks ----
+    const smp = samplePlan(run.plan, t);
+    const seg = run.plan.segs[smp.seg];
+    const vCruise = seg && seg.k === 'walk' ? seg.v : WALK_SPEED;
+    // time spent walking so far drives the leg cycle at a constant cadence (stride shortens while easing in/out)
+    let moveT = 0;
+    for (let i = 0; i < smp.seg && i < run.plan.segs.length; i++) { const sg = run.plan.segs[i]!; if (sg.k === 'walk') moveT += sg.dur; }
+    if (seg && seg.k === 'walk') moveT += Math.min(seg.dur, Math.max(0, t - seg.t0));
+    const rig = model.userData.waiterRig as WaiterRig | undefined;
+    const g = rig?.geom.L ?? rig?.geom.R;
+    const amt = smp.moving ? Math.min(1, smp.speed / vCruise) : 0;
+    const cyc = g ? (moveT * cadenceOf(g, vCruise)) % 1 : 0;
+
+    const wantYaw = Math.atan2(smp.hx, smp.hz);
+    if (yawRef.current === null) yawRef.current = wantYaw;
+    else {
+      let dy = wantYaw - yawRef.current;
+      dy = Math.atan2(Math.sin(dy), Math.cos(dy));
+      // turn smoothly (about a quarter turn in 0.35 s), a little faster when standing
+      yawRef.current += dy * (1 - Math.exp(-dt * (smp.moving ? 7 : 5)));
     }
+    const yaw = yawRef.current;
 
-    const doorForX = (x: number): V3 => (x >= 0 ? KITCHEN_DOOR_R : KITCHEN_DOOR);
-
-    // Always keep waiter angled toward the table/camera so his face and front outfit are clearly visible
-    const faceTableYaw = (x: number, z: number, moveDx = 0): number => {
-      const baseYaw = Math.atan2(-x * 0.55, 0.45 - z);
-      return baseYaw + clamp(moveDx * 0.45, -0.28, 0.28);
-    };
-
-    const walkPos = (from: V3, to: V3, k: number): [V3, number] => {
-      const t = ease(k);
-      const x = lerp(from[0], to[0], t);
-      const z = lerp(from[2], to[2], t);
-      const yaw = faceTableYaw(x, z, to[0] - from[0]);
-      return [[x, WAITER_FLOOR_Y, z], yaw];
-    };
-
-    // Route between stops strictly within the left or right open stone patio corridors (|x| >= 1.66),
-    // never crossing x = 0 behind Seat 2 over the tabletop rim!
-    const walkPatioCorridor = (stFrom: WaiterStop, stTo: WaiterStop, k: number): [V3, number] => {
-      const x0 = stFrom.standPos[0], z0 = stFrom.standPos[2];
-      const x1 = stTo.standPos[0], z1 = stTo.standPos[2];
-      if (x0 * x1 < 0) {
-        if (k < 0.5) {
-          const doorL = doorForX(x0);
-          return walkPos(stFrom.standPos, doorL, k / 0.5);
-        }
-        const doorR = doorForX(x1);
-        return walkPos(doorR, stTo.standPos, (k - 0.5) / 0.5);
-      }
-      const t = ease(k);
-      const da = normAngle(stTo.angle - stFrom.angle);
-      const a = stFrom.angle + da * t;
-      const rFrom = Math.hypot(x0, z0);
-      const rTo = Math.hypot(x1, z1);
-      const r = lerp(rFrom, rTo, t) + Math.sin(Math.PI * t) * 0.06;
-      const x = Math.sin(a) * r;
-      const z = Math.cos(a) * r;
-      const yaw = faceTableYaw(x, z, x1 - x0);
-      return [[x, WAITER_FLOOR_Y, z], yaw];
-    };
-
-    // Angle waiter 3/4 toward the camera & table so his front outfit (bow-tie/tie, shirt, vest/jacket) is always visible
-    const presentYaw = (standPos: V3, targetX: number, targetZ: number): number => {
-      const lookX = lerp(targetX, 0, 0.35);
-      const lookZ = Math.max(targetZ, 0.25);
-      return Math.atan2(lookX - standPos[0], lookZ - standPos[2]);
-    };
-
-    const targetPosForSeat = (seat: number): V3 => {
-      if (L.chars[seat]) {
-        const c = L.chars[seat]!.p;
-        return [c[0], 0.48, c[2]];
-      }
-      return [0.42, 0.35, 0.78];
-    };
-
-    let pos: V3 = [...KITCHEN_DOOR] as V3;
-    let yaw = 0;
-    let lean = 0;
-    let pouring = false;
-    let pourCupWorld: V3 | null = null;
-    let isWalkingSeg = false;
-    let wink = false;
-    let flourish: 'gather' | 'bridge' | 'set' | null = null;
-    let cushionMedal: 'none' | 'with' | 'empty' = 'none';
-    let glass = false;
-    let showSplash = false;
-    let splashFrom: V3 = [0, 0, 0], splashTo: V3 = [0, 0, 0], splashU = 0;
-    let confettiKind: 'none' | 'multi' | 'gold' = 'none';
+    // ---- what he does at a stop ----
+    let pouring = false, lean = 0, wink = false;
+    let flourish: Flags['flourish'] = null;
+    let cushionMedal: Flags['cushionMedal'] = run.kind === 'medal' ? 'with' : 'none';
+    let confettiKind: Flags['confetti'] = 'none';
     let confettiAt: V3 = [0, 0, 0], confettiU = 0;
-
-    if (job.kind === 'visit') {
-      const stp = stops.A;
-      const door = doorForX(stp.standPos[0]);
-      if (u < 0.28) {
-        [pos, yaw] = walkPos(door, stp.standPos, u / 0.28);
-        isWalkingSeg = true;
-      } else if (u < 0.55) {
-        pos = stp.standPos;
-        yaw = presentYaw(pos, 0, 0);
-        lean = 0.06;
-      } else if (u < 0.78) {
-        pos = stp.standPos;
-        yaw = Math.atan2(0 - pos[0], 2.2 - pos[2]);
-        wink = true;
-      } else {
-        [pos, yaw] = walkPos(stp.standPos, door, (u - 0.78) / 0.22);
-        isWalkingSeg = true;
-      }
-    } else if (job.kind === 'refill') {
-      // Visit EVERY seated player's cup in circular order along the left and right open stone patio corridors!
-      const order = job.refillOrder && job.refillOrder.length > 0
-        ? job.refillOrder
-        : pickRefillOrder(L, Object.keys(props.tea).map(Number));
-      const seatStops = order.map((s) => cupStopForSeat(L, s, props.tea[s]?.p));
-      const n = seatStops.length;
-      const tEntry = 2.0;
-      const tExit = 2.0;
-      const totalT = tEntry + n * REFILL_POUR + Math.max(0, n - 1) * REFILL_WALK + tExit;
-      const curT = u * totalT;
-
-      if (curT < tEntry) {
-        const st0 = seatStops[0]!;
-        [pos, yaw] = walkPos(doorForX(st0.standPos[0]), st0.standPos, curT / tEntry);
-        isWalkingSeg = true;
-      } else if (curT >= totalT - tExit) {
-        const stLast = seatStops[n - 1]!;
-        const k = (curT - (totalT - tExit)) / tExit;
-        [pos, yaw] = walkPos(stLast.standPos, doorForX(stLast.standPos[0]), k);
-        isWalkingSeg = true;
-      } else {
-        const bodyT = curT - tEntry;
-        const stepSpan = REFILL_POUR + REFILL_WALK;
-        const seatIdx = Math.min(n - 1, Math.floor(bodyT / stepSpan));
-        const localT = bodyT - seatIdx * stepSpan;
-        const stCur = seatStops[seatIdx]!;
-        const targetSeat = order[seatIdx]!;
-        const cup = props.tea[targetSeat]?.p ?? [0, 0, 0];
-
-        if (localT < REFILL_POUR) {
-          pos = stCur.standPos;
-          yaw = presentYaw(pos, cup[0], cup[2]);
-          const pourU = clamp(localT / REFILL_POUR);
-          const bowEnv = Math.sin(Math.PI * 0.5 * Math.min(1, pourU / 0.22) * Math.min(1, (1 - pourU) / 0.18));
-          lean = 0.06 * bowEnv;
-          pouring = pourU >= 0.12 && pourU <= 0.88;
-          pourCupWorld = [cup[0], cup[1] + 0.15, cup[2]];
-          if (pouring) refillTea(targetSeat);
-        } else {
-          const walkK = (localT - REFILL_POUR) / REFILL_WALK;
-          const stNext = seatStops[seatIdx + 1]!;
-          [pos, yaw] = walkPatioCorridor(stCur, stNext, walkK);
-          isWalkingSeg = true;
-        }
-      }
-    } else if (job.kind === 'shuffle') {
-      const stp = stops.A;
-      const door = doorForX(stp.standPos[0]);
-      if (u < 0.24) {
-        [pos, yaw] = walkPos(door, stp.standPos, u / 0.24);
-        isWalkingSeg = true;
-      } else if (u < 0.42) {
-        pos = stp.standPos;
-        yaw = presentYaw(pos, 0, 0);
-        lean = 0.22;
-        flourish = 'gather';
-      } else if (u < 0.68) {
-        pos = stp.standPos;
-        yaw = presentYaw(pos, 0, 0);
-        lean = 0.10;
-        flourish = 'bridge';
-      } else if (u < 0.8) {
-        pos = stp.standPos;
-        yaw = presentYaw(pos, 0, 0);
-        lean = 0.24;
-        flourish = 'set';
-      } else {
-        [pos, yaw] = walkPos(stp.standPos, door, (u - 0.8) / 0.2);
-        isWalkingSeg = true;
-      }
-    } else if (job.kind === 'roundEnd') {
-      const loserPos = targetPosForSeat(job.loser ?? 1);
-      const winnerPos = targetPosForSeat(job.winner ?? 0);
-      const stLoser = stops.A;
-      const stWinner = stops.B;
-      if (u < 0.2) {
-        [pos, yaw] = walkPos(doorForX(stLoser.standPos[0]), stLoser.standPos, u / 0.2);
-        isWalkingSeg = true;
-        glass = true;
-      } else if (u < 0.52) {
-        pos = stLoser.standPos;
-        yaw = presentYaw(pos, loserPos[0], loserPos[2]);
-        glass = true;
-        const su = (u - 0.2) / 0.32;
-        lean = su < 0.22 ? -0.10 : 0.08;
-        if (su >= 0.18) {
-          showSplash = false;
-          confettiKind = 'multi';
-          confettiU = (u - 0.2) / 0.35;
-          confettiAt = [stLoser.standPos[0], 0.55, stLoser.standPos[2]];
-          splashFrom = [pos[0] + Math.sin(yaw) * 0.28, pos[1] + 0.48, pos[2] + Math.cos(yaw) * 0.28];
-          splashTo = loserPos;
-          splashU = (su - 0.18) / 0.82;
-          const lSeat = job.loser ?? 1;
-          if (!activeEmoteFor(lSeat)) triggerEmote(lSeat, 'sputter');
-        }
-      } else if (u < 0.84) {
-        pos = stWinner.standPos;
-        yaw = presentYaw(pos, winnerPos[0], winnerPos[2]);
-        confettiKind = 'multi';
-        confettiAt = [winnerPos[0], 0, winnerPos[2]];
-        confettiU = (u - 0.52) / 0.32;
-      } else {
-        [pos, yaw] = walkPos(stWinner.standPos, doorForX(stWinner.standPos[0]), (u - 0.84) / 0.16);
-        isWalkingSeg = true;
-      }
-    } else if (job.kind === 'medal') {
-      const winnerPos = targetPosForSeat(job.winner ?? 0);
-      const stWinner = stops.B;
-      const door = doorForX(stWinner.standPos[0]);
-      if (u < 0.25) {
-        [pos, yaw] = walkPos(door, stWinner.standPos, u / 0.25);
-        isWalkingSeg = true;
-        cushionMedal = 'with';
-      } else if (u < 0.55) {
-        pos = stWinner.standPos;
-        yaw = presentYaw(pos, winnerPos[0], winnerPos[2]);
-        lean = 0.20;
-        cushionMedal = 'with';
-      } else if (u < 0.85) {
-        pos = stWinner.standPos;
-        yaw = presentYaw(pos, winnerPos[0], winnerPos[2]);
-        cushionMedal = 'empty';
-        confettiKind = 'gold';
-        confettiAt = [winnerPos[0], 0, winnerPos[2]];
-        confettiU = (u - 0.55) / 0.3;
-      } else {
-        [pos, yaw] = walkPos(stWinner.standPos, door, (u - 0.85) / 0.15);
-        isWalkingSeg = true;
-        cushionMedal = 'empty';
-      }
+    const hu = smp.holdU;
+    if (smp.tag === 'pour') {
+      pouring = hu > 0.16 && hu < 0.86;
+      lean = 0.07 * Math.sin(Math.PI * Math.min(1, hu / 0.2) * 0.5) * Math.min(1, (1 - hu) / 0.12);
+      if (pouring && smp.seat !== undefined) refillTea(smp.seat);
+    } else if (smp.tag === 'visit') {
+      lean = hu < 0.5 ? 0.06 : 0; wink = hu >= 0.5;
+    } else if (smp.tag === 'shuffle') {
+      flourish = hu < 0.35 ? 'gather' : hu < 0.75 ? 'bridge' : 'set'; lean = flourish === 'bridge' ? 0.05 : 0.12;
+    } else if (smp.tag === 'cheer') {
+      const c = charPos(smp.seat ?? 0);
+      confettiKind = 'multi'; confettiAt = [c[0], 0, c[2]]; confettiU = hu;
+    } else if (smp.tag === 'medal') {
+      lean = hu < 0.45 ? 0.12 : 0;
+      cushionMedal = hu < 0.5 ? 'with' : 'empty';
+      if (hu >= 0.5) { const c = charPos(smp.seat ?? 0); confettiKind = 'gold'; confettiAt = [c[0], 0, c[2]]; confettiU = (hu - 0.5) / 0.5; }
+    }
+    if (run.kind === 'medal') {
+      const done = run.plan.segs.findIndex((s) => s.k === 'hold');
+      if (done >= 0 && smp.seg > done) cushionMedal = 'empty';
     }
 
-    // Compute instantaneous walking speed & stepping gait cycle
-    const dist = Math.hypot(pos[0] - prevPosRef.current[0], pos[2] - prevPosRef.current[2]);
-    prevPosRef.current = [...pos] as V3;
-    const rawSpeed = dist / d;
-    const targetStride = isWalkingSeg ? (job.lockedProgress !== undefined ? 1.0 : clamp(rawSpeed / 0.75, 0.55, 1.25)) : 0;
-    if (job.lockedProgress !== undefined) {
-      strideSmoothRef.current = targetStride;
-    } else {
-      strideSmoothRef.current += (targetStride - strideSmoothRef.current) * (1 - Math.exp(-d * 14));
-    }
-    const stride = strideSmoothRef.current;
-    if (job.lockedProgress !== undefined) {
-      walkPhaseRef.current = u * 18.0 * 7.5;
-    } else if (stride > 0.03) {
-      walkPhaseRef.current += d * (5.5 + stride * 3.5);
-    }
-    const gait = computeWalkGait(walkPhaseRef.current, stride);
-
+    // ---- body + legs ----
+    const pose = g ? walkPose(g, cyc, amt) : null;
     if (rootRef.current) {
       rootRef.current.visible = true;
-      // Place waiter's feet on the patio floor plane WAITER_FLOOR_Y (-0.42), strictly in the outer stone patio corridors!
-      rootRef.current.position.set(pos[0], WAITER_FLOOR_Y, pos[2]);
+      rootRef.current.position.set(smp.x, WAITER_FLOOR_Y, smp.z);
       rootRef.current.rotation.set(0, yaw, 0);
     }
     if (bodyRef.current) {
-      bodyRef.current.position.y = gait.bob;
-      bodyRef.current.rotation.set(lean, gait.torsoTwist, gait.hipRoll);
+      bodyRef.current.position.set(0, pose ? pose.bodyY : 0, 0);
+      bodyRef.current.rotation.set(lean + 0.03 * amt, 0, 0);
     }
+    lastRef.current = { x: smp.x, z: smp.z, t: now, speed: smp.speed, amt, cyc, mode: run === shiftRef.current ? 'shift' : 'event', tag: smp.tag };
 
-    // Solve 3-bone leg gait & 4-bone arm IK and parent/follow waiter props
-    const rig = model.userData.waiterRig as {
-      arms: Partial<Record<Side, ArmChain>>;
-      legs?: Partial<Record<Side, LegChain>>;
-      blinkU: FaceShaderUniform[];
-    } | undefined;
     if (rig && bodyRef.current && rootRef.current) {
-      // Drive 3-bone articulated legs (legL -> legL_knee -> legL_foot & legR -> legR_knee -> legR_foot)
-      if (rig.legs) {
-        if (stride > 0.04) {
-          poseLeg(rig.legs.L, gait.L.hipPitch, gait.L.kneeBend, gait.L.footPitch, gait.L.hipRoll, job.lockedProgress !== undefined ? undefined : d);
-          poseLeg(rig.legs.R, gait.R.hipPitch, gait.R.kneeBend, gait.R.footPitch, gait.R.hipRoll, job.lockedProgress !== undefined ? undefined : d);
-        } else {
-          // Polite balanced pouring/standing stance with slight knee flexion
-          const bowKnee = lean > 0.1 ? 0.20 : 0.08;
-          const bowHip = lean > 0.1 ? 0.10 : 0.04;
-          poseLeg(rig.legs.L, bowHip, bowKnee, 0.05, -0.04, job.lockedProgress !== undefined ? undefined : d);
-          poseLeg(rig.legs.R, bowHip, bowKnee, 0.05, 0.04, job.lockedProgress !== undefined ? undefined : d);
-        }
-      }
+      if (pose) { applyLeg(rig.legs.L, pose.L); applyLeg(rig.legs.R, pose.R); }
 
       const ph = (now + 1.1) % 3.8;
       const bl = wink ? 0 : ph < 0.14 ? Math.sin((ph / 0.14) * Math.PI) : 0;
       for (const bu of rig.blinkU) {
         bu.value = bl;
-        // Keep mouth shader overlay off on the waiter so his sculpted 3D mouth at y=0.40 is clean above his bowtie/collar
         bu.mouth?.set(0, 0.25, 1.0, 0);
       }
 
-      const swing = gait.armSwing;
-      let tL: V3 = [-0.28, 0.34, 0.08 + swing], wL = 0.78, cL = 0.35;
-      let tR: V3 = [0.28, 0.34, 0.08 - swing], wR = 0.78, cR = 0.35;
-
-      if (job.kind === 'visit') {
-        if (u >= 0.28 && u < 0.55) {
-          tR = [0.22, 0.42, 0.24]; wR = 0.95; cR = 0.55;
-          tL = [-0.26, 0.36, 0.16]; wL = 0.85; cL = 0.45;
-        } else if (u >= 0.55 && u < 0.78) {
-          const wv = Math.sin((u - 0.55) * 58) * 0.085;
-          tR = [0.30 + wv, 0.56, 0.22]; wR = 1.0; cR = 0.12;
-          tL = [-0.28, 0.36, 0.12]; wL = 0.88; cL = 0.6;
-        }
-      } else if (job.kind === 'refill') {
-        // Left hand holds the silver tray & folded towel steady outside his left flank
-        tL = [-0.30, 0.39, 0.18]; wL = 0.96; cL = 0.48;
-        if (pouring && pourCupWorld) {
-          // Right hand extends forward-right outside his body toward the player's teacup to pour
-          tR = [0.27, 0.44, 0.26]; wR = 1.0; cR = 0.92;
-        } else {
-          tR = [0.28, 0.39, 0.18 - swing * 0.5]; wR = 0.95; cR = 0.85;
-        }
-      } else if (job.kind === 'shuffle') {
-        if (flourish === 'gather') {
-          const g = Math.sin((u - 0.24) * 45) * 0.03;
-          tL = [-0.09 - g, 0.38, 0.25]; tR = [0.09 + g, 0.38, 0.25];
-          wL = wR = 1.0; cL = cR = 0.75;
-        } else if (flourish === 'bridge') {
-          tL = [-0.18, 0.41, 0.25]; tR = [0.18, 0.41, 0.25];
-          wL = wR = 1.0; cL = cR = 0.85;
-        } else if (flourish === 'set') {
-          tL = [-0.11, 0.34, 0.26]; tR = [0.11, 0.34, 0.26];
-          wL = wR = 0.95; cL = cR = 0.4;
-        }
-      } else if (job.kind === 'roundEnd') {
-        if (u < 0.2) {
-          tR = [0.21, 0.40, 0.18]; wR = 0.95; cR = 0.85;
-        } else if (u < 0.52) {
-          const su = (u - 0.2) / 0.32;
-          tR = su < 0.22 ? [0.26, 0.48, 0.06] : [0.15, 0.48, 0.28];
-          wR = 1.0; cR = su < 0.22 ? 0.9 : 0.45;
-          tL = [-0.20, 0.36, 0.14]; wL = 0.85; cL = 0.4;
-        } else if (u < 0.84) {
-          const clap = Math.abs(Math.sin((u - 0.52) * 75)) * 0.075;
-          tL = [-0.045 - clap, 0.45, 0.24]; tR = [0.045 + clap, 0.45, 0.24];
-          wL = wR = 1.0; cL = cR = 0.25;
-        }
-      } else if (job.kind === 'medal') {
-        if (u < 0.46) {
-          tL = [-0.12, 0.38, 0.24]; tR = [0.12, 0.38, 0.24];
-          wL = wR = 1.0; cL = cR = 0.55;
-        } else if (u < 0.62) {
-          tL = [-0.11, 0.46, 0.28]; tR = [0.11, 0.46, 0.28];
-          wL = wR = 1.0; cL = cR = 0.4;
-        } else if (u < 0.85) {
-          tL = [-0.15, 0.36, 0.22]; wL = 0.95; cL = 0.55;
-          tR = [0.22, 0.52, 0.20]; wR = 0.95; cR = 0.3;
-        } else {
-          tL = [-0.15, 0.36, 0.20]; wL = 0.9; cL = 0.55;
-        }
-      } else if (job.outfit === 'full' || job.outfit === 'tuxedo') {
-        tL = [-0.19, 0.36, 0.18]; wL = 0.9; cL = 0.45;
+      // arms: a gentle swing opposite the legs while walking; tray + teapot on a shift
+      const swing = (pose?.armSwing ?? 0) * 0.07;
+      let tL: V3 = [-0.28, 0.33, 0.06 - swing], wL = 0.78, cL = 0.35;
+      let tR: V3 = [0.28, 0.33, 0.06 + swing], wR = 0.78, cR = 0.35;
+      if (run.kind === 'refill') {
+        tL = [-0.30, 0.39, 0.18 + swing * 0.15]; wL = 0.96; cL = 0.48;
+        tR = pouring ? [0.26, 0.45, 0.29] : [0.28, 0.39, 0.18 + swing * 0.2]; wR = 1.0; cR = pouring ? 0.92 : 0.85;
+      } else if (smp.tag === 'visit') {
+        if (hu < 0.5) { tR = [0.22, 0.42, 0.24]; wR = 0.95; cR = 0.55; tL = [-0.26, 0.36, 0.16]; wL = 0.85; cL = 0.45; }
+        else { const wv = Math.sin(hu * 40) * 0.085; tR = [0.30 + wv, 0.56, 0.22]; wR = 1.0; cR = 0.12; tL = [-0.28, 0.36, 0.12]; wL = 0.88; cL = 0.6; }
+      } else if (flourish === 'gather') {
+        const gg = Math.sin(hu * 30) * 0.03; tL = [-0.09 - gg, 0.38, 0.25]; tR = [0.09 + gg, 0.38, 0.25]; wL = wR = 1.0; cL = cR = 0.75;
+      } else if (flourish === 'bridge') {
+        tL = [-0.18, 0.41, 0.25]; tR = [0.18, 0.41, 0.25]; wL = wR = 1.0; cL = cR = 0.85;
+      } else if (flourish === 'set') {
+        tL = [-0.11, 0.34, 0.26]; tR = [0.11, 0.34, 0.26]; wL = wR = 0.95; cL = cR = 0.4;
+      } else if (smp.tag === 'cheer') {
+        const clap = Math.abs(Math.sin(hu * 40)) * 0.075; tL = [-0.045 - clap, 0.45, 0.24]; tR = [0.045 + clap, 0.45, 0.24]; wL = wR = 1.0; cL = cR = 0.25;
+      } else if (run.kind === 'medal') {
+        if (cushionMedal === 'with') { tL = [-0.12, 0.38, 0.24]; tR = [0.12, 0.38, 0.24]; wL = wR = 1.0; cL = cR = 0.55; }
+        else { tL = [-0.15, 0.36, 0.20 - swing * 0.2]; wL = 0.9; cL = 0.55; }
       }
 
       rootRef.current.updateMatrixWorld(true);
@@ -1021,10 +821,8 @@ export const OrangeWaiter = memo(function OrangeWaiter({ L, view, level }: { L: 
         const tWorld = bodyRef.current.localToWorld(new THREE.Vector3(tLoc[0], tLoc[1], tLoc[2]));
         for (let k = 0; k < 2; k++) solveArm(arm, tWorld, w, bodyCentre);
         curlArm(arm, curl * w);
-        if (sd === 'R' && wink) {
-          arm.hand.quaternion.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), Math.sin((u - 0.55) * 58) * 0.35));
-        }
-        if (job.lockedProgress !== undefined) { arm.up.updateMatrixWorld(true); } else { stepArmSmoothing(arm, d, true); }
+        if (sd === 'R' && wink) arm.hand.quaternion.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), Math.sin(hu * 40) * 0.35));
+        if (run.locked !== undefined) arm.up.updateMatrixWorld(true); else stepArmSmoothing(arm, dt > 0 ? dt : 1 / 60, true);
       }
 
       if (rig.arms.L && towelRef.current) {
@@ -1036,39 +834,28 @@ export const OrangeWaiter = memo(function OrangeWaiter({ L, view, level }: { L: 
         const hPos = bodyRef.current.worldToLocal(handPos(rig.arms.R, new THREE.Vector3()));
         teapotRef.current.position.copy(hPos).add(new THREE.Vector3(0.065, -0.005, 0.02));
       }
-      if (rig.arms.R && glassRef.current) {
-        const hPos = bodyRef.current.worldToLocal(handPos(rig.arms.R, new THREE.Vector3()));
-        glassRef.current.position.copy(hPos).add(new THREE.Vector3(0.01, 0.01, 0.02));
-        const su = job.kind === 'roundEnd' ? (u - 0.2) / 0.32 : 0;
-        glassRef.current.rotation.set(su >= 0.18 && su <= 1 ? 1.15 : 0.12, 0, 0);
-      }
       if (rig.arms.L && rig.arms.R && cushionRef.current) {
         const hL = bodyRef.current.worldToLocal(handPos(rig.arms.L, new THREE.Vector3()));
         const hR = bodyRef.current.worldToLocal(handPos(rig.arms.R, new THREE.Vector3()));
-        if (u >= 0.46 && u < 0.85) {
-          cushionRef.current.position.copy(hL).add(new THREE.Vector3(0.08, 0.01, 0.02));
-        } else {
-          cushionRef.current.position.lerpVectors(hL, hR, 0.5).add(new THREE.Vector3(0, 0.015, 0.02));
-        }
+        cushionRef.current.position.lerpVectors(hL, hR, 0.5).add(new THREE.Vector3(0, 0.015, 0.02));
       }
     }
 
-    if (showSplash && splashRef.current) {
-      splashRef.current.children.forEach((ch, i) => {
-        const dp = dropsSpec[i]!;
-        const t = clamp((splashU - dp.phase) / 0.6);
-        if (t <= 0 || t >= 1) {
-          ch.visible = false;
-        } else {
-          ch.visible = true;
-          ch.position.set(
-            lerp(splashFrom[0], splashTo[0] + dp.ox * 2.2, t),
-            lerp(splashFrom[1], splashTo[1] + dp.oy, t) + Math.sin(t * Math.PI) * 0.26,
-            lerp(splashFrom[2], splashTo[2] + dp.oz * 2.2, t)
-          );
-          ch.scale.setScalar(dp.r * (1 - t * 0.2));
-        }
-      });
+    // tea stream: from the spout down into the cup (world space, so it always lands in the cup)
+    if (streamRef.current) {
+      const cup = smp.seat !== undefined ? props.tea[smp.seat]?.p : undefined;
+      const sp = spoutRef.current;
+      if (pouring && cup && sp && teapotRef.current) {
+        teapotRef.current.updateMatrixWorld(true);
+        const a = sp.getWorldPosition(new THREE.Vector3());
+        const b = new THREE.Vector3(cup[0], cup[1] + 0.045, cup[2]);
+        const mid = a.clone().add(b).multiplyScalar(0.5);
+        const len = a.distanceTo(b);
+        streamRef.current.visible = true;
+        streamRef.current.position.copy(mid);
+        streamRef.current.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize());
+        streamRef.current.scale.set(0.009, len, 0.009);
+      } else streamRef.current.visible = false;
     }
 
     if (confettiKind !== 'none' && confettiRef.current) {
@@ -1082,25 +869,10 @@ export const OrangeWaiter = memo(function OrangeWaiter({ L, view, level }: { L: 
     }
 
     if (
-      !flags.visible ||
-      flags.pouring !== pouring ||
-      flags.wink !== wink ||
-      flags.flourish !== flourish ||
-      flags.cushionMedal !== cushionMedal ||
-      flags.glass !== glass ||
-      flags.splash !== showSplash ||
-      flags.confetti !== confettiKind
+      !flags.visible || flags.pouring !== pouring || flags.wink !== wink || flags.flourish !== flourish ||
+      flags.cushionMedal !== cushionMedal || flags.confetti !== confettiKind
     ) {
-      setFlags({
-        visible: true,
-        pouring,
-        wink,
-        flourish,
-        cushionMedal,
-        glass,
-        splash: showSplash,
-        confetti: confettiKind,
-      });
+      setFlags({ visible: true, pouring, wink, flourish, cushionMedal, confetti: confettiKind });
     }
   });
 
@@ -1116,28 +888,21 @@ export const OrangeWaiter = memo(function OrangeWaiter({ L, view, level }: { L: 
 
   return (
     <group>
-      <group ref={rootRef} scale={0.86} visible={flags.visible && !!job}>
+      <group ref={rootRef} scale={WAITER_SCALE} visible={false}>
         <mesh geometry={WG.shadow} material={shadowMat()} position={[0, 0.004, 0]} renderOrder={1} />
         <group ref={bodyRef}>
           <primitive object={model} />
-          {job && <OutfitMeshes outfit={job.outfit} showTowel={job.kind === 'refill'} towelRef={towelRef} />}
+          {shown && <OutfitMeshes outfit={shown.outfit} showTowel={shown.kind === 'refill'} towelRef={towelRef} />}
           {flags.wink && (
             <mesh geometry={WG.sph} material={WM.wink} position={[0.055, 0.55, 0.195]} scale={[0.028, 0.012, 0.015]} />
           )}
-          {job?.kind === 'refill' && <TeapotProp pouring={flags.pouring} propRef={teapotRef} />}
+          {shown?.kind === 'refill' && <TeapotProp pouring={flags.pouring} propRef={teapotRef} spoutRef={spoutRef} />}
           {flags.flourish && <CardFlourishProp phase={flags.flourish} />}
           {flags.cushionMedal !== 'none' && <CushionAndMedal hasMedal={flags.cushionMedal === 'with'} propRef={cushionRef} />}
-          {flags.glass && (
-            <mesh ref={glassRef} geometry={WG.cyl} material={WM.glass} position={[0.24, 0.4, 0.16]} scale={[0.028, 0.075, 0.028]} />
-          )}
         </group>
       </group>
 
-      <group ref={splashRef} visible={flags.splash}>
-        {dropsSpec.map((_, i) => (
-          <mesh key={i} geometry={WG.sph} material={i % 3 === 0 ? WM.waterHi : WM.water} />
-        ))}
-      </group>
+      <mesh ref={streamRef} geometry={WG.cyl} material={WM.amber} visible={false} />
 
       <group ref={confettiRef} visible={flags.confetti !== 'none'}>
         {confettiSpec.map((p, i) => (

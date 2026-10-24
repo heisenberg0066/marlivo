@@ -1,5 +1,6 @@
-// Unit tests for the 3D Orange waiter's 6 outfits, non-repeating outfit switch, 60s active / 60s off-screen cycle,
-// full-table cup-by-cup refill tour, lively tea drain, and safe outer terrace walking path (sketch book v8 p22–27).
+// Unit tests for the 3D Orange waiter: outfits, the 60 s shift / 60 s break cycle, the walking plan round the whole
+// table (behind the chairs, beside every player to pour, out through the off-screen exit) and the walking gait
+// (stride tied to the distance walked: planted feet do not slide, no stepping in place, no running).
 import { describe, it, expect } from 'vitest';
 import { layout3, TABLE_R } from '../src/render3d/layout3d';
 import { propLayout } from '../src/render3d/scenes/propLayout';
@@ -12,22 +13,33 @@ import {
   pickWaiterOutfit,
   pickRefillOrder,
   cupStopForSeat,
-  computeWaiterStops,
-  buildWaiterRoute,
-  isSafeWaiterPoint,
-  nearestStop,
-  HEDGE_Z,
-  CHAR_CLEAR_R,
-  STOP_R,
-  LOOP_R,
+  waiterObstacles,
+  waiterClearance,
+  buildShiftPlan,
+  buildEventPlan,
+  samplePlan,
+  planClearance,
+  legGeomFrom,
+  walkPose,
+  footPath,
+  legIK,
+  strideOf,
+  cadenceOf,
+  GAIT,
+  KITCHEN_DOOR,
+  WALK_R,
+  WALK_SPEED_RANGE,
   WAITER_FLOOR_Y,
+  WAITER_SCALE,
   WAITER_ACTIVE_SEC,
   WAITER_AWAY_SEC,
   WAITER_CYCLE_SEC,
-  REFILL_POUR,
-  WAITER_BREAK_RANGE,
+  POUR_MIN,
+  POUR_MAX,
+  HEDGE_Z,
   type WaiterOutfit,
 } from '../src/render3d/scenes/waiterPath';
+import { FLOOR_Y } from '../src/render3d/sceneConfig';
 
 const view = (n: number, me = 0) => ({
   you: me,
@@ -36,74 +48,34 @@ const view = (n: number, me = 0) => ({
   round: null,
 } as never);
 
-describe('Orange waiter outfits, 60s active / 60s away cycle, full-table cup refill tour & outer terrace path', () => {
-  it('picks outfits across all 6 styles, rotates deterministically per cycle, and never repeats the previous outfit', () => {
+// orange-guy.glb leg bones in body space (normalised to 0.80 high): hip -> knee 0.12, knee -> ankle 0.098
+const G = legGeomFrom([-0.124, 0.256, -0.063], [-0.124, 0.136, -0.063], [-0.124, 0.04, -0.043]);
+
+describe('Orange waiter: outfits, shift / break cycle, walking plan round the table, walking gait', () => {
+  it('rotates through all 6 outfits per shift and never repeats the previous outfit', () => {
     expect(WAITER_OUTFITS.length).toBeGreaterThanOrEqual(6);
     expect(OUTFIT_ORDER).toEqual(WAITER_OUTFITS);
     for (let i = 0; i < 12; i++) {
       expect(waiterOutfitForCycle(i)).toBe(OUTFIT_ORDER[i % OUTFIT_ORDER.length]);
+      expect(waiterOutfitForCycle(i + 1)).not.toBe(waiterOutfitForCycle(i));
     }
     let s = 42;
     const rng = () => ((s = (s * 48271) % 2147483647) / 2147483647);
     const picks = Array.from({ length: 100 }, () => pickWaiterOutfit(rng));
     for (const o of WAITER_OUTFITS) expect(picks).toContain(o);
-
     let prev: WaiterOutfit = 'full';
-    for (let i = 0; i < 120; i++) {
-      const next = pickWaiterOutfit(rng, prev);
-      expect(next).not.toBe(prev);
-      prev = next;
-    }
+    for (let i = 0; i < 120; i++) { const next = pickWaiterOutfit(rng, prev); expect(next).not.toBe(prev); prev = next; }
   });
 
-  it('alternates 60s (1 minute) active refill tour and 60s (1 minute) off-screen break with outfit rotation per cycle', () => {
+  it('nominal cycle: 60 s shift then 60 s off-screen break; tea drains and refills', () => {
     expect(WAITER_ACTIVE_SEC).toBe(60);
     expect(WAITER_AWAY_SEC).toBe(60);
     expect(WAITER_CYCLE_SEC).toBe(120);
-    expect(WAITER_BREAK_RANGE).toEqual([60, 60]);
-    expect(REFILL_POUR).toBeCloseTo(2.2, 2);
-
-    // Cycle 0: 0..60s active in outfit[0] ('full'), 60..120s away (off-screen)
-    const c0Start = evaluateWaiterCycle(5);
-    expect(c0Start.active).toBe(true);
-    expect(c0Start.cycleIndex).toBe(0);
-    expect(c0Start.outfit).toBe(OUTFIT_ORDER[0]);
-    expect(c0Start.progress).toBeCloseTo(5 / 60, 3);
-
-    const c0Mid = evaluateWaiterCycle(30);
-    expect(c0Mid.active).toBe(true);
-    expect(c0Mid.progress).toBeCloseTo(0.5, 3);
-
-    const c0Away = evaluateWaiterCycle(75);
-    expect(c0Away.active).toBe(false);
-    expect(c0Away.cycleIndex).toBe(0);
-    expect(c0Away.progress).toBe(0);
-
-    // Cycle 1: 120..180s active in outfit[1] ('suit'), 180..240s away
-    const c1Active = evaluateWaiterCycle(135);
-    expect(c1Active.active).toBe(true);
-    expect(c1Active.cycleIndex).toBe(1);
-    expect(c1Active.outfit).toBe(OUTFIT_ORDER[1]);
-    expect(c1Active.progress).toBeCloseTo(15 / 60, 3);
-
-    const c1Away = evaluateWaiterCycle(200);
-    expect(c1Away.active).toBe(false);
-    expect(c1Away.cycleIndex).toBe(1);
-
-    // Cycle 2: 240..300s active in outfit[2] ('tie')
-    const c2Active = evaluateWaiterCycle(250);
-    expect(c2Active.active).toBe(true);
-    expect(c2Active.cycleIndex).toBe(2);
-    expect(c2Active.outfit).toBe(OUTFIT_ORDER[2]);
-  });
-
-  it('keeps waiter standing on the patio floor (y = -0.42) strictly outside the chair ring (STOP_R >= 1.88, LOOP_R >= 2.15)', () => {
-    expect(WAITER_FLOOR_Y).toBeCloseTo(-0.42, 2);
-    expect(STOP_R).toBeGreaterThanOrEqual(1.88);
-    expect(STOP_R).toBeLessThanOrEqual(2.65);
-    expect(LOOP_R).toBeGreaterThanOrEqual(2.15);
-    expect(LOOP_R).toBeLessThanOrEqual(2.80);
-
+    expect(evaluateWaiterCycle(5).active).toBe(true);
+    expect(evaluateWaiterCycle(30).progress).toBeCloseTo(0.5, 3);
+    expect(evaluateWaiterCycle(75).active).toBe(false);
+    expect(evaluateWaiterCycle(135).cycleIndex).toBe(1);
+    expect(evaluateWaiterCycle(135).outfit).toBe(OUTFIT_ORDER[1]);
     expect(TEA_DRAIN.minutes).toBeLessThanOrEqual(2);
     setTeaLevel(0, 0.58);
     expect(teaLevel(0)).toBeCloseTo(0.58, 2);
@@ -112,46 +84,115 @@ describe('Orange waiter outfits, 60s active / 60s away cycle, full-table cup ref
     expect(teaLevel(0)).toBeGreaterThan(0.85);
   });
 
+  it('stands on the terrace floor, about as tall as the badminton Orange guys; the exit is outside the walking ring', () => {
+    expect(WAITER_FLOOR_Y).toBe(FLOOR_Y);
+    expect(0.8 * WAITER_SCALE).toBeGreaterThan(1.0);
+    expect(0.8 * WAITER_SCALE).toBeLessThan(1.25);
+    expect(Math.hypot(KITCHEN_DOOR[0], KITCHEN_DOOR[2])).toBeGreaterThan(WALK_R + 1);
+    expect(Math.hypot(KITCHEN_DOOR[0], KITCHEN_DOOR[2])).toBeLessThan(3.56); // still on the paved terrace
+  });
+
   for (const n of [2, 3, 4]) {
     for (const portrait of [false, true]) {
-      it(`${n} players${portrait ? ' phone' : ''}: visits EVERY player's cup in circular order and keeps stops/route outside chairs (r >= 1.88)`, () => {
+      it(`${n} players${portrait ? ' (phone)' : ''}: one shift walks round the whole table, pours every cup beside its player, never touches table / chairs / players`, () => {
         const L = layout3(view(n, 0), false, portrait);
         const P = propLayout(L);
-        const order = pickRefillOrder(L, Object.keys(P.tea).map(Number));
-        expect(order).toHaveLength(n);
-        expect(new Set(order).size).toBe(n);
-
-        for (const seat of order) {
-          const cup = P.tea[seat]!.p;
-          const cStop = cupStopForSeat(L, seat, cup);
-          expect(Math.hypot(cStop.standPos[0], cStop.standPos[2])).toBeGreaterThanOrEqual(1.88);
-          expect(cStop.standPos[1]).toBeCloseTo(WAITER_FLOOR_Y, 2);
-          expect(cStop.standPos[2]).toBeGreaterThan(HEDGE_Z);
-          for (const c of Object.values(L.chars)) {
-            expect(Math.hypot(cStop.standPos[0] - c.p[0], cStop.standPos[2] - c.p[2])).toBeGreaterThan(CHAR_CLEAR_R);
-          }
-        }
-
-        const stops = computeWaiterStops(L);
-        for (const st of Object.values(stops)) {
-          expect(Math.hypot(st.standPos[0], st.standPos[2])).toBeGreaterThanOrEqual(1.88);
-          expect(st.standPos[1]).toBeCloseTo(WAITER_FLOOR_Y, 2);
+        const plan = buildShiftPlan(L, P.tea);
+        // about one minute, all of it spent walking or pouring
+        expect(plan.total).toBeGreaterThan(50);
+        expect(plan.total).toBeLessThanOrEqual(WAITER_ACTIVE_SEC + 1e-6);
+        expect(plan.speed).toBeGreaterThanOrEqual(WALK_SPEED_RANGE[0]);
+        expect(plan.speed).toBeLessThanOrEqual(WALK_SPEED_RANGE[1]);
+        expect(plan.pour).toBeGreaterThanOrEqual(POUR_MIN);
+        expect(plan.pour).toBeLessThanOrEqual(POUR_MAX);
+        // every seated player's cup is poured at least once, standing beside that player
+        const pours = plan.segs.filter((s) => s.k === 'hold' && s.tag === 'pour');
+        expect(new Set(pours.map((s) => (s as { seat?: number }).seat)).size).toBe(n);
+        expect(pickRefillOrder(L, Object.keys(P.tea).map(Number))).toHaveLength(n);
+        const obs = waiterObstacles(L);
+        for (const st of plan.stops) {
+          const c = L.chars[st.seat]!.p;
+          const r = Math.hypot(st.standPos[0], st.standPos[2]);
+          expect(r).toBeGreaterThan(TABLE_R + 0.07 + 0.3); // body never over the table
+          expect(Math.hypot(st.standPos[0] - c[0], st.standPos[2] - c[2])).toBeLessThan(1.0); // right beside the player
+          expect(waiterClearance(obs, st.standPos[0], st.standPos[2])).toBeGreaterThan(0);
           expect(st.standPos[2]).toBeGreaterThan(HEDGE_Z);
-          expect(isSafeWaiterPoint(L, st.standPos[0], st.standPos[2], true)).toBe(true);
-          for (const c of Object.values(L.chars)) {
-            expect(Math.hypot(st.standPos[0] - c.p[0], st.standPos[2] - c.p[2])).toBeGreaterThan(CHAR_CLEAR_R);
-          }
+          // the cup he pours is that player's own cup
+          expect(st.face[0]).toBeCloseTo(P.tea[st.seat]!.p[0], 6);
         }
-        const route = buildWaiterRoute([stops.A, stops.D, stops.C, stops.B]);
-        expect(route.length).toBeGreaterThan(10);
-        for (const wp of route) {
-          expect(wp.pos[1]).toBeCloseTo(WAITER_FLOOR_Y, 2);
-          expect(wp.pos[2]).toBeGreaterThan(HEDGE_Z);
-          expect(Math.hypot(wp.pos[0], wp.pos[2])).toBeGreaterThanOrEqual(1.88);
+        // the whole route keeps clear of the table rim, every chair and every seated player
+        expect(planClearance(L, plan)).toBeGreaterThan(0);
+        // starts and ends at the exit, goes all the way round the table (angle swept >= one lap)
+        const a = samplePlan(plan, 0), z = samplePlan(plan, plan.total);
+        expect(Math.hypot(a.x - KITCHEN_DOOR[0], a.z - KITCHEN_DOOR[2])).toBeLessThan(1e-6);
+        expect(Math.hypot(z.x - KITCHEN_DOOR[0], z.z - KITCHEN_DOOR[2])).toBeLessThan(1e-6);
+        let swept = 0, prevA = Math.atan2(a.x, a.z), prev = a, maxV = 0, minR = 9;
+        for (let t = 0.05; t <= plan.total; t += 0.05) {
+          const s = samplePlan(plan, t);
+          const an = Math.atan2(s.x, s.z);
+          let d = an - prevA; d = Math.atan2(Math.sin(d), Math.cos(d)); swept += d; prevA = an;
+          // continuous motion: no jumps, never faster than a calm walk
+          maxV = Math.max(maxV, Math.hypot(s.x - prev.x, s.z - prev.z) / 0.05);
+          minR = Math.min(minR, Math.hypot(s.x, s.z));
+          // speed reported by the plan matches the real motion; standing still only while pouring
+          if (!s.moving) expect(s.tag === 'pour' || s.speed < 1e-3).toBe(true);
+          prev = s;
         }
-        expect(nearestStop(stops, -1, 1).id).toBe('A');
-        expect(nearestStop(stops, 1, 1).id).toBe('B');
+        expect(Math.abs(swept)).toBeGreaterThan(Math.PI * 2 * 0.9);
+        expect(maxV).toBeLessThan(WALK_SPEED_RANGE[1] + 0.02);
+        expect(minR).toBeGreaterThan(TABLE_R + 0.4);
       });
     }
   }
+
+  it('event visits (cheer / medal) start and end on the same spot, so the shift carries on without a jump', () => {
+    const L = layout3(view(4, 0), false, false);
+    const P = propLayout(L);
+    const st = cupStopForSeat(L, 2, P.tea[2]!.p);
+    const from: [number, number] = [st.standPos[0], st.standPos[2]];
+    const ev = buildEventPlan(from, [cupStopForSeat(L, 3, P.tea[3]!.p).standPos[0], cupStopForSeat(L, 3, P.tea[3]!.p).standPos[2]], [1.2, 0], 5, 'cheer', from, 3);
+    const s0 = samplePlan(ev, 0), s1 = samplePlan(ev, ev.total);
+    expect(Math.hypot(s0.x - from[0], s0.z - from[1])).toBeLessThan(1e-6);
+    expect(Math.hypot(s1.x - from[0], s1.z - from[1])).toBeLessThan(1e-6);
+    expect(planClearance(L, ev)).toBeGreaterThan(0);
+  });
+
+  it('walking gait: feet planted on the ground do not slide, stride follows speed, no running (no flight phase)', () => {
+    const v = 0.58;
+    const cad = cadenceOf(G, v);
+    // calm walking cadence: about 2-2.8 steps a second, a full stride a bit under half a metre
+    expect(cad * 2).toBeGreaterThan(1.8);
+    expect(cad * 2).toBeLessThan(2.9);
+    expect(strideOf(G) * WAITER_SCALE).toBeGreaterThan(0.3);
+    // thigh swing stays within a walk (no big running kicks)
+    let maxHip = 0, minDown = 1, airborne = 0;
+    const N = 400;
+    for (let i = 0; i < N; i++) {
+      const c = i / N;
+      const p = walkPose(G, c, 1);
+      maxHip = Math.max(maxHip, Math.abs(p.L.hipPitch), Math.abs(p.R.hipPitch));
+      if (!p.footL.stance && !p.footR.stance) airborne++;
+      minDown = Math.min(minDown, p.bodyY);
+      // a planted foot moves backwards relative to the body at exactly the body's speed (so it is still on the ground)
+      const dc = 1 / N;
+      const a = footPath(c, strideOf(G)), b = footPath(c + dc, strideOf(G));
+      if (a.stance && b.stance) expect((a.f - b.f) / dc).toBeCloseTo(strideOf(G), 6);
+    }
+    expect(airborne).toBe(0);
+    expect(maxHip).toBeLessThan(0.75);
+    expect(minDown).toBeGreaterThan(-0.04);
+    expect(GAIT.duty).toBeGreaterThan(0.5); // a foot is down more than half the time: walking, not running
+    // the IK puts the ankle where the foot path wants it (stance feet stay on the floor)
+    const p = walkPose(G, 0.3, 1);
+    const fp = footPath(0.3, strideOf(G));
+    const ik = legIK(G, fp.f, G.depth + p.bodyY);
+    const ax = G.l1 * Math.sin(ik.thigh) + G.l2 * Math.sin(ik.shin);
+    const ay = G.l1 * Math.cos(ik.thigh) + G.l2 * Math.cos(ik.shin);
+    expect(ax).toBeCloseTo(fp.f, 3);
+    expect(ay).toBeCloseTo(G.depth + p.bodyY, 3);
+    // standing still: exactly the rest pose (no stepping in place)
+    const still = walkPose(G, 0.37, 0);
+    for (const leg of [still.L, still.R]) { expect(leg.hipPitch).toBeCloseTo(0, 9); expect(leg.kneeBend).toBeCloseTo(0, 9); expect(leg.footPitch).toBeCloseTo(0, 9); }
+    expect(still.bodyY).toBeCloseTo(0, 9);
+  });
 });
