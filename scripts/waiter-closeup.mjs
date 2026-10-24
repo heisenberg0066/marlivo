@@ -25,6 +25,7 @@ await p.locator('.seg').nth(0).locator('button').nth(players - 2).click();
 await p.locator('.seg').nth(2).locator('button').nth(0).click();
 await p.locator('button.act.primary').last().click();
 for (let k = 0; k < 12; k++) { await adv(100, 50); await p.waitForTimeout(300); }
+for (let k = 0; k < 60 && !(await p.evaluate(() => !!window.__mlWaiter)); k++) { await adv(100, 50); await p.waitForTimeout(300); }
 // waiter clock starts with the canvas; advance until his clock reaches FROM
 const clk = () => p.evaluate(() => window.__mlWaiter?.state().clock ?? 0);
 let c = await clk();

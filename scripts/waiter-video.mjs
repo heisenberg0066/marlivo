@@ -27,6 +27,7 @@ await p.locator('.seg').nth(2).locator('button').nth(0).click();
 await p.locator('button.act.primary').last().click();
 for (let k = 0; k < 12; k++) { await adv(100, 50); await p.waitForTimeout(300); }
 if (cam === 'over') await p.evaluate(() => { window.__mlCam = { pos: [-2.55, 1.35, -3.15], target: [0.1, -0.5, 0.1], fov: 56 }; });
+if (cam === 'pours') await p.evaluate(() => { window.__mlCam = { pos: [0, 1.25, 2.3], target: [0, -0.25, -0.8], fov: 62 }; });
 if (process.env.STILL) { for (let left = Number(process.env.STILL_MS ?? 500); left > 0; left -= 1000) await adv(Math.min(1000, left), 100); await adv(100, 33.3); await p.screenshot({ path: process.env.STILL, timeout: 120000 }); await b.close(); process.exit(0); }
 const clk = () => p.evaluate(() => window.__mlWaiter?.state().clock ?? 0);
 let c = await clk();
