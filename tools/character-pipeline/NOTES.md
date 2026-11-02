@@ -199,3 +199,22 @@ Short log of the problems hit while building the Ammar and Orange guy models, wh
 - EYE_SPEC livo re-measured with eyeov.py overlay renders: ey .660 eh .036 ex .062 ew .032; mouth .588/.022/.036.
 - Known leftovers: small seam steps where the face slab meets the side shell (visible only in close 3/4 renders), painted eyes
   ~0.008 uneven in height (source texture).
+
+### Livo v3 (Nov 2 2026) — new base mesh from Tencent HY 3D v3.1 — scripts in tools/character-pipeline/livo/hy3d/
+- Source: /workspace/marlivo_figure/hy3d/livo_hy3d_single.glb (kept unmodified, md5 629d7af8ac8a532efb807c3e399ae593). Box work dir
+  /workspace/sb/hy31, build dir /workspace/tools/hyb_hy31 (internal files still named `beanie`, like v1/v2).
+- mkwork.py: weld (remove_doubles 1e-5, the download is seam-split triangle soup) + 250k work mesh W, height scaled to 1.
+- flatten2.py: per-height radial profile from densified triangle sections about a fixed centre; deletes the fused sleeve lobes
+  (±LOB deg at the sides) and builds a gaussian-smoothed wall patch. assemble.py: delete + holes_fill/poke + PATCH + ARMS.
+- arms.py: procedural sleeve tube + cuff + mitten hand per side, 4-bone ready.
+- bake.py (STAGE=prep join/weld/decimate, then xatlas UVs via uvatlas.py with the face region scaled up, Cycles selected-to-active
+  diffuse + tangent normal from the full-res SRC, self-bakes of the MASK attribute and object position).
+  post.py: coat colour for the patch/sleeves (z-smoothed KNN median + grain), hands from the cheek skin, beanie grey -> cream
+  (226,210,192), normal map flattened on synthesized regions. export_tex.py writes the `_ARM` vertex attribute (ARMATTR).
+- rig_livo.mjs ARMATTR mode: arm axes fitted to the `_ARM` vertices, binary arm weights, attribute dropped from the output.
+  install_hy.sh = export -> rig -> webp (hi q90 / lo q78) -> gltfpack -cc -kn. rebuild.sh: hi 50000/2048, lo 12000/1024.
+- Client: manifest rotationY 0; EYE_SPEC livo ey .635 eh .031 ex .055 ew .026; mouth overlay OFF (mh 0) because her open smile
+  is sculpted into the mesh and a painted cover cannot hide it (mouthsim.py simulates the shader on the texture); `mz` depth
+  gate added to EYE_SPEC. BODY_SPECS faceLo .06 faceZ .17 browY .235. Portrait + 2D bust regenerated.
+- Known leftovers: faint shading streaks on the synthesized coat side/sleeves at extreme close range, mitten-ball hands,
+  slight head tilt inherited from HY3D (~0.018 eye-height difference), small notches at the patch edges.

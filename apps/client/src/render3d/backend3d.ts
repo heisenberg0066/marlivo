@@ -345,6 +345,8 @@ function checkHolds() { if (!ctx) return; for (const seat of [...holds.keys()]) 
 const seatQ = new Map<number, Promise<void>>();
 function queueSeat(seat: number, f: () => Promise<void>) { const prev = seatQ.get(seat) ?? Promise.resolve(); const next = prev.then(f, f).catch(() => {}); seatQ.set(seat, next); return next; }
 
+const PEEK_OFFSET: Record<string, { dy: number; out: number; lat: number }> = { livo: { dy: -0.075, out: 0.03, lat: 0.07 } };
+
 /** An opponent peeks at one of its own cards: whole-body forward shift + shoulder coil, reaches the slot, paw closes,
  *  lifts the card close to its face while the off-hand braces on the table rim, then lays it back cleanly in the slot. */
 async function stagePeek(seat: number, slotId: string): Promise<void> {
@@ -357,6 +359,12 @@ async function stagePeek(seat: number, slotId: string): Promise<void> {
   const c = new THREE.Vector3(...ch.p); const facing = slotP.clone().sub(c).setY(0).normalize();
   const head = new THREE.Vector3(); (a.head ?? a.root).getWorldPosition(head);
   const peekSpot = head.clone().addScaledVector(facing, 0.16); peekSpot.y -= 0.09;
+  // Per-character peek offset (Livo's big round face sits low: hold the card lower and off to the reaching side so it never covers her mouth).
+  const po = PEEK_OFFSET[a.id ?? ctx.view.seats[seat]?.characterId ?? ''];
+  if (po) {
+    const lat = shoulderPos(arm).sub(head).setY(0); if (lat.lengthSq() > 1e-8) lat.normalize();
+    peekSpot.addScaledVector(facing, po.out).addScaledVector(lat, po.lat); peekSpot.y += po.dy;
+  }
   const grab = slotP.clone(); grab.y += 0.01;
   stagedHidden.add(slotId);
   const s = new Sprite3D(boxOf(sl), null, false); live.add(s);

@@ -536,7 +536,7 @@ export const BODY_SPECS: Record<string, BodySpec> = {
   pepper:  { cx: 0, head: { c: [0, 0.36, 0.02], r: [0.27, 0.20, 0.27], p: 2 }, torso: { c: [0, 0.03, -0.01], r: [0.24, 0.15, 0.26], p: 2 }, glove: 0.05, faceLo: 0.17, faceZ: 0.29, faceHalfW: 0.24, browY: 0.37, floorY: 0.0 },
   choco:   { cx: 0, head: { c: [0.02, 0.38, -0.04], r: [0.28, 0.19, 0.15], p: 4 }, torso: { c: [0.02, 0.06, -0.06], r: [0.30, 0.15, 0.17], p: 4 }, glove: 0.05, faceLo: 0.12, faceZ: 0.10, faceHalfW: 0.26, browY: 0.32, floorY: 0.0 },
   sugar:   { cx: 0, head: { c: [0.02, 0.14, -0.02], r: [0.30, 0.29, 0.23], p: 4 }, torso: null, glove: 0.05, faceLo: 0.045, faceZ: 0.21, faceHalfW: 0.28, browY: 0.22, floorY: 0.03 },
-  livo:  { cx: 0, head: { c: [0, 0.295, 0.0], r: [0.22, 0.18, 0.20], p: 2 }, torso: { c: [0, -0.06, 0], r: [0.18, 0.18, 0.16], p: 2 }, glove: 0.045, faceLo: 0.10, faceZ: 0.20, faceHalfW: 0.17, browY: 0.24, floorY: 0.0 },
+  livo:  { cx: 0, head: { c: [0, 0.295, 0.0], r: [0.22, 0.18, 0.20], p: 2 }, torso: { c: [0, -0.06, 0], r: [0.18, 0.18, 0.16], p: 2 }, glove: 0.045, faceLo: 0.06, faceZ: 0.17, faceHalfW: 0.17, browY: 0.235, floorY: 0.0 },
 };
 const DEFAULT_SPEC = BODY_SPECS.biscuit;
 export const bodySpecFor = (id?: string): BodySpec => (id && BODY_SPECS[id]) || DEFAULT_SPEC;

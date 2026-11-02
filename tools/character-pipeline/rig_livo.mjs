@@ -8,6 +8,7 @@
 //  - arms: a capsule around each sleeve axis fitted to the free hanging sleeve/hand (lateral of the coat), cut on its
 //    inner side so the coat wall next to the sleeve stays on the body; hair is never arm;
 //  - legs: below the hip line, left/right by side with a soft midline seam, the coat's outer flaps only half on the leg.
+// Also rigs the HY3D Ammar (ARMATTR + RIGCFG: hip/neck/knee/ankle/shoulder/shLat/slice0/slice1/hairFade/torsoY/headY).
 // Usage: node rig_livo.mjs in.glb texture.png out.glb   (needs @gltf-transform/core+extensions v4, meshoptimizer, pngjs)
 import fs from 'node:fs';
 import { NodeIO } from '@gltf-transform/core';
@@ -50,15 +51,22 @@ const H = ymax - ymin; const yN = (i) => (q[i * 3 + 1] - ymin) / H;
 const smooth = (x) => (x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x));
 const median = (a) => { const s = [...a].sort((x, y) => x - y); return s[Math.floor(s.length / 2)]; };
 // torso centre (x, z) from the coat between the hip line and the chest
-const tx = [], tz = []; for (let i = 0; i < n; i++) { const y = yN(i); if (y > 0.3 && y < 0.45) { tx.push(q[i * 3]); tz.push(q[i * 3 + 2]); } }
+const RC = JSON.parse(process.env.RIGCFG ?? '{}'); // per-character overrides (also merged into C below)
+const [TY0, TY1] = RC.torsoY ?? [0.3, 0.45], [HY0, HY1] = RC.headY ?? [0.62, 0.75];
+const tx = [], tz = []; for (let i = 0; i < n; i++) { const y = yN(i); if (y > TY0 && y < TY1) { tx.push(q[i * 3]); tz.push(q[i * 3 + 2]); } }
 let cx = median(tx), cz = median(tz);
-const hx = [], hz = []; for (let i = 0; i < n; i++) { const y = yN(i); if (y > 0.62 && y < 0.75) { hx.push(q[i * 3]); hz.push(q[i * 3 + 2]); } }
+const hx = [], hz = []; for (let i = 0; i < n; i++) { const y = yN(i); if (y > HY0 && y < HY1) { hx.push(q[i * 3]); hz.push(q[i * 3 + 2]); } }
 let hcx = median(hx), hcz = median(hz);
+// ARMATTR: the model carries its own arm mask (custom vertex attribute _ARM: 0 body, >0.5 arm/hand), e.g. the HY3D
+// Livo whose arms are separate hanging sleeves: arm axes are fitted to the masked vertices and arm weights are binary.
+const armAttr = process.env.ARMATTR ? (prim.getAttribute('_ARM') ?? null) : null;
+const ARMV = armAttr ? Float32Array.from({ length: n }, (_, i) => armAttr.getElement(i, [])[0]) : null;
+if (process.env.ARMATTR && !ARMV) throw new Error('ARMATTR set but no _ARM attribute');
 const col = new Float32Array(n * 3); for (let i = 0; i < n; i++) col.set(colAt(...U.getElement(i, [])), i * 3);
 const lum = (i) => 0.299 * col[i * 3] + 0.587 * col[i * 3 + 1] + 0.114 * col[i * 3 + 2];
 const isHair = (i) => { const r = col[i * 3], g = col[i * 3 + 1], b = col[i * 3 + 2]; return lum(i) < 0.33 && r >= b - 0.01 && r - b < 0.22 && !(b > r); };
 
-const C = { hip: 0.285, neck: 0.585, neckBand: 0.035, hairFade: 0.15, knee: 0.15, ankle: 0.065, ...JSON.parse(process.env.RIGCFG ?? '{}') };
+const C = { hip: 0.285, neck: 0.585, neckBand: 0.035, hairFade: 0.15, knee: 0.15, ankle: 0.065, ...RC };
 // --- arm axes: centroids of the outermost sleeve cluster in clean slices (sleeve free of the coat and the hair),
 //     a straight line fitted through them, extended up to the shoulder and down to the lowest hand point
 const arms = [];
@@ -67,12 +75,13 @@ for (const [side, sg] of [['armL', -1], ['armR', 1]]) {
   for (let y0 = C.slice0 ?? 0.26; y0 < (C.slice1 ?? 0.40); y0 += 0.02) {
     const s = []; for (let i = 0; i < n; i++) { const y = yN(i); if (y >= y0 && y < y0 + 0.02) s.push(i); }
     let mx = -Infinity; for (const i of s) mx = Math.max(mx, sg * (q[i * 3] - cx));
-    const o = s.filter((i) => sg * (q[i * 3] - cx) > mx - 0.06 * H);
+    const o = ARMV ? s.filter((i) => ARMV[i] > 0.5 && sg * (q[i * 3] - cx) > 0) : s.filter((i) => sg * (q[i * 3] - cx) > mx - 0.06 * H);
+    if (!o.length) continue;
     cs.push([0, 1, 2].map((k) => o.reduce((a, i) => a + q[i * 3 + k], 0) / o.length));
   }
   const fitLin = (k) => { const ys = cs.map((c) => c[1]), vs = cs.map((c) => c[k]); const my = ys.reduce((a, b) => a + b) / ys.length, mv = vs.reduce((a, b) => a + b) / vs.length; let num = 0, den = 0; ys.forEach((y, j) => { num += (y - my) * (vs[j] - mv); den += (y - my) ** 2; }); const b = num / den; return (y) => mv + b * (y - my); };
   const fx = fitLin(0), fz = fitLin(2);
-  let ylow = Infinity; for (let i = 0; i < n; i++) { const y = yN(i); if (y < 0.3 && y > (C.handMin ?? 0.2) && sg * (q[i * 3] - cx) / H > (C.armFree ?? 0.19)) ylow = Math.min(ylow, q[i * 3 + 1]); }
+  let ylow = Infinity; for (let i = 0; i < n; i++) { const y = yN(i); if (ARMV ? (ARMV[i] > 0.5 && sg * (q[i * 3] - cx) > 0) : (y < 0.3 && y > (C.handMin ?? 0.2) && sg * (q[i * 3] - cx) / H > (C.armFree ?? 0.19))) ylow = Math.min(ylow, q[i * 3 + 1]); }
   const yS = ymin + (C.shoulder ?? 0.48) * H;
   const shX = cx + sg * Math.min(sg * (fx(yS) - cx), (C.shLat ?? 0.165) * H);
   const sh = [shX, yS, fz(yS)], tip = [fx(ylow), ylow, fz(ylow)];
@@ -146,6 +155,13 @@ for (let i = 0; i < n; i++) {
     m *= smooth((vLat - (axLat - (C.armInner ?? 0.03) * H)) / (0.02 * H));
     m *= smooth((s + 0.02) / 0.14); // blend into the shoulder
     if (m > armM) { armM = m; A = a; sArm = Math.max(0, s); }
+  }
+  if (ARMV) {
+    armM = 0; A = null; sArm = 0;
+    if (ARMV[i] > 0.5) {
+      const a = arms[p[0] < cx ? 0 : 1]; const r = [p[0] - a.sh[0], p[1] - a.sh[1], p[2] - a.sh[2]];
+      armM = 1; A = a; sArm = Math.max(0, (r[0] * a.dir[0] + r[1] * a.dir[1] + r[2] * a.dir[2]) / a.L);
+    }
   }
   // legs
   let legM = 0, Lg = null;
@@ -242,6 +258,7 @@ if (process.env.DUMP) { // per-vertex uv / height / arm weight + triangles, for 
 if (process.env.TEXIN) { // replace the base colour image (cleaned texture, webp)
   const tex = prim.getMaterial().getBaseColorTexture(); tex.setImage(new Uint8Array(fs.readFileSync(process.env.TEXIN))).setMimeType('image/webp');
 }
+if (armAttr) prim.setAttribute('_ARM', null);
 prim.setAttribute('JOINTS_0', doc.createAccessor().setType('VEC4').setArray(jOut).setBuffer(P.getBuffer()));
 prim.setAttribute('WEIGHTS_0', doc.createAccessor().setType('VEC4').setArray(wOut).setBuffer(P.getBuffer()));
 for (const a of root.listAccessors()) if (!a.listParents().some((p) => p !== root)) a.dispose();

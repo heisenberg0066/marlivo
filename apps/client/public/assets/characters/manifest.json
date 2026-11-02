@@ -121,7 +121,7 @@
       "baseY": -0.5,
       "motion": "animal",
       "glow": 0.25,
-      "rotationY": 7.2
+      "rotationY": 0
     },
     "guest": {
       "name": {

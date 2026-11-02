@@ -181,7 +181,7 @@ function Ammar({ mood }: { mood: Mood }) {
  *  royal-blue knit scarf over a camel double-breasted coat (SVG fallback; the portrait is rendered from her 3D model). */
 function Livo({ mood }: { mood: Mood }) {
   const id = useId().replace(/:/g, '');
-  const skin = '#f6d2b8', blush = '#f2a39a', hair = '#3b2618', hairHi = '#5a3c28', knit = '#efe6d4', knitD = '#d9ccb2';
+  const skin = '#f6d3bf', blush = '#f2a39a', hair = '#352a26', hairHi = '#5a4a44', knit = '#f0e4d4', knitD = '#dccdb8';
   const blue = '#1f4fc4', blueD = '#173c99', coat = '#c69a6b', coatD = '#a87d52';
   const look = mood === 'think' ? [2.2, -1.6] : mood === 'sad' ? [0, 1.4] : [0, 0];
   const eye = (cx: number) => mood === 'happy'
@@ -209,9 +209,11 @@ function Livo({ mood }: { mood: Mood }) {
       <circle cx="32" cy="84" r="2.4" fill="none" stroke="#c9ccd2" strokeWidth="1.4" /><circle cx="88" cy="84" r="2.4" fill="none" stroke="#c9ccd2" strokeWidth="1.4" />
       <path d="M60 40 C82 40 90 56 90 72 C90 92 78 104 60 104 C42 104 30 92 30 72 C30 56 38 40 60 40 Z" fill={`url(#bf${id})`} />
       <ellipse cx="41" cy="84" rx="6" ry="3.6" fill={blush} opacity=".55" /><ellipse cx="79" cy="84" rx="6" ry="3.6" fill={blush} opacity=".55" />
-      {/* hair fringe framing the face */}
-      <path d="M31 70 C30 52 42 42 60 44 C78 42 90 52 89 70 C84 58 76 52 60 52 C44 52 36 58 31 70 Z" fill={hair} />
-      <path d="M40 50 Q50 46 58 48" stroke={hairHi} strokeWidth="2" fill="none" opacity=".7" />
+      {/* hair parted under the beanie: clean forehead, locks framing the face only at the sides (v3 model) */}
+      <path d="M30 76 C28 62 30 52 40 50 C46 50 50 52 52 55 C44 56 38 62 36 70 C35 73 33 76 30 76 Z" fill={hair} />
+      <path d="M90 76 C92 62 90 52 80 50 C74 50 70 52 68 55 C76 56 82 62 84 70 C85 73 87 76 90 76 Z" fill={hair} />
+      <path d="M38 56 Q42 53 47 53" stroke={hairHi} strokeWidth="1.6" fill="none" opacity=".7" />
+      <path d="M82 56 Q78 53 73 53" stroke={hairHi} strokeWidth="1.6" fill="none" opacity=".7" />
       {/* brows, eyes, nose, mouth */}
       <path d={mood === 'sad' ? 'M40 61 Q46 58 53 60' : 'M40 60 Q46 56 53 59'} stroke="#3b2618" strokeWidth="3" fill="none" strokeLinecap="round" />
       <path d={mood === 'sad' ? 'M67 60 Q74 58 80 61' : mood === 'think' ? 'M67 57 Q74 53 80 56' : 'M67 59 Q74 56 80 60'} stroke="#3b2618" strokeWidth="3" fill="none" strokeLinecap="round" />
