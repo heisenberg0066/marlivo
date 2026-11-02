@@ -218,3 +218,18 @@ Short log of the problems hit while building the Ammar and Orange guy models, wh
   gate added to EYE_SPEC. BODY_SPECS faceLo .06 faceZ .17 browY .235. Portrait + 2D bust regenerated.
 - Known leftovers: faint shading streaks on the synthesized coat side/sleeves at extreme close range, mitten-ball hands,
   slight head tilt inherited from HY3D (~0.018 eye-height difference), small notches at the patch edges.
+
+### Ammar v3 (Nov 2 2026) — rebuilt on the Tencent HY 3D mesh, same pipeline as Livo v3 — scripts in tools/character-pipeline/ammar/hy3d/
+- Source: /workspace/marlivo_figure/hy3d/ammar_hy3d_single.glb (from gen5/cut/ammar_front.png; kept unmodified, md5
+  bfbcb473d91c171f5a675bf737009bf8). Box work dir /workspace/sb/hya, build dir /workspace/tools/hyb_ammar.
+- mkwork.py weld + 250k W. flatten2.py with `Z0=0.40 Z1=0.665 CY=0.05 LOB=48 HAIRL=-1 ZT=0.03 WALLK=0.028` removes the fused
+  pocket arms (WALLK pulls the side wall in so the torso is not arm-wide). arms_ammar.py (+ arms_env.txt): skin arm tube,
+  short black sleeve with hem, hand + thumb; arms_lo.npz is a low-poly copy for the low LOD.
+- bake.py now keeps the procedural arms out of the decimation (a straight tube lost its middle rings and could not bend).
+  Face region scaled up in the atlas (FZ0 .70 FZ1 1.05 FACESCALE 1.6) so face/glasses/curls stay sharp; hi 60000/2048, lo 14000/1024.
+- post.py env (env.sh): CLOTH=dark, BEANIE=0, hands from cheek skin. skinlift.py lightens/neutralises skin texels toward his
+  avatar (face median 207,144,103 -> ~233,161,119).
+- install_ammar.sh: rig_livo.mjs with ARMATTR + RIGCFG (hip .40, neck .705, hairFade ~0 so the black T-shirt is not taken
+  for hair, torsoY/headY ranges) -> webp -> gltfpack -> ammar.glb / ammar-low.glb. Single mesh (glasses are part of it).
+- Client: manifest rotationY 0; EYE_SPEC ammar ey .805 eh .015 ex .041 ew .024 (eyes behind the lens), mouth overlay on
+  (my .741 mh .012 mw .028, mz .11); BODY_SPECS ammar re-measured; portrait regenerated from the rig.

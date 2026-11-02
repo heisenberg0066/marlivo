@@ -530,7 +530,7 @@ export interface BodySpec {
 }
 export const BODY_SPECS: Record<string, BodySpec> = {
   tango:   { cx: 0, head: { c: [0, 0.17, -0.02], r: [0.35, 0.37, 0.32], p: 2 }, torso: null, glove: 0.06, faceLo: 0.05, faceZ: 0.36, faceHalfW: 0.34, browY: 0.335, floorY: 0.035, raiseZ: 0.06 },
-  ammar:   { cx: 0, head: { c: [0, 0.42, 0.10], r: [0.19, 0.24, 0.22], p: 2 }, torso: { c: [0, -0.10, -0.02], r: [0.21, 0.30, 0.22], p: 2 }, glove: 0.045, faceLo: 0.19, faceZ: 0.31, faceHalfW: 0.17, browY: 0.42, floorY: 0.0 },
+  ammar:   { cx: 0, head: { c: [0, 0.40, 0.04], r: [0.17, 0.22, 0.19], p: 2 }, torso: { c: [0, -0.055, -0.045], r: [0.22, 0.21, 0.18], p: 2 }, glove: 0.045, faceLo: 0.19, faceZ: 0.24, faceHalfW: 0.17, browY: 0.37, floorY: 0.0 },
   biscuit: { cx: 0, head: { c: [0, 0.37, 0], r: [0.26, 0.21, 0.25], p: 2 }, torso: { c: [0, 0.04, 0], r: [0.25, 0.18, 0.20], p: 2 }, glove: 0.05, faceLo: 0.17, faceZ: 0.25, faceHalfW: 0.24, browY: 0.39, floorY: 0.0 },
   mint:    { cx: -0.066, head: { c: [-0.05, 0.34, 0.08], r: [0.23, 0.20, 0.20], p: 2 }, torso: { c: [-0.066, 0.0, 0], r: [0.21, 0.16, 0.22], p: 2 }, glove: 0.05, faceLo: 0.15, faceZ: 0.28, faceHalfW: 0.25, browY: 0.34, floorY: 0.0 },
   pepper:  { cx: 0, head: { c: [0, 0.36, 0.02], r: [0.27, 0.20, 0.27], p: 2 }, torso: { c: [0, 0.03, -0.01], r: [0.24, 0.15, 0.26], p: 2 }, glove: 0.05, faceLo: 0.17, faceZ: 0.29, faceHalfW: 0.24, browY: 0.37, floorY: 0.0 },

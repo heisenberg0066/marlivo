@@ -76,7 +76,7 @@
       "chair": false,
       "motion": "person",
       "glow": 0.65,
-      "rotationY": -15
+      "rotationY": 0
     },
     "choco": {
       "name": {

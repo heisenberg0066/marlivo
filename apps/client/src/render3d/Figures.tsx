@@ -133,7 +133,7 @@ export interface FaceShaderUniform { value: number; mouth: THREE.Vector4 }
 // mz (optional): the mouth overlay only paints bind-frame points in front of this depth (default 0.16)
 // livo (HY3D): mh 0 = no talking-mouth overlay; her open smile is sculpted into the mesh, so a painted cover cannot hide it (smeared mouth)
 const EYE_SPEC: Record<string, { ey: number; eh: number; ex: number; ew: number; col: string; my: number; mh: number; mw: number; mcol: string; mz?: number }> = {
-  ammar:   { ey: 0.826, eh: 0.024, ex: 0.043, ew: 0.030, col: '#e6a87e', my: 0.745, mh: 0.000, mw: 0.028, mcol: '#e6a87e' },
+  ammar:   { ey: 0.805, eh: 0.015, ex: 0.041, ew: 0.024, col: '#d9a07e', my: 0.741, mh: 0.012, mw: 0.028, mcol: '#f1a57c', mz: 0.11 },
   biscuit: { ey: 0.758, eh: 0.034, ex: 0.072, ew: 0.044, col: '#9b643b', my: 0.640, mh: 0.032, mw: 0.046, mcol: '#c28c5c' },
   mint:    { ey: 0.725, eh: 0.044, ex: 0.076, ew: 0.052, col: '#9ab8a0', my: 0.645, mh: 0.028, mw: 0.042, mcol: '#b8bfa2' },
   pepper:  { ey: 0.752, eh: 0.048, ex: 0.082, ew: 0.056, col: '#d89a62', my: 0.000, mh: 0.000, mw: 0.000, mcol: '#d89a62' },
