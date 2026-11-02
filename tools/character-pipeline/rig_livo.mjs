@@ -193,28 +193,57 @@ for (let i = 0; i < n; i++) {
   if (sum <= 1e-6) { jArr[i * 4] = toArm ? J[(q[i * 3] < cx ? 'armL' : 'armR') + '_fore'] : J.spine; wArr[i * 4] = 1; sum = 1; for (let m = 1; m < 4; m++) wArr[i * 4 + m] = 0; }
   for (let m = 0; m < 4; m++) wArr[i * 4 + m] /= sum;
 }
+let qOut = null;
 let cut = 0;
+let jOut = jArr, wOut = wArr, awOut = aw, nOut = n;
 {
-  const idx = prim.getIndices(); const ia = idx.getArray(); const keep = [];
+  // v2: the bridging triangles are kept as a closed coat side: their arm-side corners are duplicated with the body
+  // weights of the triangle's body corner, so no slit opens on the coat when the arm lifts (the sleeve keeps its own wall).
+  const idx = prim.getIndices(); const ia = idx.getArray(); const out = []; const dup = new Map(); const src = [];
   for (let t = 0; t < ia.length; t += 3) {
-    const a = ia[t], b = ia[t + 1], c = ia[t + 2];
-    const lo = Math.min(aw[a], aw[b], aw[c]), hi = Math.max(aw[a], aw[b], aw[c]);
-    const yMax = Math.max(yN(a), yN(b), yN(c));
-    if (hi > 0.5 && lo < 0.5 && yMax < (C.cutY ?? 0.44)) { cut++; continue; }
-    keep.push(a, b, c);
+    const tri = [ia[t], ia[t + 1], ia[t + 2]];
+    const lo = Math.min(...tri.map((v) => aw[v])), hi = Math.max(...tri.map((v) => aw[v]));
+    const yMax = Math.max(...tri.map((v) => yN(v)));
+    if (hi > 0.5 && lo < 0.5 && yMax < (C.cutY ?? 0.44)) {
+      cut++;
+      if (process.env.SLIT_DROP) continue;
+      const bodyV = tri.find((v) => aw[v] < 0.5);
+      for (const v of tri) {
+        if (aw[v] < 0.5) { out.push(v); continue; }
+        const key = v + ':' + bodyV;
+        if (!dup.has(key)) { dup.set(key, n + src.length); src.push([v, bodyV]); }
+        out.push(dup.get(key));
+      }
+      continue;
+    }
+    out.push(...tri);
   }
-  idx.setArray(ia.length > 65535 * 3 || n > 65535 ? new Uint32Array(keep) : new Uint16Array(keep));
+  if (src.length) {
+    nOut = n + src.length;
+    for (const sem of prim.listSemantics()) {
+      if (sem === 'JOINTS_0' || sem === 'WEIGHTS_0') continue;
+      const acc = prim.getAttribute(sem); const es = acc.getElementSize(); const old = acc.getArray();
+      const arr = new old.constructor(nOut * es); arr.set(old.subarray(0, n * es));
+      src.forEach(([v], k) => { for (let e = 0; e < es; e++) arr[(n + k) * es + e] = old[v * es + e]; });
+      acc.setArray(arr);
+    }
+    jOut = new Uint16Array(nOut * 4); jOut.set(jArr); wOut = new Float32Array(nOut * 4); wOut.set(wArr); awOut = new Float32Array(nOut); awOut.set(aw);
+    src.forEach(([, b], k) => { for (let m = 0; m < 4; m++) { jOut[(n + k) * 4 + m] = jArr[b * 4 + m]; wOut[(n + k) * 4 + m] = wArr[b * 4 + m]; } awOut[n + k] = 0; });
+    const qq = new Float64Array(nOut * 3); qq.set(q); src.forEach(([v], k) => qq.set(q.subarray(v * 3, v * 3 + 3), (n + k) * 3)); qOut = qq;
+  }
+  idx.setArray(out.length > 65535 * 3 || nOut > 65535 ? new Uint32Array(out) : new Uint16Array(out));
   prim.getMaterial()?.setDoubleSided(true);
 }
 if (process.env.DUMP) { // per-vertex uv / height / arm weight + triangles, for the texture clean-up (texfix.py)
-  const uv = []; for (let i = 0; i < n; i++) uv.push(...U.getElement(i, []));
-  fs.writeFileSync(process.env.DUMP, JSON.stringify({ uv, y: Array.from({ length: n }, (_, i) => +yN(i).toFixed(4)), aw: Array.from(aw, (v) => +v.toFixed(3)), tri: Array.from(prim.getIndices().getArray()) }));
+  const UU = prim.getAttribute('TEXCOORD_0'); const qq = qOut ?? q; const yy = (i) => (qq[i * 3 + 1] - ymin) / H;
+  const uv = []; for (let i = 0; i < nOut; i++) uv.push(...UU.getElement(i, []));
+  fs.writeFileSync(process.env.DUMP, JSON.stringify({ uv, y: Array.from({ length: nOut }, (_, i) => +yy(i).toFixed(4)), aw: Array.from(awOut, (v) => +v.toFixed(3)), tri: Array.from(prim.getIndices().getArray()) }));
 }
 if (process.env.TEXIN) { // replace the base colour image (cleaned texture, webp)
   const tex = prim.getMaterial().getBaseColorTexture(); tex.setImage(new Uint8Array(fs.readFileSync(process.env.TEXIN))).setMimeType('image/webp');
 }
-prim.setAttribute('JOINTS_0', doc.createAccessor().setType('VEC4').setArray(jArr).setBuffer(P.getBuffer()));
-prim.setAttribute('WEIGHTS_0', doc.createAccessor().setType('VEC4').setArray(wArr).setBuffer(P.getBuffer()));
+prim.setAttribute('JOINTS_0', doc.createAccessor().setType('VEC4').setArray(jOut).setBuffer(P.getBuffer()));
+prim.setAttribute('WEIGHTS_0', doc.createAccessor().setType('VEC4').setArray(wOut).setBuffer(P.getBuffer()));
 for (const a of root.listAccessors()) if (!a.listParents().some((p) => p !== root)) a.dispose();
 await io.write(outF, doc);
 const r3 = (v) => v.map((x) => +x.toFixed(3));

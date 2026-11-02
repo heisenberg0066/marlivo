@@ -184,3 +184,18 @@ Short log of the problems hit while building the Ammar and Orange guy models, wh
   face, no page errors. scripts/anim-seatcheck-char.mjs (CHAR=livo [ME=1]).
 - Known compromises: faint light streak in the hair at her right temple (-55°); small dark slit on the coat side where the
   sleeve was cut; earrings only from the front projection; side/back are generated views, not photos.
+
+### Livo v2 (Nov 2 2026, "perfection pass") — scripts in tools/character-pipeline/livo/v2/ (box work dir /workspace/sb/gen9)
+- Starts from the v1 build glbs (/workspace/tools/hyb_beanie12/beanie_{hi,lo}.glb), edits them in place (UVs kept), output build
+  dir /workspace/tools/hyb_beanie13 (internal files still named `beanie`).
+- Geometry: geo2.py (via v2geo.sh '{"inner":0.0,"smooth":0,"back":0}') snaps the face/cheek/temple/ear zone onto one smooth
+  chubby shell (R1 .170, cheeks, ear bumps th±97 z.632, side squash .14), radial ray-cast outer test, drops hidden inner faces
+  (keep_ring 1), writes analytic shell normals in the zone (no crack shading). Then exp/raster position maps + sidefit L/R.
+- Texture chain: hairfix.py (mirror hair, removes the light temple streak) -> NOVIS=1 DF0=-1 DF1=3 sidehead.py (projects the
+  generated hi-res side head side_left_nf.png on both sides; earring recoloured silver; skin gain matched to the face) ->
+  hairswatch.py (generated wavy dark-brown swatch for all other hair; temple framing to eye level; chin fill; skin clean-up;
+  rim inpaint) -> tex2.py (gutter fill next to painted texels, then unsharp; lo texture from hi by 3D nearest point).
+- install_v2.sh = the same rig/texfix/gltfpack install (rig_livo.mjs now keeps the armpit cut triangles: no dark slit).
+- EYE_SPEC livo re-measured with eyeov.py overlay renders: ey .660 eh .036 ex .062 ew .032; mouth .588/.022/.036.
+- Known leftovers: small seam steps where the face slab meets the side shell (visible only in close 3/4 renders), painted eyes
+  ~0.008 uneven in height (source texture).

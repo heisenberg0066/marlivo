@@ -138,7 +138,7 @@ const EYE_SPEC: Record<string, { ey: number; eh: number; ex: number; ew: number;
   tango:   { ey: 0.675, eh: 0.052, ex: 0.076, ew: 0.055, col: '#e4832c', my: 0.562, mh: 0.042, mw: 0.072, mcol: '#e28040' },
   choco:   { ey: 0.692, eh: 0.035, ex: 0.068, ew: 0.042, col: '#5a321e', my: 0.602, mh: 0.038, mw: 0.062, mcol: '#603420' },
   sugar:   { ey: 0.680, eh: 0.040, ex: 0.072, ew: 0.046, col: '#ebe5dc', my: 0.552, mh: 0.038, mw: 0.058, mcol: '#ede6dc' },
-  livo:  { ey: 0.652, eh: 0.040, ex: 0.062, ew: 0.036, col: '#f0c4a4', my: 0.588, mh: 0.022, mw: 0.036, mcol: '#e9b394' },
+  livo:  { ey: 0.660, eh: 0.036, ex: 0.062, ew: 0.032, col: '#f0c4a4', my: 0.588, mh: 0.022, mw: 0.036, mcol: '#e9b394' },
 };
 export function attachBlinkShader(root: THREE.Object3D, id: string, ryDeg: number): FaceShaderUniform[] {
   const spec = EYE_SPEC[id]; if (!spec) return [];

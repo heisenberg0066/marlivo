@@ -6,7 +6,7 @@ import { mkdirSync } from 'node:fs';
 const base = process.env.BASE ?? 'http://localhost:4173/marlivo/';
 const ch = process.env.CHAR ?? 'livo'; const me = process.env.ME ? ch : 'biscuit';
 const which = process.argv[2] ?? 'laptop'; const out = process.argv[3] ?? '/tmp/seat'; mkdirSync(out, { recursive: true });
-const sizes = { phone: { viewport: { width: 390, height: 844 }, deviceScaleFactor: 1, isMobile: true, hasTouch: true }, laptop: { viewport: { width: 1280, height: 720 } } };
+const sizes = { phone: { viewport: { width: 390, height: 844 }, deviceScaleFactor: 1, isMobile: true, hasTouch: true }, laptop: { viewport: { width: 1280, height: 720 } }, big: { viewport: { width: 1280, height: 720 }, deviceScaleFactor: 2 } };
 const b = await chromium.launch({ executablePath: '/usr/bin/google-chrome', args: ['--no-sandbox', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
 const errs = [];
 const gfxs = (process.env.GFX ?? 'high,low').split(',');
