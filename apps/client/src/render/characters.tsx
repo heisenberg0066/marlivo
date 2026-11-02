@@ -1,9 +1,9 @@
 // Characters (§14.6): Biscuit (bear), Mint (cat), Pepper (owl), Orange guy (id 'tango', Ammar's orange creature)
-// and Ammar (a chibi from his own cartoon avatar). 2D busts with a few expressions; the 3D models live in render3d.
+// Ammar (a chibi from his own cartoon avatar) and Livo (a chibi girl in a pompom beanie and camel coat). 2D busts with a few expressions; the 3D models live in render3d.
 import { memo, useId, useState } from 'react';
 
 export type Mood = 'idle' | 'happy' | 'sad' | 'away' | 'think' | 'surprised';
-export const CHARACTER_IDS = ['biscuit', 'mint', 'pepper', 'tango', 'ammar', 'choco', 'sugar'] as const;
+export const CHARACTER_IDS = ['biscuit', 'mint', 'pepper', 'tango', 'ammar', 'choco', 'sugar', 'livo'] as const;
 export const SEAT_COLORS = ['#e8892f', '#5da9e9', '#7bd389', '#e2b23c'];
 
 function Eyes({ mood, x1, x2, y, r = 4, color = '#2b1d14' }: { mood: Mood; x1: number; x2: number; y: number; r?: number; color?: string }) {
@@ -177,12 +177,68 @@ function Ammar({ mood }: { mood: Mood }) {
   );
 }
 
+/** Livo: chubby chibi girl, cream ribbed beanie with a pompom, wavy dark-brown hair, big blue eyes, hoop earrings,
+ *  royal-blue knit scarf over a camel double-breasted coat (SVG fallback; the portrait is rendered from her 3D model). */
+function Livo({ mood }: { mood: Mood }) {
+  const id = useId().replace(/:/g, '');
+  const skin = '#f6d2b8', blush = '#f2a39a', hair = '#3b2618', hairHi = '#5a3c28', knit = '#efe6d4', knitD = '#d9ccb2';
+  const blue = '#1f4fc4', blueD = '#173c99', coat = '#c69a6b', coatD = '#a87d52';
+  const look = mood === 'think' ? [2.2, -1.6] : mood === 'sad' ? [0, 1.4] : [0, 0];
+  const eye = (cx: number) => mood === 'happy'
+    ? <path d={`M${cx - 7} 72 q7 -8 14 0`} stroke="#2b1a10" strokeWidth="2.8" fill="none" strokeLinecap="round" />
+    : mood === 'away' ? <path d={`M${cx - 7} 71 q7 5 14 0`} stroke="#2b1a10" strokeWidth="2.6" fill="none" strokeLinecap="round" />
+    : <g><ellipse cx={cx} cy="71" rx="7.2" ry={mood === 'surprised' ? 8.6 : 7.8} fill="#fff" />
+        <circle cx={cx + look[0]} cy={72 + look[1]} r="5.8" fill="#3a5f9e" /><circle cx={cx + look[0]} cy={72 + look[1]} r="2.8" fill="#0f1a33" />
+        <circle cx={cx + look[0] - 1.8} cy={69.4 + look[1]} r="1.9" fill="#fff" />
+        <path d={`M${cx - 8} 67 q8 -6 16 0`} stroke="#22140c" strokeWidth="2" fill="none" strokeLinecap="round" /></g>;
+  const waves = (sx: number) => <path d={`M${60 + sx * 26} 52 C${60 + sx * 42} 60 ${60 + sx * 38} 74 ${60 + sx * 44} 86 C${60 + sx * 50} 98 ${60 + sx * 40} 106 ${60 + sx * 46} 116 C${60 + sx * 36} 118 ${60 + sx * 30} 108 ${60 + sx * 30} 96 C${60 + sx * 26} 84 ${60 + sx * 30} 66 ${60 + sx * 26} 52 Z`} fill={hair} />;
+  return (
+    <g>
+      <defs>
+        <radialGradient id={'bf' + id} cx="45%" cy="40%" r="65%"><stop offset="0" stopColor="#fde4d2" /><stop offset="1" stopColor={skin} /></radialGradient>
+      </defs>
+      {/* wavy hair behind the head */}
+      {waves(-1)}{waves(1)}
+      {/* camel coat with lapels + buttons, blue sweater */}
+      <path d="M14 140 Q16 114 36 108 L50 104 L70 104 L84 108 Q104 114 106 140 Z" fill={coat} />
+      <path d="M48 104 L58 140 L62 140 L72 104 Z" fill={blue} />
+      <path d="M42 106 L54 122 L50 140 L40 140 Z M78 106 L66 122 L70 140 L80 140 Z" fill={coatD} opacity=".55" />
+      <circle cx="44" cy="128" r="2.2" fill="#4a3424" /><circle cx="76" cy="128" r="2.2" fill="#4a3424" />
+      {/* head */}
+      <ellipse cx="33" cy="76" rx="5" ry="7" fill={skin} /><ellipse cx="87" cy="76" rx="5" ry="7" fill={skin} />
+      <circle cx="32" cy="84" r="2.4" fill="none" stroke="#c9ccd2" strokeWidth="1.4" /><circle cx="88" cy="84" r="2.4" fill="none" stroke="#c9ccd2" strokeWidth="1.4" />
+      <path d="M60 40 C82 40 90 56 90 72 C90 92 78 104 60 104 C42 104 30 92 30 72 C30 56 38 40 60 40 Z" fill={`url(#bf${id})`} />
+      <ellipse cx="41" cy="84" rx="6" ry="3.6" fill={blush} opacity=".55" /><ellipse cx="79" cy="84" rx="6" ry="3.6" fill={blush} opacity=".55" />
+      {/* hair fringe framing the face */}
+      <path d="M31 70 C30 52 42 42 60 44 C78 42 90 52 89 70 C84 58 76 52 60 52 C44 52 36 58 31 70 Z" fill={hair} />
+      <path d="M40 50 Q50 46 58 48" stroke={hairHi} strokeWidth="2" fill="none" opacity=".7" />
+      {/* brows, eyes, nose, mouth */}
+      <path d={mood === 'sad' ? 'M40 61 Q46 58 53 60' : 'M40 60 Q46 56 53 59'} stroke="#3b2618" strokeWidth="3" fill="none" strokeLinecap="round" />
+      <path d={mood === 'sad' ? 'M67 60 Q74 58 80 61' : mood === 'think' ? 'M67 57 Q74 53 80 56' : 'M67 59 Q74 56 80 60'} stroke="#3b2618" strokeWidth="3" fill="none" strokeLinecap="round" />
+      {eye(46)}{eye(74)}
+      <ellipse cx="60" cy="84" rx="2.2" ry="1.6" fill="#e9b496" />
+      {mood === 'idle' || mood === 'happy'
+        ? <g><path d="M51 89 Q60 101 69 89 Z" fill="#8a2a2e" /><path d="M52.5 89.4 Q60 92 67.5 89.4 L67 91 Q60 93 53 91 Z" fill="#fff" /><path d="M55 96 Q60 99 65 96 Q60 94 55 96 Z" fill="#e8737a" /></g>
+        : <Mouth mood={mood} x={60} y={91} color="#8a2a2e" />}
+      {/* cream ribbed beanie + pompom */}
+      <path d="M26 56 C24 28 40 14 60 14 C80 14 96 28 94 56 Z" fill={knit} />
+      <g stroke={knitD} strokeWidth="1.4" opacity=".9">{[34, 42, 50, 58, 66, 74, 82, 88].map((x) => <path key={x} d={`M${x} ${x < 40 || x > 84 ? 30 : 20} L${x} 50`} />)}</g>
+      <rect x="24" y="44" width="72" height="14" rx="7" fill={knit} stroke={knitD} strokeWidth="1.2" />
+      <g stroke={knitD} strokeWidth="1.3">{Array.from({ length: 14 }, (_, i) => 28 + i * 5).map((x) => <path key={x} d={`M${x} 46 L${x} 56`} />)}</g>
+      <circle cx="60" cy="12" r="10" fill="#f3ead8" /><circle cx="57" cy="9" r="4" fill="#fffaf0" opacity=".8" />
+      {/* royal-blue scarf over the shoulders */}
+      <path d="M36 100 Q60 116 84 100 Q88 108 80 114 Q60 124 40 114 Q32 108 36 100 Z" fill={blue} />
+      <path d="M66 112 L76 112 L78 140 L66 140 Z" fill={blueD} />
+    </g>
+  );
+}
+
 /** Portraits rendered from the 3D models (Blender, see tools/character-pipeline); the SVG busts stay as fallback art. */
-const PORTRAITS: Record<string, string> = { tango: 'tango.webp', ammar: 'ammar.webp', biscuit: 'biscuit.webp', mint: 'mint.webp', pepper: 'pepper.webp', choco: 'choco.webp', sugar: 'sugar.webp' };
+const PORTRAITS: Record<string, string> = { tango: 'tango.webp', ammar: 'ammar.webp', biscuit: 'biscuit.webp', mint: 'mint.webp', pepper: 'pepper.webp', choco: 'choco.webp', sugar: 'sugar.webp', livo: 'livo.webp' };
 const portraitUrl = (id: string) => (import.meta.env?.BASE_URL ?? '/') + 'assets/characters/portraits/' + PORTRAITS[id];
 function Portrait({ id, mood }: { id: string; mood: Mood }) {
   const [ok, setOk] = useState(true);
-  const Svg = id === 'ammar' ? Ammar : id === 'tango' ? Tango : id === 'mint' ? Mint : id === 'pepper' ? Pepper : Biscuit;
+  const Svg = id === 'livo' ? Livo : id === 'ammar' ? Ammar : id === 'tango' ? Tango : id === 'mint' ? Mint : id === 'pepper' ? Pepper : Biscuit;
   if (!ok) return <Svg mood={mood} />;
   return <image href={portraitUrl(id)} x="0" y="0" width="120" height="140" preserveAspectRatio="xMidYMax meet" onError={() => setOk(false)} />;
 }
@@ -195,7 +251,7 @@ export const CharacterBust = memo(function CharacterBust({ id, mood = 'idle', co
       {mood === 'away' && <text x="96" y="22" fontSize="18" fill="#f6ebd9" fontFamily="Fredoka, system-ui" className="zzz">z<tspan dy="-8" fontSize="13">z</tspan></text>}
     </svg>
   );
-  const Comp = id === 'mint' ? Mint : id === 'pepper' ? Pepper : id === 'tango' ? Tango : id === 'ammar' ? Ammar : Biscuit;
+  const Comp = id === 'livo' ? Livo : id === 'mint' ? Mint : id === 'pepper' ? Pepper : id === 'tango' ? Tango : id === 'ammar' ? Ammar : Biscuit;
   return (
     <svg viewBox="0 0 120 140" width={size} height={size * 140 / 120} className={`char-bust mood-${mood} ${className}`} aria-hidden>
       {color && <ellipse cx="60" cy="136" rx="52" ry="8" fill={color} opacity=".55" />}

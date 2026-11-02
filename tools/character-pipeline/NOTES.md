@@ -165,3 +165,22 @@ Short log of the problems hit while building the Ammar and Orange guy models, wh
   texture column is replaced by the fur just above (or below) it, mirrored, then feathered: keeps the feather pattern and the
   face-disc / brown boundary instead of a grey blur. The modelled temple is 3 cm then dives into the head.
   Left: faint light streak where the bar was, and small grey wedges on the painted pale lens-edge patch next to the hinge.
+
+## Livo (`livo`, Nov 2 2026) — 8th character, chubby chibi girl in a pompom beanie
+- Display name "Livo" (en/fr), id `livo`. Pipeline working files on the box are still named `beanie` (gen8/cut/beanie_*,
+  /workspace/tools/hyb_beanie12, settings_beanie_hy4.json); only the shipped assets/code use `livo`.
+- Views: GenerateImage arms-out front/sideL/sideR/back from /workspace/marlivo_figure refs (gen8), cut6 + fills, Hunyuan3D-2mv
+  512, align_hy (yaw -7.2 -> manifest rotationY 7.2), build_hy.sh with settings_beanie_hy4.json.
+- Face ghosts fixed before the build (scripts in tools/character-pipeline/livo/, run by prep_all.sh):
+  - facefix2.py: Hunyuan put hair locks over the forehead/cheeks and an offset mouth where the front image has skin
+    -> robust poly-4 face surface inside the front-image skin mask (facemask.py + frontproj.py); the face is texture-driven.
+  - hairify.py: the side views painted cheek/ear onto mesh hair -> side-view cheek/ear repainted as hair (doubled-eye fix).
+- Rig: rig_livo.mjs (3-bone legs, 4-bone arms, body, head). Arm axis from slice centroids; below the armpit the sleeve is cut
+  free of the coat (binary weights, bridging tris dropped, double-sided) so moving arms don't stretch coat "fins".
+  RIGFROM reuses the hi joints for lo. texfix.py inpaints skin-coloured texels on coat triangles (ghost hands).
+  install.sh = rig -> texfix -> re-rig with TEXIN -> gltfpack -cc -kn -> livo.glb / livo-low.glb.
+- Seated like the animals (height 1.05, baseY -0.5, motion animal). EYE_SPEC/BODY_SPECS/FP_PALETTE entries added.
+- Checked: 36-shot seat matrix (laptop/phone x High/Low x 2/3/4p, as opponent and as player): single head, arms out of the
+  face, no page errors. scripts/anim-seatcheck-char.mjs (CHAR=livo [ME=1]).
+- Known compromises: faint light streak in the hair at her right temple (-55°); small dark slit on the coat side where the
+  sleeve was cut; earrings only from the front projection; side/back are generated views, not photos.

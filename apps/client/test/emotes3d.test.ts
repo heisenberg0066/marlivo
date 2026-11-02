@@ -20,8 +20,8 @@ import {
 import { computeBadmintonState, PERIOD as BADMINTON_PERIOD } from '../src/render3d/scenes/badminton';
 
 const CHAR_DIR = resolve(__dirname, '../public/assets/characters');
-const ALL_7_CHARS = ['ammar', 'orange-guy', 'biscuit', 'mint', 'pepper', 'choco', 'sugar'] as const;
-const ALL_7_IDS = ['ammar', 'tango', 'biscuit', 'mint', 'pepper', 'choco', 'sugar'] as const;
+const ALL_7_CHARS = ['ammar', 'orange-guy', 'biscuit', 'mint', 'pepper', 'choco', 'sugar', 'livo'] as const;
+const ALL_7_IDS = ['ammar', 'tango', 'biscuit', 'mint', 'pepper', 'choco', 'sugar', 'livo'] as const;
 
 function parseGlbJson(filePath: string): { nodes?: { name?: string }[]; skins?: { joints: number[] }[] } {
   const buf = readFileSync(filePath);
@@ -191,7 +191,7 @@ describe('All 7 characters 4-bone arm + 3-bone leg GLB rigs, animations, badmint
   });
 
   it('keeps every hand target out of the head/face for all 7 characters (idle, think, every emote)', () => {
-    const ids = ['tango', 'ammar', 'biscuit', 'mint', 'pepper', 'choco', 'sugar'];
+    const ids = ['tango', 'ammar', 'biscuit', 'mint', 'pepper', 'choco', 'sugar', 'livo'];
     const kinds: EmoteKind[] = ['wave', 'cheer', 'boo', 'slam', 'win', 'sputter'];
     for (const id of ids) {
       const sp = bodySpecFor(id);

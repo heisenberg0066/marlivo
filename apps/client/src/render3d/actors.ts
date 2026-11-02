@@ -536,6 +536,7 @@ export const BODY_SPECS: Record<string, BodySpec> = {
   pepper:  { cx: 0, head: { c: [0, 0.36, 0.02], r: [0.27, 0.20, 0.27], p: 2 }, torso: { c: [0, 0.03, -0.01], r: [0.24, 0.15, 0.26], p: 2 }, glove: 0.05, faceLo: 0.17, faceZ: 0.29, faceHalfW: 0.24, browY: 0.37, floorY: 0.0 },
   choco:   { cx: 0, head: { c: [0.02, 0.38, -0.04], r: [0.28, 0.19, 0.15], p: 4 }, torso: { c: [0.02, 0.06, -0.06], r: [0.30, 0.15, 0.17], p: 4 }, glove: 0.05, faceLo: 0.12, faceZ: 0.10, faceHalfW: 0.26, browY: 0.32, floorY: 0.0 },
   sugar:   { cx: 0, head: { c: [0.02, 0.14, -0.02], r: [0.30, 0.29, 0.23], p: 4 }, torso: null, glove: 0.05, faceLo: 0.045, faceZ: 0.21, faceHalfW: 0.28, browY: 0.22, floorY: 0.03 },
+  livo:  { cx: 0, head: { c: [0, 0.295, 0.0], r: [0.22, 0.18, 0.20], p: 2 }, torso: { c: [0, -0.06, 0], r: [0.18, 0.18, 0.16], p: 2 }, glove: 0.045, faceLo: 0.10, faceZ: 0.20, faceHalfW: 0.17, browY: 0.24, floorY: 0.0 },
 };
 const DEFAULT_SPEC = BODY_SPECS.biscuit;
 export const bodySpecFor = (id?: string): BodySpec => (id && BODY_SPECS[id]) || DEFAULT_SPEC;
@@ -787,7 +788,7 @@ export interface IdlePose {
   mouthWidth: number;
 }
 
-/** Pure, continuous relaxed idle generator for all 7 characters so none ever freezes in bind pose. */
+/** Pure, continuous relaxed idle generator for all 8 characters so none ever freezes in bind pose. */
 export function computeIdlePose(id: string | undefined, seat: number, t: number, mood: string, lookYaw = 0): IdlePose {
   const s0 = seat * 2.17 + (id === 'tango' ? 0.4 : id === 'ammar' ? 1.3 : id === 'biscuit' ? 0.8 : id === 'mint' ? 1.9 : 2.4);
   const u1 = t * 1.15 + s0;
@@ -801,9 +802,9 @@ export function computeIdlePose(id: string | undefined, seat: number, t: number,
   const isOrange = id === 'tango';
   const isBlocky = id === 'sugar' || id === 'choco';
   const cx = id === 'mint' ? -0.066 : 0;
-  const downX = isOrange ? 0.28 : isBlocky ? 0.24 : id === 'ammar' ? 0.18 : id === 'mint' ? 0.17 : 0.21;
+  const downX = isOrange ? 0.28 : isBlocky ? 0.24 : id === 'ammar' ? 0.18 : id === 'mint' ? 0.17 : id === 'livo' ? 0.19 : 0.21;
   // Resting glove heights sit at/below each character's chin line (Orange guy's face reaches almost to the table).
-  const downY = isOrange ? 0.045 : id === 'sugar' ? 0.05 : id === 'choco' ? 0.12 : id === 'ammar' ? 0.09 : id === 'mint' ? 0.12 : 0.14;
+  const downY = isOrange ? 0.045 : id === 'sugar' ? 0.05 : id === 'choco' ? 0.12 : id === 'ammar' ? 0.09 : id === 'livo' ? 0.08 : id === 'mint' ? 0.12 : 0.14;
   const downZ = isOrange ? 0.34 : isBlocky ? 0.28 : 0.29;
 
   const br = Math.sin(t * 2.1);

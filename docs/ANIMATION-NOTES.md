@@ -25,6 +25,7 @@ penalty); small expressions (focused peek, surprise at a penalty); Low/phone = s
 | ammar | hips, spine, head | **no arm bones at all** (bust-style, chair:false, motion person) |
 | orange-guy | root, body, armL, armR | one bone per arm (tentacle arms) |
 | biscuit, mint, pepper, choco, sugar | hips, spine, head, armL, armR | **one bone per arm**: no elbow, wrist or fingers |
+| livo (Nov 2026) | hips, spine, head, 4-bone armL/armR, 3-bone legL/legR (rig_livo.mjs) | sleeve cut free of the coat below the armpit |
 No animations, no morph targets (so no blend-shape blinks; eyes are in the texture → blink needs a lid mesh or a
 texture/UV trick). Low GLBs have the same bones. Rig source: `tools/character-pipeline/bl/rig.py` +
 `rig_<name>.json` (`arm_z`, `arm_x` = shoulder heights/offsets).

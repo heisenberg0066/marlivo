@@ -199,6 +199,7 @@ const FP_PALETTE: Record<string, { paw: string; sleeve: string }> = {
   tango:   { paw: '#f39a2e', sleeve: '#d97828' },
   choco:   { paw: '#5a321e', sleeve: '#d4a638' },
   sugar:   { paw: '#f2ece2', sleeve: '#d8d0c5' },
+  livo:  { paw: '#f3c9a8', sleeve: '#c49a6c' },
 };
 const FP_GEO = {
   sph: new THREE.SphereGeometry(1, 14, 10),

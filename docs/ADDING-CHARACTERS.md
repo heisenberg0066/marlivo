@@ -62,7 +62,14 @@ Replacing one of the existing four needs no code. A **new** pickable id (say `am
 language files) so it shows up in the lobby picker. Until then you can simply put Ammar's figure on one of the
 existing ids.
 
+Worked example: **Livo** (`livo`, Nov 2026) touched `CHARACTERS` in `packages/engine/src/engine.ts`,
+`CHARACTER_IDS`/`PORTRAITS`/a 2D SVG bust in `characters.tsx`, `char.livo` in en/fr, `manifest.json`, `EYE_SPEC`
+(`Figures.tsx`), `BODY_SPECS`/idle hand offsets (`actors.ts`), `FP_PALETTE` (`backend3d.ts`), Practice's default
+opponents and the emotes3d test list. Pipeline notes: `tools/character-pipeline/NOTES.md` (Livo section).
+
 ## 5. Check it
 
 `pnpm dev`, open Settings → Table → 3D, start a practice game and pick that character for a bot or
 yourself. Frame rate is shown to tests as `window.__ml3d.fps`.
+Every-seat check for one character: `CHAR=<id> [ME=1] node scripts/anim-seatcheck-char.mjs laptop|phone <outDir>`
+(against `vite preview` on :4173).
