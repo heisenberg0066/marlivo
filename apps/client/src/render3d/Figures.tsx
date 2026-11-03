@@ -145,12 +145,6 @@ const EYE_SPEC: Record<string, { ey: number; eh: number; ex: number; ew: number;
   choco:   { ey: 0.692, eh: 0.035, ex: 0.068, ew: 0.042, col: '#5a321e', my: 0.602, mh: 0.038, mw: 0.062, mcol: '#603420' },
   sugar:   { ey: 0.680, eh: 0.040, ex: 0.072, ew: 0.046, col: '#ebe5dc', my: 0.552, mh: 0.038, mw: 0.058, mcol: '#ede6dc' },
   livo:  { ey: 0.635, eh: 0.031, ex: 0.055, ew: 0.026, col: '#e1bdab', my: 0.569, mh: 0.000, mw: 0.041, mcol: '#deb19e', mz: 0.12 },
-  // adult Livo outfits (v0.10 faces: levelled, mirrored, repainted, head x1.15; measured with livo/outfits/eyes2d.py on the new rigs);
-  // sculpted toothy smile, no mouth overlay (mh 0)
-  'livo@streetwear': { ey: 0.9372, eh: 0.0038, ex: 0.0153, ew: 0.0080, ecx: 0.0086, etl: -0.005, col: '#d5a494', my: 0.93, mh: 0, mw: 0.02, mcol: '#d5a494', mz: 0.06 },
-  'livo@sporty':     { ey: 0.9434, eh: 0.0038, ex: 0.0156, ew: 0.0080, ecx: 0.0136, etl: 0.002, col: '#e3aa8e', my: 0.93, mh: 0, mw: 0.02, mcol: '#e3aa8e', mz: 0.06 },
-  'livo@denim':      { ey: 0.9420, eh: 0.0038, ex: 0.0161, ew: 0.0080, ecx: 0.0145, etl: 0.004, col: '#d09c88', my: 0.93, mh: 0, mw: 0.02, mcol: '#d09c88', mz: 0.06 },
-  'livo@stockholm':  { ey: 0.9416, eh: 0.0038, ex: 0.0150, ew: 0.0080, ecx: 0.0127, etl: 0.001, col: '#d09e8d', my: 0.93, mh: 0, mw: 0.02, mcol: '#d09e8d', mz: 0.06 },
 };
 export function attachBlinkShader(root: THREE.Object3D, id: string, ryDeg: number): FaceShaderUniform[] {
   const spec = byKey(EYE_SPEC, id); if (!spec) return [];

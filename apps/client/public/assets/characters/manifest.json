@@ -121,50 +121,7 @@
       "baseY": -0.5,
       "motion": "animal",
       "glow": 0.25,
-      "rotationY": 0,
-      "outfits": {
-        "streetwear": {
-          "model": "livo_streetwear.glb",
-          "modelLow": "livo_streetwear-low.glb",
-          "height": 1.546,
-          "baseY": -0.88,
-          "chair": false,
-          "motion": "person",
-          "glow": 0.5,
-          "rotationY": 0
-        },
-        "sporty": {
-          "model": "livo_sporty.glb",
-          "modelLow": "livo_sporty-low.glb",
-          "height": 1.552,
-          "baseY": -0.88,
-          "chair": false,
-          "motion": "person",
-          "glow": 0.5,
-          "rotationY": 0
-        },
-        "denim": {
-          "model": "livo_denim.glb",
-          "modelLow": "livo_denim-low.glb",
-          "height": 1.55,
-          "baseY": -0.88,
-          "chair": false,
-          "motion": "person",
-          "glow": 0.5,
-          "rotationY": 0
-        },
-        "stockholm": {
-          "model": "livo_stockholm.glb",
-          "modelLow": "livo_stockholm-low.glb",
-          "height": 1.552,
-          "baseY": -0.88,
-          "chair": false,
-          "motion": "person",
-          "glow": 0.5,
-          "rotationY": 0
-        },
-        "beanie": {}
-      }
+      "rotationY": 0
     },
     "guest": {
       "name": {
