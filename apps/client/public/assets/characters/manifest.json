@@ -126,7 +126,7 @@
         "streetwear": {
           "model": "livo_streetwear.glb",
           "modelLow": "livo_streetwear-low.glb",
-          "height": 1.5,
+          "height": 1.546,
           "baseY": -0.88,
           "chair": false,
           "motion": "person",
@@ -136,7 +136,7 @@
         "sporty": {
           "model": "livo_sporty.glb",
           "modelLow": "livo_sporty-low.glb",
-          "height": 1.5,
+          "height": 1.552,
           "baseY": -0.88,
           "chair": false,
           "motion": "person",
@@ -146,7 +146,7 @@
         "denim": {
           "model": "livo_denim.glb",
           "modelLow": "livo_denim-low.glb",
-          "height": 1.5,
+          "height": 1.55,
           "baseY": -0.88,
           "chair": false,
           "motion": "person",
@@ -156,7 +156,7 @@
         "stockholm": {
           "model": "livo_stockholm.glb",
           "modelLow": "livo_stockholm-low.glb",
-          "height": 1.5,
+          "height": 1.552,
           "baseY": -0.88,
           "chair": false,
           "motion": "person",

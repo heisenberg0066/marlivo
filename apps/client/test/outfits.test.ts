@@ -8,6 +8,9 @@ import { restArmsFor, computeIdlePose, computeSeatedLegPose, STANDING_IDS, isChi
 const manifest = JSON.parse(readFileSync(resolve(__dirname, '../public/assets/characters/manifest.json'), 'utf8')) as Manifest;
 
 describe('Livo outfits', () => {
+  it('labels the 4 looks Livo 1-4 in both languages (ids unchanged)', () => {
+    expect(OUTFITS.livo!.list.map((o) => [o.id, o.name.en, o.name.fr])).toEqual([['streetwear', 'Livo 1', 'Livo 1'], ['sporty', 'Livo 2', 'Livo 2'], ['denim', 'Livo 3', 'Livo 3'], ['stockholm', 'Livo 4', 'Livo 4']]);
+  });
   it('offers the 4 adult looks with streetwear as default; the chibi beanie stays available but hidden', () => {
     expect(OUTFITS.livo!.list.map((o) => o.id)).toEqual(['streetwear', 'sporty', 'denim', 'stockholm']);
     expect(outfitOf('livo')).toBe('streetwear');

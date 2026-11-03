@@ -1,6 +1,9 @@
 # out/livo_outfits_compare.jpg: per outfit row = reference | model front | model 3/4 | model back | face close-up
 from PIL import Image, ImageDraw, ImageFont
-R='/workspace/marlivo_figure/outfits/'; refs={'streetwear':'02_streetwear.jpg','sporty':'05_sporty.jpg','denim':'07_denim.jpg','stockholm':'17_stockholm_city.jpg'}
+R='/workspace/marlivo_figure/outfits/'; LBL={'streetwear':'Livo 1 (streetwear)','sporty':'Livo 2 (sporty)','denim':'Livo 3 (denim)','stockholm':'Livo 4 (stockholm)'}
+import os
+V=os.environ.get('VDIR','v7'); FD=os.environ.get('FDIR','/workspace/marlivo_figure/out/faceAfter')
+refs={'streetwear':'02_streetwear.jpg','sporty':'05_sporty.jpg','denim':'07_denim.jpg','stockholm':'17_stockholm_city.jpg'}
 H=520; font=ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',26)
 def fit(p,w,h,crop=True):
     im=Image.open(p).convert('RGB')
@@ -17,9 +20,9 @@ x=0
 for (t,_),w in zip(cols,W): d.text((x+10,12),t,fill='black',font=font); x+=w
 y=50
 for o,rf in refs.items():
-    d.text((10,y+6),o,fill='black',font=font); y+=40; x=0
+    d.text((10,y+6),LBL[o],fill='black',font=font); y+=40; x=0
     for (t,k),w in zip(cols,W):
-        p=R+rf if k is None else (f'/tmp/of/fin_{o}/f_0.png' if k=='f' else f'/tmp/of/v6_{o}/{k}.png')
+        p=R+rf if k is None else (f'{FD}/m_{o}_0.png' if k=='f' else f'/tmp/of/{V}_{o}/{k}.png')
         S.paste(fit(p,w,H,crop=k!='f' and k is not None),(x,y)); x+=w
     y+=H
 S.save('/workspace/marlivo_figure/out/livo_outfits_compare.jpg',quality=88); print(S.size)
