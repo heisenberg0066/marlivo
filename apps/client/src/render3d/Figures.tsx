@@ -135,7 +135,8 @@ function pose(r: BoneRig | undefined, x: number, y: number, z: number) {
 export interface FaceShaderUniform { value: number; mouth: THREE.Vector4 }
 // mz (optional): the mouth overlay only paints bind-frame points in front of this depth (default 0.16)
 // livo (HY3D): mh 0 = no talking-mouth overlay; her open smile is sculpted into the mesh, so a painted cover cannot hide it (smeared mouth)
-const EYE_SPEC: Record<string, { ey: number; eh: number; ex: number; ew: number; col: string; my: number; mh: number; mw: number; mcol: string; mz?: number }> = {
+// ecx/etl (optional, adult Livo outfits): eye-pair centre x and tilt (dy/dx) for a head turned/tilted in the bind pose
+const EYE_SPEC: Record<string, { ey: number; eh: number; ex: number; ew: number; col: string; my: number; mh: number; mw: number; mcol: string; mz?: number; ecx?: number; etl?: number }> = {
   ammar:   { ey: 0.805, eh: 0.015, ex: 0.041, ew: 0.024, col: '#d9a07e', my: 0.741, mh: 0.012, mw: 0.028, mcol: '#f1a57c', mz: 0.11 },
   biscuit: { ey: 0.758, eh: 0.034, ex: 0.072, ew: 0.044, col: '#9b643b', my: 0.640, mh: 0.032, mw: 0.046, mcol: '#c28c5c' },
   mint:    { ey: 0.725, eh: 0.044, ex: 0.076, ew: 0.052, col: '#9ab8a0', my: 0.645, mh: 0.028, mw: 0.042, mcol: '#b8bfa2' },
@@ -144,6 +145,11 @@ const EYE_SPEC: Record<string, { ey: number; eh: number; ex: number; ew: number;
   choco:   { ey: 0.692, eh: 0.035, ex: 0.068, ew: 0.042, col: '#5a321e', my: 0.602, mh: 0.038, mw: 0.062, mcol: '#603420' },
   sugar:   { ey: 0.680, eh: 0.040, ex: 0.072, ew: 0.046, col: '#ebe5dc', my: 0.552, mh: 0.038, mw: 0.058, mcol: '#ede6dc' },
   livo:  { ey: 0.635, eh: 0.031, ex: 0.055, ew: 0.026, col: '#e1bdab', my: 0.569, mh: 0.000, mw: 0.041, mcol: '#deb19e', mz: 0.12 },
+  // adult Livo outfits (HY3D, measured with tools/character-pipeline/livo/outfits/eyes2d.py); sculpted smile, no mouth overlay
+  'livo@streetwear': { ey: 0.9451, eh: 0.0034, ex: 0.0123, ew: 0.0072, ecx: 0.0019, etl: 0.20, col: '#dca894', my: 0.93, mh: 0, mw: 0.02, mcol: '#dca894', mz: 0.06 },
+  'livo@sporty':     { ey: 0.9514, eh: 0.0034, ex: 0.0124, ew: 0.0066, ecx: 0.0117, etl: 0.24, col: '#e4ab8f', my: 0.93, mh: 0, mw: 0.02, mcol: '#e4ab8f', mz: 0.06 },
+  'livo@denim':      { ey: 0.9499, eh: 0.0035, ex: 0.0130, ew: 0.0070, ecx: 0.0085, etl: 0.23, col: '#d6a08b', my: 0.93, mh: 0, mw: 0.02, mcol: '#d6a08b', mz: 0.06 },
+  'livo@stockholm':  { ey: 0.9491, eh: 0.0031, ex: 0.0113, ew: 0.0064, ecx: 0.0122, etl: 0.19, col: '#dca591', mz: 0.06, my: 0.93, mh: 0, mw: 0.02, mcol: '#dca591' },
 };
 export function attachBlinkShader(root: THREE.Object3D, id: string, ryDeg: number): FaceShaderUniform[] {
   const spec = byKey(EYE_SPEC, id); if (!spec) return [];
@@ -165,6 +171,7 @@ export function attachBlinkShader(root: THREE.Object3D, id: string, ryDeg: numbe
     const uFace: FaceShaderUniform = { value: 0, mouth: uMouth }; out.push(uFace);
     const bindMat = unitRoot.clone().multiply(m.matrixWorld);
     const uEye = new THREE.Vector4(spec.ey, spec.eh, spec.ex, spec.ew);
+    const uEye2 = new THREE.Vector2(spec.ecx ?? 0, spec.etl ?? 0);
     const uLidCol = new THREE.Color(spec.col);
     const uMouthSpec = new THREE.Vector3(spec.my, spec.mh, spec.mw);
     const uMouthCol = new THREE.Color(spec.mcol);
@@ -172,6 +179,7 @@ export function attachBlinkShader(root: THREE.Object3D, id: string, ryDeg: numbe
       sh.uniforms.uBindMat = { value: bindMat };
       sh.uniforms.uBlink = uFace;
       sh.uniforms.uEye = { value: uEye };
+      sh.uniforms.uEye2 = { value: uEye2 };
       sh.uniforms.uLidCol = { value: uLidCol };
       sh.uniforms.uMouth = { value: uMouth };
       sh.uniforms.uMouthSpec = { value: uMouthSpec };
@@ -180,12 +188,12 @@ export function attachBlinkShader(root: THREE.Object3D, id: string, ryDeg: numbe
         '#include <begin_vertex>',
         '#include <begin_vertex>\nvBindP = (uBindMat * vec4(transformed, 1.0)).xyz;'
       );
-      sh.fragmentShader = 'uniform float uBlink;\nuniform vec4 uEye;\nuniform vec3 uLidCol;\nuniform vec4 uMouth;\nuniform vec3 uMouthSpec;\nuniform vec3 uMouthCol;\nvarying vec3 vBindP;\n' + sh.fragmentShader.replace(
+      sh.fragmentShader = 'uniform float uBlink;\nuniform vec4 uEye;\nuniform vec2 uEye2;\nuniform vec3 uLidCol;\nuniform vec4 uMouth;\nuniform vec3 uMouthSpec;\nuniform vec3 uMouthCol;\nvarying vec3 vBindP;\n' + sh.fragmentShader.replace(
         '#include <emissivemap_fragment>',
         `#include <emissivemap_fragment>
         if (uBlink > 0.01 && vBindP.z > 0.02) {
-          float dx = (abs(vBindP.x) - uEye.z) / uEye.w;
-          float dy = (vBindP.y - uEye.x) / uEye.y;
+          float dx = (abs(vBindP.x - uEye2.x) - uEye.z) / uEye.w;
+          float dy = (vBindP.y - uEye.x - uEye2.y * (vBindP.x - uEye2.x)) / uEye.y;
           float r2 = dx * dx + dy * dy;
           if (r2 < 1.0) {
             float edge = 1.0 - smoothstep(0.72, 1.0, r2);

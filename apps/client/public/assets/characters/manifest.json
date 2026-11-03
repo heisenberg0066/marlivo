@@ -124,20 +124,44 @@
       "rotationY": 0,
       "outfits": {
         "streetwear": {
-          "model": "livo.glb",
-          "modelLow": "livo-low.glb"
+          "model": "livo_streetwear.glb",
+          "modelLow": "livo_streetwear-low.glb",
+          "height": 1.5,
+          "baseY": -0.88,
+          "chair": false,
+          "motion": "person",
+          "glow": 0.5,
+          "rotationY": 0
         },
         "sporty": {
-          "model": "livo.glb",
-          "modelLow": "livo-low.glb"
+          "model": "livo_sporty.glb",
+          "modelLow": "livo_sporty-low.glb",
+          "height": 1.5,
+          "baseY": -0.88,
+          "chair": false,
+          "motion": "person",
+          "glow": 0.5,
+          "rotationY": 0
         },
         "denim": {
-          "model": "livo.glb",
-          "modelLow": "livo-low.glb"
+          "model": "livo_denim.glb",
+          "modelLow": "livo_denim-low.glb",
+          "height": 1.5,
+          "baseY": -0.88,
+          "chair": false,
+          "motion": "person",
+          "glow": 0.5,
+          "rotationY": 0
         },
         "stockholm": {
-          "model": "livo.glb",
-          "modelLow": "livo-low.glb"
+          "model": "livo_stockholm.glb",
+          "modelLow": "livo_stockholm-low.glb",
+          "height": 1.5,
+          "baseY": -0.88,
+          "chair": false,
+          "motion": "person",
+          "glow": 0.5,
+          "rotationY": 0
         },
         "beanie": {}
       }
