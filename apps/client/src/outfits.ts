@@ -11,14 +11,15 @@ export interface OutfitDef {
 }
 export interface OutfitSet { list: OutfitDef[]; def: string; hidden?: OutfitDef[] }
 
+// Labels shown to players are Livo 1-4 (1 streetwear, 2 sporty, 3 denim, 4 stockholm); the ids stay.
 export const OUTFITS: Record<string, OutfitSet> = {
   livo: {
     def: 'streetwear',
     list: [
-      { id: 'streetwear', name: { en: 'Streetwear', fr: 'Streetwear' }, rest: 'sides' },
-      { id: 'sporty', name: { en: 'Sporty', fr: 'Sport' }, rest: 'pockets' },
-      { id: 'denim', name: { en: 'Denim', fr: 'Denim' }, rest: 'pockets' },
-      { id: 'stockholm', name: { en: 'Stockholm', fr: 'Stockholm' }, rest: 'pockets' },
+      { id: 'streetwear', name: { en: 'Livo 1', fr: 'Livo 1' }, rest: 'sides' },
+      { id: 'sporty', name: { en: 'Livo 2', fr: 'Livo 2' }, rest: 'pockets' },
+      { id: 'denim', name: { en: 'Livo 3', fr: 'Livo 3' }, rest: 'pockets' },
+      { id: 'stockholm', name: { en: 'Livo 4', fr: 'Livo 4' }, rest: 'pockets' },
     ],
     // The chibi beanie build (417eb6d). Not offered; move it into `list` to make it a 5th choice.
     hidden: [{ id: 'beanie', name: { en: 'Beanie', fr: 'Bonnet' } }],

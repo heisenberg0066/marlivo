@@ -1,6 +1,6 @@
 # install_outfit.sh <outfit> : baked hi/lo -> export (ARMATTR) -> rig_livo.mjs (adult RIGCFG) -> webp -> gltfpack -> client assets livo_<o>.glb / livo_<o>-low.glb
 set -e; o=$1
-D=/workspace/tools/hyb_livo_$o; A=/workspace/marlivo/apps/client/public/assets/characters; S=/workspace/sb/hyo/$o
+D=${D:-/workspace/tools/hyb_livo_$o}; A=/workspace/marlivo/apps/client/public/assets/characters; S=${S:-/workspace/sb/hyo/$o}
 B=/workspace/tools/blender-4.2.3-linux-x64/blender; PY=/workspace/tools/venv_hy/bin/python
 export RIGCFG=${RIGCFG:-'{"hip":0.50,"neck":0.845,"neckBand":0.03,"hairFade":0.05,"knee":0.27,"ankle":0.05,"shoulder":0.795,"shLat":0.14,"slice0":0.55,"slice1":0.75,"cutY":0.0,"torsoY":[0.55,0.72],"headY":[0.87,0.99]}'}
 mkdir -p $D
