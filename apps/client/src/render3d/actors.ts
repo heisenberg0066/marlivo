@@ -11,6 +11,8 @@ export interface ArmChain {
   fore: THREE.Bone;
   hand: THREE.Bone;
   curl: THREE.Bone | null;
+  /** +1: fingers curl toward +z of the bind pose (palms forward); -1 (extras.curlSign on the hand bone): palms face back in the bind pose (sculpted HY3D hands), so they curl toward -z. */
+  curlSign?: number;
   restUp: THREE.Quaternion;
   restFore: THREE.Quaternion;
   restHand: THREE.Quaternion;
@@ -111,6 +113,7 @@ export function findArms(root: THREE.Object3D): Partial<Record<Side, ArmChain>> 
         fore,
         hand,
         curl,
+        curlSign: Number((hand.userData as { curlSign?: number })?.curlSign ?? 1) < 0 ? -1 : 1,
         restUp: up.quaternion.clone(),
         restFore: fore.quaternion.clone(),
         restHand: hand.quaternion.clone(),
@@ -404,8 +407,9 @@ const X = new THREE.Vector3(1, 0, 0);
 export function curlArm(c: ArmChain, k: number) {
   if (k <= 0.001) return;
   const eff = c.up.parent?.name === 'body' ? Math.min(k, 0.55) : k;
-  c.hand.quaternion.multiply(qA.setFromAxisAngle(X, -0.35 * eff));
-  if (c.curl) c.curl.quaternion.multiply(qA.setFromAxisAngle(X, -1.0 * eff));
+  const sg = c.curlSign ?? 1;
+  c.hand.quaternion.multiply(qA.setFromAxisAngle(X, -0.35 * eff * sg));
+  if (c.curl) c.curl.quaternion.multiply(qA.setFromAxisAngle(X, -1.0 * eff * sg));
 }
 
 export function stepArmSmoothing(c: ArmChain, dt: number, activeReach = false) {
@@ -816,6 +820,13 @@ export interface IdlePose {
   mouthWidth: number;
 }
 
+/** Table rest pose for the sculpted-hand figures (fr-local: x lateral, y above the table top, z toward the centre;
+ *  the table edge is at z = 0.26), gesture/motion scales. */
+const TABLE_REST: Record<string, { x: number; y: number; z: number; gest: number; move: number }> = {
+  livo: { x: 0.13, y: 0.045, z: 0.29, gest: 0.5, move: 0.6 },
+  ammar: { x: 0.155, y: 0.045, z: 0.37, gest: 0.5, move: 0.6 },
+};
+
 /** Pure, continuous relaxed idle generator for all 8 characters so none ever freezes in bind pose. */
 export function computeIdlePose(id: string | undefined, seat: number, t: number, mood: string, lookYaw = 0): IdlePose {
   const s0 = seat * 2.17 + (id === 'tango' ? 0.4 : id === 'ammar' ? 1.3 : id === 'biscuit' ? 0.8 : id === 'mint' ? 1.9 : 2.4);
@@ -834,6 +845,9 @@ export function computeIdlePose(id: string | undefined, seat: number, t: number,
   // Resting glove heights sit at/below each character's chin line (Orange guy's face reaches almost to the table).
   const downY = isOrange ? 0.045 : id === 'sugar' ? 0.05 : id === 'choco' ? 0.12 : id === 'ammar' ? 0.09 : isChibiLivo(id) ? 0.08 : id === 'mint' ? 0.12 : 0.14;
   const downZ = isOrange ? 0.34 : isBlocky ? 0.28 : 0.29;
+  // Sculpted-hand figures (HY3D Livo + Ammar, v0.12): forearms rest on the table top past its edge, elbows bent,
+  // hands flat; the idle gestures are calmer (half height) so the arms read as resting, not hovering.
+  const rest = TABLE_REST[id ?? ''];
 
   const br = Math.sin(t * 2.1);
   const dxL = Math.sin(u2) * 0.040;
@@ -844,15 +858,16 @@ export function computeIdlePose(id: string | undefined, seat: number, t: number,
   const dyR = Math.sin(u3 + 0.9) * 0.036 + br * 0.016;
   const dzR = Math.cos(u2 * 0.85 + 0.5) * 0.038;
 
-  const lx = cx - downX + dxL + wGestL * (isOrange ? 0.04 : 0.05);
-  const ly = downY + dyL + wGestL * (mood === 'think' ? 0.26 : 0.22);
-  const lz = downZ + dzL + wGestL * 0.14;
+  const gk = rest ? rest.gest : 1, mk = rest ? rest.move : 1;
+  const lx = cx - (rest?.x ?? downX) + dxL * mk + wGestL * (isOrange ? 0.04 : 0.05) * gk;
+  const ly = (rest?.y ?? downY) + dyL * mk * (rest ? 0.5 : 1) + wGestL * (mood === 'think' ? 0.26 : 0.22) * gk;
+  const lz = (rest?.z ?? downZ) + dzL * mk + wGestL * 0.14 * gk;
   const cL = 0.28 - wGestL * 0.14 + Math.sin(u3) * 0.08;
 
   const tap = wRimR > 0.35 ? Math.max(0, Math.sin(t * 6.0)) * 0.028 : 0;
-  const rx = cx + downX + dxR - wRimR * (isOrange ? 0.04 : 0.04);
-  const ry = downY + dyR + wRimR * 0.16 + tap;
-  const rz = downZ + dzR + wRimR * 0.14;
+  const rx = cx + (rest?.x ?? downX) + dxR * mk - wRimR * 0.04 * gk;
+  const ry = (rest?.y ?? downY) + dyR * mk * (rest ? 0.5 : 1) + (wRimR * 0.16 + tap) * gk;
+  const rz = (rest?.z ?? downZ) + dzR * mk + wRimR * 0.14 * gk;
   const cR = 0.32 + (wRimR * 0.16 - tap * 6) + Math.cos(u3) * 0.08;
 
   const sway = Math.sin(u1 * 1.1) * 0.095 + Math.sin(u2 * 0.9) * 0.04;

@@ -179,6 +179,7 @@ class Sprite3D implements SpriteLike {
           const nearMe = THREE.MathUtils.clamp((c.p[2] - 0.18) / 0.55, 0, 1) * Math.sin(Math.PI * Math.min(1, raw * 1.15));
           const hx = c.p[0] + 0.04, hy = c.p[1] + arc - 0.01, hz = c.p[2] + 0.075;
           fp.root.position.set(lerp(0.18, hx, nearMe), lerp(-0.08, hy, nearMe), lerp(1.08, hz, nearMe));
+          fp.root.visible = !fp.root.userData.human || nearMe > 0.45; fpNearGuard(fp.root); // off-screen start/end: hide so the long sleeve never pokes into view
           fp.root.rotation.set(0.22 * nearMe, -0.15, c.roll * 0.5);
           fp.fingers.rotation.x = -0.7 * nearMe;
           void dz;
@@ -193,15 +194,15 @@ class Sprite3D implements SpriteLike {
 }
 
 // ---- First-person hand for the local player's seat (mySeat) ------------------------------------------------
-const FP_PALETTE: Record<string, { paw: string; sleeve: string }> = {
-  ammar:   { paw: '#eab086', sleeve: '#1e1d20' },
+const FP_PALETTE: Record<string, { paw: string; sleeve: string; cuff?: string; watch?: boolean; human?: boolean; cuffZ?: number }> = {
+  ammar:   { paw: '#dc976c', sleeve: '#26211f', cuff: '#1c1817', watch: true, human: true, cuffZ: 0.5 },
   biscuit: { paw: '#9b643b', sleeve: '#3b6fb0' },
   mint:    { paw: '#9ab8a0', sleeve: '#3f8a5a' },
   pepper:  { paw: '#d87a2e', sleeve: '#a52d26' },
   tango:   { paw: '#f39a2e', sleeve: '#d97828' },
   choco:   { paw: '#5a321e', sleeve: '#d4a638' },
   sugar:   { paw: '#f2ece2', sleeve: '#d8d0c5' },
-  livo:  { paw: '#f3c9a8', sleeve: '#c49a6c' },
+  livo:  { paw: '#e9b79b', sleeve: '#9c7f65', cuff: '#8f735a', human: true, cuffZ: 0.08 },
 };
 /** Figure key of the local player (character + outfit) for the first-person hand. */
 function myFigKey(): string {
@@ -212,10 +213,71 @@ function myFigKey(): string {
 const FP_GEO = {
   sph: new THREE.SphereGeometry(1, 14, 10),
   cyl: new THREE.CylinderGeometry(1, 1, 1, 12),
+  // human hand parts (unit capsule along Y, tapered forearm, cuff ring)
+  fore: new THREE.CylinderGeometry(0.82, 1, 1, 16),
+  ring: new THREE.TorusGeometry(1, 0.16, 8, 20),
 };
+/** The first-person arm is a long sleeve running to the camera: when the hand is far out on the table (deck/pile) it
+ *  reads as a pole, so first-person hands are only drawn near the player's own cards. */
+function fpNearGuard(root: THREE.Object3D) { if (root.userData.human && root.position.z <= 0.62) root.visible = false; }
+const FP_CAPS = new Map<string, THREE.CapsuleGeometry>();
 const noRay = () => {};
+/** A capsule segment from local origin along -Z (length l, radius r); returned mesh's tip is at z=-l. */
+function fpSeg(mat: THREE.Material, l: number, r: number): THREE.Mesh {
+  const key = `${l.toFixed(4)}:${r.toFixed(4)}`;
+  let g = FP_CAPS.get(key); if (!g) { g = new THREE.CapsuleGeometry(r, Math.max(0.0001, l - 2 * r), 4, 10); FP_CAPS.set(key, g); }
+  const m = new THREE.Mesh(g, mat);
+  m.rotation.x = -Math.PI / 2; m.position.z = -l / 2;
+  return m;
+}
+/** Fingered first-person hand for the human figures (Livo, Ammar): palm, thumb, four 2-joint fingers, wrist,
+ *  forearm and a sleeve with a cuff (and Ammar's watch). Same contract as the paw: fingers group curls on rotation.x. */
+function createHumanFpHand(pal: { paw: string; sleeve: string; cuff?: string; watch?: boolean; cuffZ?: number }) {
+  const skin = new THREE.MeshLambertMaterial({ color: pal.paw, emissive: '#1a0f0a' });
+  const cloth = new THREE.MeshLambertMaterial({ color: pal.sleeve, emissive: '#0a0808' });
+  const cuffM = new THREE.MeshLambertMaterial({ color: pal.cuff ?? pal.sleeve, emissive: '#0a0808' });
+  const mats: THREE.Material[] = [skin, cloth, cuffM];
+  const root = new THREE.Group(); root.renderOrder = 6; root.userData.human = true;
+  // forearm + sleeve run toward the camera (+Z), slightly down/right
+  const arm = new THREE.Group(); arm.rotation.set(-0.16, 0, -0.18); root.add(arm);
+  const wrist = new THREE.Mesh(FP_GEO.sph, skin); wrist.scale.set(0.022, 0.014, 0.022); wrist.position.set(0, -0.001, 0.034); arm.add(wrist);
+  const cz = pal.cuffZ ?? 0.15, fl = cz + 0.02 - 0.03, sr = cz > 0.2 ? 1.25 : 1;
+  const fore = new THREE.Mesh(FP_GEO.fore, skin); fore.scale.set(0.026 * (cz > 0.2 ? 1.12 : 1), fl, 0.022 * (cz > 0.2 ? 1.12 : 1)); fore.rotation.x = -Math.PI / 2; fore.position.set(0, -0.002, 0.03 + fl / 2); arm.add(fore);
+  if (cz > 0.2) { // short-sleeved (Ammar): bare elbow + lower upper arm before the T-shirt hem
+    const elbow = new THREE.Mesh(FP_GEO.sph, skin); elbow.scale.set(0.031, 0.027, 0.04); elbow.position.set(0, -0.004, 0.2); arm.add(elbow);
+  }
+  // sleeve runs from the cuff well past the camera so its open end is never seen
+  const sleeve = new THREE.Mesh(FP_GEO.fore, cloth); sleeve.scale.set(0.038 * sr, 1.2, 0.034 * sr); sleeve.rotation.x = -Math.PI / 2; sleeve.position.set(0, -0.002, cz + 0.6); arm.add(sleeve);
+  const cuff = new THREE.Mesh(FP_GEO.ring, cuffM); cuff.scale.set(0.033 * sr, 0.030 * sr, 0.06); cuff.position.set(0, -0.002, cz + 0.002); arm.add(cuff);
+  const cuffFill = new THREE.Mesh(FP_GEO.cyl, cuffM); cuffFill.scale.set(0.034 * sr, 0.012, 0.031 * sr); cuffFill.rotation.x = Math.PI / 2; cuffFill.position.set(0, -0.002, cz + 0.003); arm.add(cuffFill);
+  if (pal.watch) {
+    const wm = new THREE.MeshLambertMaterial({ color: '#141414' }); const fm = new THREE.MeshLambertMaterial({ color: '#4a4e55', emissive: '#111' }); mats.push(wm, fm);
+    const band = new THREE.Mesh(FP_GEO.ring, wm); band.scale.set(0.0235, 0.017, 0.05); band.position.set(0, -0.001, 0.05); arm.add(band);
+    const dial = new THREE.Mesh(FP_GEO.cyl, fm); dial.scale.set(0.0085, 0.004, 0.0085); dial.position.set(0, 0.016, 0.05); arm.add(dial);
+  }
+  // palm: flattened, slightly wider at the knuckles; back of the hand faces up (+Y)
+  const palm = new THREE.Mesh(FP_GEO.sph, skin); palm.scale.set(0.031, 0.0125, 0.034); palm.position.set(0, 0, -0.004); root.add(palm);
+  const heel = new THREE.Mesh(FP_GEO.sph, skin); heel.scale.set(0.024, 0.012, 0.02); heel.position.set(0.004, -0.002, 0.018); root.add(heel);
+  // thumb on the left side (right hand seen from behind), two segments angled forward and inward
+  const thumb = new THREE.Group(); thumb.position.set(-0.024, -0.004, 0.010); thumb.rotation.set(0.15, 0.75, 0.35); root.add(thumb);
+  const pad = new THREE.Mesh(FP_GEO.sph, skin); pad.scale.set(0.012, 0.010, 0.017); pad.position.set(0, 0, -0.006); thumb.add(pad);
+  const t1 = new THREE.Group(); t1.position.z = -0.016; thumb.add(t1); t1.add(fpSeg(skin, 0.020, 0.0078));
+  const t2 = new THREE.Group(); t2.position.z = -0.017; t2.rotation.y = 0.25; t2.rotation.x = -0.25; t1.add(t2); t2.add(fpSeg(skin, 0.017, 0.0072));
+  // fingers: knuckle line at the front of the palm; the group curls (rotation.x) like the paw's
+  const fingers = new THREE.Group(); fingers.position.set(0, 0.001, -0.032); root.add(fingers);
+  const spec: [number, number, number][] = [[-0.0195, 0.026, 0.0072], [-0.0065, 0.030, 0.0075], [0.0065, 0.029, 0.0073], [0.0190, 0.023, 0.0066]];
+  for (const [x, l, r] of spec) {
+    const k = new THREE.Group(); k.position.set(x, 0, 0); k.rotation.set(-0.14, (x) * -2.2, 0); fingers.add(k);
+    k.add(fpSeg(skin, l * 0.56, r));
+    const mid = new THREE.Group(); mid.position.z = -l * 0.52; mid.rotation.x = -0.32; k.add(mid);
+    mid.add(fpSeg(skin, l * 0.5, r * 0.93));
+  }
+  root.traverse((o) => { o.raycast = noRay; });
+  return { root, fingers, dispose: () => { root.removeFromParent(); mats.forEach((m) => m.dispose()); } };
+}
 function createFpHand(charId: string): { root: THREE.Group; fingers: THREE.Group; dispose(): void } {
   const pal = byKey(FP_PALETTE, charId) ?? FP_PALETTE.ammar!;
+  if (pal.human) return createHumanFpHand(pal);
   const pawMat = new THREE.MeshLambertMaterial({ color: pal.paw, emissive: '#180e08' });
   const sleeveMat = new THREE.MeshLambertMaterial({ color: pal.sleeve, emissive: '#0a0808' });
   const root = new THREE.Group();
@@ -269,9 +331,10 @@ export function updateMyPeekHand(cardPos: [number, number, number], lift: number
   const k = Math.min(1, lift / 0.065);
   const restX = cardPos[0] + 0.05, restY = -0.04, restZ = cardPos[2] + 0.22;
   const holdX = cardPos[0] + 0.035, holdY = cardPos[1] + lift * 0.72, holdZ = cardPos[2] + 0.075;
-  peekHand.h.root.visible = true;
+  peekHand.h.root.visible = k > 0.15; // near the off-screen rest the long sleeve would poke through the table
   peekHand.h.root.position.set(lerp(restX, holdX, k), lerp(restY, holdY, k), lerp(restZ, holdZ, k));
   peekHand.h.root.rotation.set(0.25 * k, -0.15, 0.1 * k);
+  fpNearGuard(peekHand.h.root);
   peekHand.h.fingers.rotation.x = -0.65 * k;
 }
 
@@ -301,6 +364,7 @@ export function updateMyHeldHand() {
   heldHand.h.root.visible = true;
   heldHand.h.root.position.set(0.14 + swayX, 0.06 + swayY, 0.78);
   heldHand.h.root.rotation.set(0.28 + swayY * 1.5, -0.18 + swayX * 1.2, 0.08);
+  fpNearGuard(heldHand.h.root);
   heldHand.h.fingers.rotation.x = -0.68 + Math.sin(t * 4.5) * 0.06;
 }
 
@@ -326,6 +390,7 @@ export function updateMyEmoteHand() {
   emoteHand.h.root.position.set(wx, wy, wz);
   emoteHand.h.root.rotation.set(em.kind === 'slam' ? 0.35 : -0.35, -0.15 + p.shake * 0.6, em.kind === 'boo' ? Math.PI * 0.65 : 0);
   emoteHand.h.fingers.rotation.x = -0.85 * p.cR;
+  fpNearGuard(emoteHand.h.root);
 }
 
 const live = new Set<Sprite3D>();
