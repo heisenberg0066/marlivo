@@ -1,5 +1,7 @@
 // Home (§13.1): logo with a pumpkin "o" and a shuttlecock flick, the main buttons, server status and the
 // friends scene in the footer.
+import { OutfitPicker } from './OutfitPicker';
+import { setMyOutfit } from '../outfitPrefs';
 import { useEffect, useRef, useState } from 'react';
 import { t, useLang, setLang } from '../i18n';
 import { serverUrl, usePrefs, setPrefs } from '../prefs';
@@ -53,7 +55,8 @@ export function Home() {
           <label>{t('profile.name')}<input ref={nameRef} value={prefs.name} maxLength={16} placeholder="Ammar" onChange={(e) => setPrefs({ name: e.target.value })} /></label>
           <div className="chars">{CHARACTER_IDS.map((c) => (
             <button key={c} className={`char ${prefs.characterId === c ? 'on' : ''}`} onClick={() => setPrefs({ characterId: c })} aria-label={t('char.' + c)}>
-              <CharacterBust id={c} size={42} mood={prefs.characterId === c ? 'happy' : 'idle'} /><small>{t('char.' + c)}</small></button>))}</div>
+              <CharacterBust id={c} outfit={prefs.outfits?.[c]} size={42} mood={prefs.characterId === c ? 'happy' : 'idle'} /><small>{t('char.' + c)}</small></button>))}</div>
+          <OutfitPicker charId={prefs.characterId} value={prefs.outfits?.[prefs.characterId]} onPick={(o) => setMyOutfit(prefs.characterId, o)} />
         </div>
         <div className="home-buttons">
           {canContinue && <button className="act accent wide" onClick={() => go('/play/' + last)}>▶ {t('home.continue')}</button>}

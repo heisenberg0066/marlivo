@@ -2,6 +2,7 @@
 // choreography (backend3d) + table/scene loops drive it: 4-bone arm IK reach, paw/finger curl, 3-bone leg articulation,
 // whole-body forward shift & shoulder coil, off-hand table bracing, head look-at, and dynamic facial expressions.
 import * as THREE from 'three';
+import { byKey, outfitDef, splitKey } from '../outfits';
 
 export type Side = 'L' | 'R';
 
@@ -290,7 +291,7 @@ export function computeSeatedLegPose(
   reaching = false,
 ): { L: LegAngles; R: LegAngles } {
   const s0 = seat * 1.93 + (id === 'tango' ? 0.3 : id === 'ammar' ? 1.1 : 2.1);
-  const isStanding = id === 'ammar';
+  const isStanding = !!id && STANDING_IDS.has(id);
   const scale = isStanding ? 0.65 : 1.0;
 
   if (em) {
@@ -527,6 +528,11 @@ export interface BodySpec {
   floorY: number;
   /** Optional: raised hands are kept at/behind this depth (beside the head, not in front of a face that fills the body). */
   raiseZ?: number;
+  /** Optional (standing adults): hands close to the body (depth < restZ) may drop to restFloorY, below the table top
+   *  (pockets / hanging at the sides); further out the table floor (floorY) fades back in. minZ replaces the 0.12 depth floor. */
+  restFloorY?: number;
+  restZ?: number;
+  minZ?: number;
 }
 export const BODY_SPECS: Record<string, BodySpec> = {
   tango:   { cx: 0, head: { c: [0, 0.17, -0.02], r: [0.35, 0.37, 0.32], p: 2 }, torso: null, glove: 0.06, faceLo: 0.05, faceZ: 0.36, faceHalfW: 0.34, browY: 0.335, floorY: 0.035, raiseZ: 0.06 },
@@ -537,9 +543,33 @@ export const BODY_SPECS: Record<string, BodySpec> = {
   choco:   { cx: 0, head: { c: [0.02, 0.38, -0.04], r: [0.28, 0.19, 0.15], p: 4 }, torso: { c: [0.02, 0.06, -0.06], r: [0.30, 0.15, 0.17], p: 4 }, glove: 0.05, faceLo: 0.12, faceZ: 0.10, faceHalfW: 0.26, browY: 0.32, floorY: 0.0 },
   sugar:   { cx: 0, head: { c: [0.02, 0.14, -0.02], r: [0.30, 0.29, 0.23], p: 4 }, torso: null, glove: 0.05, faceLo: 0.045, faceZ: 0.21, faceHalfW: 0.28, browY: 0.22, floorY: 0.03 },
   livo:  { cx: 0, head: { c: [0, 0.295, 0.0], r: [0.22, 0.18, 0.20], p: 2 }, torso: { c: [0, -0.06, 0], r: [0.18, 0.18, 0.16], p: 2 }, glove: 0.045, faceLo: 0.06, faceZ: 0.17, faceHalfW: 0.17, browY: 0.235, floorY: 0.0 },
+  // adult Livo outfits (standing, height 1.5 / baseY -0.88; measured with tools/character-pipeline/livo/outfits/bodyspec.py)
+  'livo@streetwear': { cx: -0.005, head: { c: [-0.018, 0.555, 0.035], r: [0.116, 0.07, 0.123], p: 2 }, torso: { c: [-0.005, 0.178, -0.04], r: [0.181, 0.181, 0.162], p: 2 }, glove: 0.03, faceLo: 0.493, faceZ: 0.16, faceHalfW: 0.06, browY: 0.563, floorY: 0.0, restFloorY: -0.2, restZ: 0.2, minZ: 0.0 },
+  'livo@sporty':     { cx: -0.021, head: { c: [-0.018, 0.556, 0.023], r: [0.109, 0.07, 0.127], p: 2 }, torso: { c: [-0.021, 0.178, -0.005], r: [0.156, 0.181, 0.164], p: 2 }, glove: 0.03, faceLo: 0.493, faceZ: 0.16, faceHalfW: 0.06, browY: 0.563, floorY: 0.0, restFloorY: -0.2, restZ: 0.2, minZ: 0.0 },
+  'livo@denim':      { cx: -0.017, head: { c: [-0.02, 0.554, 0.033], r: [0.123, 0.07, 0.127], p: 2 }, torso: { c: [-0.017, 0.18, -0.006], r: [0.169, 0.18, 0.155], p: 2 }, glove: 0.03, faceLo: 0.493, faceZ: 0.169, faceHalfW: 0.065, browY: 0.563, floorY: 0.0, restFloorY: -0.2, restZ: 0.2, minZ: 0.0 },
+  'livo@stockholm':  { cx: 0.006, head: { c: [0.012, 0.555, 0.137], r: [0.103, 0.07, 0.123], p: 2 }, torso: { c: [0.006, 0.177, 0.083], r: [0.182, 0.181, 0.16], p: 2 }, glove: 0.03, faceLo: 0.493, faceZ: 0.267, faceHalfW: 0.06, browY: 0.563, floorY: 0.0, restFloorY: -0.2, restZ: 0.3, minZ: 0.0 },
 };
 const DEFAULT_SPEC = BODY_SPECS.biscuit;
-export const bodySpecFor = (id?: string): BodySpec => (id && BODY_SPECS[id]) || DEFAULT_SPEC;
+export const bodySpecFor = (id?: string): BodySpec => byKey(BODY_SPECS, id) ?? DEFAULT_SPEC;
+/** Figure keys of standing models (manifest "chair": false), registered when the model loads. */
+export const STANDING_IDS = new Set<string>(['ammar']);
+/** The chibi beanie Livo (the plain 'livo' id or the hidden 'beanie' outfit) keeps her tuned chibi numbers. */
+export const isChibiLivo = (id?: string) => id === 'livo' || id === 'livo@beanie';
+
+/** Rest pose of the outfit (if any): arm targets/curl for hands in the jacket pockets or hanging at the sides. It replaces
+ *  the idle hover/gesture arms (no waving); card play (reach/hold/brace) still blends from here as before. */
+export function restArmsFor(id: string | undefined, t: number, seat: number): { tL: [number, number, number]; tR: [number, number, number]; cL: number; cR: number } | null {
+  if (!id) return null;
+  const [cid, o] = splitKey(id); if (!o) return null;
+  const rest = outfitDef(cid, o)?.rest; if (!rest) return null;
+  const sp = bodySpecFor(id), tor = sp.torso ?? { c: [sp.cx, sp.head.c[1] - sp.head.r[1] - 0.2, 0] as [number, number, number], r: [0.2, 0.2, 0.18] as [number, number, number], p: 2 };
+  const br = Math.sin(t * 2.1 + seat) * 0.008, sw = Math.sin(t * 0.9 + seat * 1.7) * 0.01;
+  const mk = (sg: number): [number, number, number] => rest === 'pockets'
+    ? [sp.cx + sg * tor.r[0] * 0.92, tor.c[1] - tor.r[1] * 1.1 + br, tor.c[2] + tor.r[2] * 0.6 + sw * 0.5]   // front hip pockets
+    : [sp.cx + sg * (tor.r[0] + 0.03), tor.c[1] - tor.r[1] * 1.55 + br, tor.c[2] + 0.01 + sw];             // hanging beside the hips
+  const c = rest === 'pockets' ? 0.62 : 0.18;
+  return { tL: mk(-1), tR: mk(1), cL: c, cR: c };
+}
 
 /** Normalised "radius" of a point inside a volume (<1 = inside). */
 export function volRadius(v: BodyVol, x: number, y: number, z: number, inflate = 0): number {
@@ -600,6 +630,8 @@ function faceShield(pt: [number, number, number], sp: BodySpec, sgn: number) {
  * a raised hand swings out past the side of the head), never sunk into the belly, and never in the body midline.
  * shoulder/reach (optional): where the IK hand will really end up when the target is beyond arm's length.
  */
+/** Lowest glove height at depth z: the table top, or (standing adults) restFloorY close to the body. */
+const floorAt = (sp: BodySpec, z: number) => sp.restFloorY === undefined ? sp.floorY : THREE.MathUtils.lerp(sp.restFloorY, sp.floorY, smooth01(z, sp.restZ ?? 0.2, (sp.restZ ?? 0.2) + 0.08));
 export function clampArmTarget(
   tLoc: [number, number, number],
   sd: Side,
@@ -651,16 +683,17 @@ export function clampArmTarget(
     } else {
       const minLat = z < 0.20 ? 0.15 : 0.085;
       if (sgn * (x - cx) < minLat) x = cx + sgn * minLat;
-      if (z < 0.12) z = 0.12;
+      const mz = sp.minZ ?? 0.12;
+      if (z < mz) z = mz;
     }
-    if (y < sp.floorY) y = sp.floorY;
+    if (y < floorAt(sp, z)) y = floorAt(sp, z);
     pt[0] = x; pt[1] = y; pt[2] = z;
     // 5) Raising a glove back onto the table must not slide it into a face that leans/bobs down toward the table:
     //    resolve against the head horizontally (outward/forward), in the head's own frame.
     xfApply(xf?.headIn, pt);
     pushOut(sp.head, pt, sp.glove + 0.03, true);
     xfApply(xf?.headOut, pt);
-    if (pt[1] < sp.floorY) pt[1] = sp.floorY;
+    if (pt[1] < floorAt(sp, pt[2])) pt[1] = floorAt(sp, pt[2]);
     if (!shoulder || reach <= 0) break;
   }
   return pt;
@@ -802,9 +835,9 @@ export function computeIdlePose(id: string | undefined, seat: number, t: number,
   const isOrange = id === 'tango';
   const isBlocky = id === 'sugar' || id === 'choco';
   const cx = id === 'mint' ? -0.066 : 0;
-  const downX = isOrange ? 0.28 : isBlocky ? 0.24 : id === 'ammar' ? 0.18 : id === 'mint' ? 0.17 : id === 'livo' ? 0.19 : 0.21;
+  const downX = isOrange ? 0.28 : isBlocky ? 0.24 : id === 'ammar' ? 0.18 : id === 'mint' ? 0.17 : isChibiLivo(id) ? 0.19 : 0.21;
   // Resting glove heights sit at/below each character's chin line (Orange guy's face reaches almost to the table).
-  const downY = isOrange ? 0.045 : id === 'sugar' ? 0.05 : id === 'choco' ? 0.12 : id === 'ammar' ? 0.09 : id === 'livo' ? 0.08 : id === 'mint' ? 0.12 : 0.14;
+  const downY = isOrange ? 0.045 : id === 'sugar' ? 0.05 : id === 'choco' ? 0.12 : id === 'ammar' ? 0.09 : isChibiLivo(id) ? 0.08 : id === 'mint' ? 0.12 : 0.14;
   const downZ = isOrange ? 0.34 : isBlocky ? 0.28 : 0.29;
 
   const br = Math.sin(t * 2.1);

@@ -4,13 +4,13 @@ import { useSyncExternalStore } from 'react';
 export type SceneName = 'golden' | 'picnic' | 'dusk' | 'classic';
 export const SCENES: SceneName[] = ['golden', 'picnic', 'dusk', 'classic'];
 export interface Prefs {
-  name: string; characterId: string; sound: boolean; ambience: boolean; volume: number;
+  name: string; characterId: string; /** Preferred outfit per character id (e.g. { livo: 'denim' }). */ outfits: Record<string, string>; sound: boolean; ambience: boolean; volume: number;
   speed: 'cinematic' | 'normal' | 'fast'; reduced: boolean; camera: 'seat' | 'top'; confirmSwap: boolean; slotNumbers: boolean;
   fourColor: boolean; largeCards: boolean; renderer: '2d' | '3d'; scene: SceneName; graphics: 'auto' | 'high' | 'low'; layout: string; leftHanded: boolean; serverUrl: string; ownerKey: string; friendsKey: string;
 }
 const reducedOS = typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 const defaults: Prefs = {
-  name: '', characterId: 'biscuit', sound: true, ambience: false, volume: 0.7, speed: 'normal', reduced: reducedOS, camera: 'seat',
+  name: '', characterId: 'biscuit', outfits: {}, sound: true, ambience: false, volume: 0.7, speed: 'normal', reduced: reducedOS, camera: 'seat',
   confirmSwap: true, slotNumbers: true, fourColor: false, largeCards: false, renderer: '2d', scene: 'golden', graphics: 'auto', layout: 'r2', leftHanded: false, serverUrl: '', ownerKey: '', friendsKey: '',
 };
 let prefs: Prefs = { ...defaults, ...JSON.parse(localStorage.getItem('marlivo.prefs') || '{}') };

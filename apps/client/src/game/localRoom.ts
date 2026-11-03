@@ -15,7 +15,7 @@ export function hasLocalRoom(code: string) { return !!localStorage.getItem(LS(co
 export function lastLocalRoom(): string | null { return localStorage.getItem('marlivo.local.last'); }
 export function forgetLocalRoom(code: string) { localStorage.removeItem(LS(code)); localStorage.removeItem('marlivo.seat.L-' + code); if (localStorage.getItem('marlivo.local.last') === code) localStorage.removeItem('marlivo.local.last'); }
 
-export type LocalBot = BotLevel | { level: BotLevel; characterId?: string; name?: string };
+export type LocalBot = BotLevel | { level: BotLevel; characterId?: string; name?: string; outfit?: string };
 export function createLocalRoom(settings: Partial<Settings>, bots: LocalBot[]): string {
   const code = newCode();
   localStorage.setItem('marlivo.local.pending.' + code, JSON.stringify({ settings, bots }));
@@ -49,9 +49,9 @@ function createInThreadWorker() {
           host = new RoomHost(rec, { transport, scheduler, onChange, local: true });
           emit({ kind: 'ready', code: rec.code });
         } else if (m.kind === 'addBots') {
-          for (const b of m.levels as (BotLevel | { level: BotLevel; characterId?: string; name?: string })[]) {
+          for (const b of m.levels as (BotLevel | { level: BotLevel; characterId?: string; name?: string; outfit?: string })[]) {
             if (typeof b === 'string') host?.addBot(b);
-            else host?.addBot(b.level, b.characterId, b.name);
+            else host?.addBot(b.level, b.characterId, b.name, b.outfit);
           }
         } else if (m.kind === 'open' || m.kind === 'reopen') {
           host?.open(m.connId as string);

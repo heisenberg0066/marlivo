@@ -1,0 +1,1 @@
+export SKINDEL=1 Z0=0.53 Z1=0.85 LOB=45 CY=0.0 ZT=0.03

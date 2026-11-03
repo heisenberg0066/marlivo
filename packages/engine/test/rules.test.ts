@@ -753,3 +753,24 @@ describe('v0.7 starting layout picker', () => {
     expect(new Set(areas[1]!.map((x) => x.row)).size).toBe(3);
   });
 });
+
+describe('outfits (v0.9)', () => {
+  it('PICK_CHARACTER carries an outfit that every player sees; switching character without one clears it', () => {
+    const run = lobby(2);
+    act(run, 0, { t: 'PICK_CHARACTER', id: 'livo', outfit: 'denim' });
+    expect(run.s.seats[0]).toMatchObject({ characterId: 'livo', outfit: 'denim' });
+    expect(projectView(run.s, 1).seats[0]).toMatchObject({ characterId: 'livo', outfit: 'denim' });
+    act(run, 0, { t: 'PICK_CHARACTER', id: 'mint' });
+    expect(run.s.seats[0]!.outfit).toBeUndefined();
+    expect(rej(run, 0, { t: 'PICK_CHARACTER', id: 'livo', outfit: 'Bad Outfit!' })).toBe('BAD_OUTFIT');
+  });
+  it('SYS_JOIN and HOST_ADD_BOT accept a clean outfit and drop a bad one', () => {
+    const run = lobby(1);
+    act(run, 'sys', { t: 'SYS_JOIN', seat: 1, name: 'L', characterId: 'livo', outfit: 'stockholm', lang: 'en' });
+    expect(run.s.seats[1]!.outfit).toBe('stockholm');
+    act(run, 'sys', { t: 'SYS_JOIN', seat: 2, name: 'M', characterId: 'livo', outfit: '<script>', lang: 'en' });
+    expect(run.s.seats[2]!.outfit).toBeUndefined();
+    act(run, 0, { t: 'HOST_ADD_BOT', level: 'easy', characterId: 'livo', outfit: 'sporty' });
+    expect(run.s.seats[3]).toMatchObject({ characterId: 'livo', outfit: 'sporty', isBot: true });
+  });
+});

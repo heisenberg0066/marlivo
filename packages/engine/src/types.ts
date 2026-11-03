@@ -17,6 +17,8 @@ export interface Slot { id: string; num: number; row: number; col: number; card:
 export interface SeatInfo {
   name: string;
   characterId: string;
+  /** Optional outfit of the character (e.g. Livo: 'streetwear' | 'sporty' | 'denim' | 'stockholm'); absent = the default. */
+  outfit?: string;
   lang: Lang;
   isBot: boolean;
   botLevel?: BotLevel;
@@ -115,11 +117,11 @@ export interface GameState {
 
 export type Intent =
   // system (from the room host, not from a player)
-  | { t: 'SYS_JOIN'; seat: SeatId; name: string; characterId: string; lang: Lang }
+  | { t: 'SYS_JOIN'; seat: SeatId; name: string; characterId: string; outfit?: string; lang: Lang }
   | { t: 'SYS_CONNECT'; seat: SeatId; connected: boolean }
   | { t: 'SYS_SET_LANG'; seat: SeatId; lang: Lang }
   // lobby
-  | { t: 'PICK_CHARACTER'; id: string }
+  | { t: 'PICK_CHARACTER'; id: string; outfit?: string }
   | { t: 'SET_NAME'; name: string }
   | { t: 'SET_LAYOUT'; layout: string }
   | { t: 'SET_READY'; ready: boolean }
@@ -127,7 +129,7 @@ export type Intent =
   | { t: 'HOST_SEAT_MOVE'; from: SeatId; to: SeatId }
   | { t: 'HOST_SHUFFLE_SEATS' }
   | { t: 'HOST_KICK'; seat: SeatId }
-  | { t: 'HOST_ADD_BOT'; level: BotLevel; name?: string; characterId?: string }
+  | { t: 'HOST_ADD_BOT'; level: BotLevel; name?: string; characterId?: string; outfit?: string }
   | { t: 'HOST_REMOVE_BOT'; seat: SeatId }
   | { t: 'HOST_LOCK'; locked: boolean }
   | { t: 'HOST_HANDOVER'; seat: SeatId }

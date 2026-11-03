@@ -1,7 +1,7 @@
 // RoomHost: the authoritative room "server" logic, independent of transport. The Cloudflare Durable Object and the
 // in-browser local host (Web Worker, offline practice) both wrap this class, so the UI code path is identical (§17.1).
 import {
-  createGame, reduce, projectView, projectEvent, sha256Hex, CryptoRng, SeededRng, randHex, cleanName, CHARACTERS,
+  createGame, reduce, projectView, projectEvent, sha256Hex, CryptoRng, SeededRng, randHex, cleanName, cleanOutfit, CHARACTERS,
   type GameState, type Intent, type Rng, type Settings, type SeatId, type BotLevel, type GameEvent,
 } from '@marlivo/engine';
 import { botDecide, botDelay, createBrain, type BotBrain } from '@marlivo/bots';
@@ -147,7 +147,7 @@ export class RoomHost {
     const free = [0, 1, 2, 3].find((i) => !s.seats[i]);
     if (free === undefined || s.seats.filter(Boolean).length >= s.settings.maxPlayers) return this.o.transport.send(connId, { type: 'ERROR', code: 'ROOM_FULL' });
     const token = randHex(new CryptoRng(), 16);
-    const res = this.sysRaw({ t: 'SYS_JOIN', seat: free, name: cleanName(msg.name), characterId: CHARACTERS.includes(msg.characterId) ? msg.characterId : 'biscuit', lang: msg.lang === 'fr' ? 'fr' : 'en' });
+    const res = this.sysRaw({ t: 'SYS_JOIN', seat: free, name: cleanName(msg.name), characterId: CHARACTERS.includes(msg.characterId) ? msg.characterId : 'biscuit', ...(cleanOutfit(msg.outfit) ? { outfit: cleanOutfit(msg.outfit) } : {}), lang: msg.lang === 'fr' ? 'fr' : 'en' });
     if (!res) return this.o.transport.send(connId, { type: 'ERROR', code: 'JOIN_FAILED' });
     this.rec.tokens[free] = sha256Hex(token);
     c.seat = free; c.tag = msg.tag;
@@ -260,5 +260,5 @@ export class RoomHost {
   }
 
   /** Host-only convenience for solo practice (local host): seat bots directly. */
-  addBot(level: BotLevel, characterId?: string, name?: string) { const host = this.state.host; if (host !== null) this.act(host, { t: 'HOST_ADD_BOT', level, ...(characterId ? { characterId } : {}), ...(name ? { name } : {}) }); }
+  addBot(level: BotLevel, characterId?: string, name?: string, outfit?: string) { const host = this.state.host; if (host !== null) this.act(host, { t: 'HOST_ADD_BOT', level, ...(characterId ? { characterId } : {}), ...(name ? { name } : {}), ...(outfit ? { outfit } : {}) }); }
 }

@@ -191,7 +191,7 @@ export const Table = memo(function Table(p: TableProps) {
             <div key={seat} className="billboard" style={{ left: at.x, top: at.y }}>
               {p.bubbles[seat] && Date.now() - p.bubbles[seat]!.at < 5000 && <div className="bubble">{p.bubbles[seat]!.text}</div>}
               <div className={`bust-wrap ${p.ov.pulse[seat] ?? ''} ${p.seatSelectable.has(seat) ? 'seat-pick' : ''}`} onClick={() => p.seatSelectable.has(seat) && p.onSeat(seat)}>
-                <CharacterBust id={si.characterId} mood={moodOf(seat)} color={SEAT_COLORS[seat]} size={bustPx} />
+                <CharacterBust id={si.characterId} outfit={si.outfit} mood={moodOf(seat)} color={SEAT_COLORS[seat]} size={bustPx} />
                 {r?.drawn?.by === seat && !p.ov.hideHand[seat] && (
                   <CardEl face={r.drawn.face ?? null} up={!!r.drawn.face} four={four} className="held" data-anchor={`hand-${seat}`} style={hc} />
                 )}

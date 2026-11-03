@@ -2,7 +2,7 @@
 import type { GameEvent, Intent, Lang, PlayerView, Settings } from '@marlivo/engine';
 
 export type ClientMsg =
-  | { type: 'HELLO'; name: string; characterId: string; lang: Lang; seatToken?: string; password?: string; tag?: string }
+  | { type: 'HELLO'; name: string; characterId: string; outfit?: string; lang: Lang; seatToken?: string; password?: string; tag?: string }
   | { type: 'INTENT'; cseq: number; intent: Intent }
   | { type: 'CHAT'; text: string }
   | { type: 'EMOTE'; id: string }
