@@ -22,6 +22,8 @@ import {
   type Side,
 } from './actors';
 import { TABLE_R, CARD_T } from './layout3d';
+import { byKey, figKey, outfitDef, splitKey } from '../outfits';
+import { myOutfit } from '../outfitPrefs';
 
 export interface Ctx3 { camera: THREE.Camera; el: HTMLElement; group: THREE.Group; layout: Layout3; view: PlayerView; four: boolean }
 let ctx: Ctx3 | null = null;
@@ -152,7 +154,7 @@ class Sprite3D implements SpriteLike {
     this.moving = true;
     const isMyAction = !reduced && ctx && live.size <= 2 && (from.p[2] > 0.45 || dest.p[2] > 0.45);
     const me = ctx?.view.you ?? null;
-    const charId = (me !== null ? ctx?.view.seats[me]?.characterId : null) ?? getPrefs().characterId ?? 'ammar';
+    const charId = myFigKey();
     const fp = isMyAction && ctx ? createFpHand(charId) : null;
     if (fp && ctx) ctx.group.add(fp.root);
     const dx = dest.p[0] - from.p[0], dz = dest.p[2] - from.p[2];
@@ -200,14 +202,24 @@ const FP_PALETTE: Record<string, { paw: string; sleeve: string }> = {
   choco:   { paw: '#5a321e', sleeve: '#d4a638' },
   sugar:   { paw: '#f2ece2', sleeve: '#d8d0c5' },
   livo:  { paw: '#f3c9a8', sleeve: '#c49a6c' },
+  'livo@streetwear': { paw: '#f1c7aa', sleeve: '#a3a6ab' },
+  'livo@sporty':     { paw: '#f1c7aa', sleeve: '#1f2b4d' },
+  'livo@denim':      { paw: '#f1c7aa', sleeve: '#5c84b1' },
+  'livo@stockholm':  { paw: '#f1c7aa', sleeve: '#1f1f23' },
 };
+/** Figure key of the local player (character + outfit) for the first-person hand. */
+function myFigKey(): string {
+  const me = ctx?.view.you ?? null; const si = me !== null ? ctx?.view.seats[me] : null;
+  if (si) return figKey(si.characterId, si.outfit);
+  const c = getPrefs().characterId ?? 'ammar'; return figKey(c, myOutfit(c));
+}
 const FP_GEO = {
   sph: new THREE.SphereGeometry(1, 14, 10),
   cyl: new THREE.CylinderGeometry(1, 1, 1, 12),
 };
 const noRay = () => {};
 function createFpHand(charId: string): { root: THREE.Group; fingers: THREE.Group; dispose(): void } {
-  const pal = FP_PALETTE[charId] ?? FP_PALETTE.ammar!;
+  const pal = byKey(FP_PALETTE, charId) ?? FP_PALETTE.ammar!;
   const pawMat = new THREE.MeshLambertMaterial({ color: pal.paw, emissive: '#180e08' });
   const sleeveMat = new THREE.MeshLambertMaterial({ color: pal.sleeve, emissive: '#0a0808' });
   const root = new THREE.Group();
@@ -246,7 +258,7 @@ let peekHand: { charId: string; h: ReturnType<typeof createFpHand>; lastAt: numb
 export function updateMyPeekHand(cardPos: [number, number, number], lift: number) {
   if (!ctx || getPrefs().reduced) return;
   const me = ctx.view.you;
-  const charId = (me !== null ? ctx.view.seats[me]?.characterId : null) ?? getPrefs().characterId ?? 'ammar';
+  const charId = myFigKey();
   if (lift <= 0.008) {
     if (peekHand && performance.now() - peekHand.lastAt > 40) { peekHand.h.root.visible = false; }
     return;
@@ -280,7 +292,7 @@ export function updateMyHeldHand() {
     if (heldHand) heldHand.h.root.visible = false;
     return;
   }
-  const charId = (me !== null ? ctx.view.seats[me]?.characterId : null) ?? getPrefs().characterId ?? 'ammar';
+  const charId = myFigKey();
   if (!heldHand || heldHand.charId !== charId) {
     heldHand?.h.dispose();
     const h = createFpHand(charId);
@@ -303,8 +315,8 @@ export function updateMyEmoteHand() {
   if (!ctx || getPrefs().reduced) { if (emoteHand) emoteHand.h.root.visible = false; return; }
   const me = ctx.view.you;
   const em = me !== null ? activeEmoteFor(me) : null;
-  if (!em) { if (emoteHand) emoteHand.h.root.visible = false; return; }
-  const charId = (me !== null ? ctx.view.seats[me]?.characterId : null) ?? getPrefs().characterId ?? 'ammar';
+  if (!em || (em.kind === 'wave' && outfitDef(...splitKey(myFigKey()))?.rest)) { if (emoteHand) emoteHand.h.root.visible = false; return; }
+  const charId = myFigKey();
   if (!emoteHand || emoteHand.charId !== charId) {
     emoteHand?.h.dispose();
     const h = createFpHand(charId);
@@ -345,7 +357,8 @@ function checkHolds() { if (!ctx) return; for (const seat of [...holds.keys()]) 
 const seatQ = new Map<number, Promise<void>>();
 function queueSeat(seat: number, f: () => Promise<void>) { const prev = seatQ.get(seat) ?? Promise.resolve(); const next = prev.then(f, f).catch(() => {}); seatQ.set(seat, next); return next; }
 
-const PEEK_OFFSET: Record<string, { dy: number; out: number; lat: number }> = { livo: { dy: -0.075, out: 0.03, lat: 0.07 } };
+// Keyed by figure key (exact): the chibi Livo's offset must not apply to her adult outfits.
+const PEEK_OFFSET: Record<string, { dy: number; out: number; lat: number }> = { livo: { dy: -0.075, out: 0.03, lat: 0.07 }, 'livo@beanie': { dy: -0.075, out: 0.03, lat: 0.07 } };
 
 /** An opponent peeks at one of its own cards: whole-body forward shift + shoulder coil, reaches the slot, paw closes,
  *  lifts the card close to its face while the off-hand braces on the table rim, then lays it back cleanly in the slot. */
@@ -360,7 +373,7 @@ async function stagePeek(seat: number, slotId: string): Promise<void> {
   const head = new THREE.Vector3(); (a.head ?? a.root).getWorldPosition(head);
   const peekSpot = head.clone().addScaledVector(facing, 0.16); peekSpot.y -= 0.09;
   // Per-character peek offset (Livo's big round face sits low: hold the card lower and off to the reaching side so it never covers her mouth).
-  const po = PEEK_OFFSET[a.id ?? ctx.view.seats[seat]?.characterId ?? ''];
+  const po = PEEK_OFFSET[a.id ?? (ctx.view.seats[seat] ? figKey(ctx.view.seats[seat]!.characterId, ctx.view.seats[seat]!.outfit) : '')];
   if (po) {
     const lat = shoulderPos(arm).sub(head).setY(0); if (lat.lengthSq() > 1e-8) lat.normalize();
     peekSpot.addScaledVector(facing, po.out).addScaledVector(lat, po.lat); peekSpot.y += po.dy;

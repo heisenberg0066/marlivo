@@ -253,7 +253,7 @@ export function Game({ session, onExit }: { session: Session; onExit(): void }) 
 
       <footer className="hud">
         <div className="me-plate">
-          {me !== null && v.seats[me] && <CharacterBust id={v.seats[me]!.characterId} size={44} color={SEAT_COLORS[me]} mood={r?.result?.winner === me ? 'happy' : 'idle'} />}
+          {me !== null && v.seats[me] && <CharacterBust id={v.seats[me]!.characterId} outfit={v.seats[me]!.outfit} size={44} color={SEAT_COLORS[me]} mood={r?.result?.winner === me ? 'happy' : 'idle'} />}
           <div>
             <b>{v.seats[me ?? -1]?.name ?? ''}</b>
             <span>★ {myScore}/{v.settings.targetPoints}{iAmIn && r ? ` · 🂠 ${r.counts[me!]}` : ''}</span>
@@ -336,7 +336,7 @@ function PauseOverlay({ view, isHost, nameOf, act, setConfirm }: { view: PlayerV
   return (
     <div className="pause-overlay">
       <div className="panel pause">
-        <div className="pause-busts">{view.pausedSeats.map((s) => <CharacterBust key={s} id={view.seats[s]?.characterId ?? 'biscuit'} mood="away" size={64} color={SEAT_COLORS[s]} />)}</div>
+        <div className="pause-busts">{view.pausedSeats.map((s) => <CharacterBust key={s} id={view.seats[s]?.characterId ?? 'biscuit'} outfit={view.seats[s]?.outfit} mood="away" size={64} color={SEAT_COLORS[s]} />)}</div>
         <h3>{t('status.paused', { names: view.pausedSeats.map(nameOf).join(', ') })}</h3>
         <p className="muted">{t('status.pausedHint')}</p>
         {isHost && view.pausedSeats.map((s) => (
@@ -362,7 +362,7 @@ function Scores({ view, nameOf }: { view: PlayerView; nameOf(n: number): string 
   return (
     <table className="scores"><tbody>
       {[...seats].sort((a, b) => (view.scores[b] ?? 0) - (view.scores[a] ?? 0)).map((s) => (
-        <tr key={s}><td><CharacterBust id={view.seats[s]?.characterId ?? 'biscuit'} size={30} color={SEAT_COLORS[s]} /></td><td>{nameOf(s)}</td>
+        <tr key={s}><td><CharacterBust id={view.seats[s]?.characterId ?? 'biscuit'} outfit={view.seats[s]?.outfit} size={30} color={SEAT_COLORS[s]} /></td><td>{nameOf(s)}</td>
           <td className="pips">{Array.from({ length: view.settings.targetPoints }, (_, i) => <span key={i} className={i < (view.scores[s] ?? 0) ? 'on' : ''}>🎃</span>)}</td><td>{view.scores[s] ?? 0}</td></tr>
       ))}
     </tbody></table>

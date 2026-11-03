@@ -28,6 +28,8 @@ export interface CharacterEntry {
   rotationY?: number;
   /** Animation clip names in the GLB for each mood. Missing clips fall back to a gentle procedural motion. */
   clips?: Partial<Record<Mood, string>>;
+  /** Outfit variants (figure key `${id}@${outfit}`): each is merged over this entry (model, modelLow, height, ...). */
+  outfits?: Record<string, Partial<Omit<CharacterEntry, 'outfits'>>>;
 }
 export interface Manifest { version: number; characters: Record<string, CharacterEntry> }
 
@@ -56,8 +58,12 @@ export function loadManifest(): Promise<Manifest> {
     .catch(() => BUILTIN);
   return manifestP;
 }
-export function entryFor(m: Manifest, id: string): CharacterEntry {
-  return m.characters[id] ?? m.characters.guest ?? { model: null, placeholder: 'generic' };
+export function entryFor(m: Manifest, key: string): CharacterEntry {
+  const at = key.indexOf('@');
+  const id = at < 0 ? key : key.slice(0, at), outfit = at < 0 ? undefined : key.slice(at + 1);
+  const base = m.characters[id] ?? m.characters.guest ?? { model: null, placeholder: 'generic' };
+  const v = outfit ? base.outfits?.[outfit] : undefined;
+  return v ? { ...base, ...v } : base;
 }
 
 const glbCache = new Map<string, Promise<GLTF | null>>();

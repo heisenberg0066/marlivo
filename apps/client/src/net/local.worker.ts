@@ -26,8 +26,8 @@ self.onmessage = (e: MessageEvent) => {
     host = new RoomHost(m.rec as RoomRecord, { transport, scheduler, onChange, local: true });
     postMessage({ kind: 'ready', code: m.rec.code });
   } else if (m.kind === 'addBots') {
-    for (const b of m.levels as (BotLevel | { level: BotLevel; characterId?: string; name?: string })[]) {
-      if (typeof b === 'string') host?.addBot(b); else host?.addBot(b.level, b.characterId, b.name);
+    for (const b of m.levels as (BotLevel | { level: BotLevel; characterId?: string; name?: string; outfit?: string })[]) {
+      if (typeof b === 'string') host?.addBot(b); else host?.addBot(b.level, b.characterId, b.name, b.outfit);
     }
   } else if (m.kind === 'open' || m.kind === 'reopen') {
     host?.open(m.connId);

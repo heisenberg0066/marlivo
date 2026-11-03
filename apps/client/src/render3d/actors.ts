@@ -2,6 +2,7 @@
 // choreography (backend3d) + table/scene loops drive it: 4-bone arm IK reach, paw/finger curl, 3-bone leg articulation,
 // whole-body forward shift & shoulder coil, off-hand table bracing, head look-at, and dynamic facial expressions.
 import * as THREE from 'three';
+import { byKey, outfitDef, splitKey } from '../outfits';
 
 export type Side = 'L' | 'R';
 
@@ -290,7 +291,7 @@ export function computeSeatedLegPose(
   reaching = false,
 ): { L: LegAngles; R: LegAngles } {
   const s0 = seat * 1.93 + (id === 'tango' ? 0.3 : id === 'ammar' ? 1.1 : 2.1);
-  const isStanding = id === 'ammar';
+  const isStanding = !!id && STANDING_IDS.has(id);
   const scale = isStanding ? 0.65 : 1.0;
 
   if (em) {
@@ -539,7 +540,26 @@ export const BODY_SPECS: Record<string, BodySpec> = {
   livo:  { cx: 0, head: { c: [0, 0.295, 0.0], r: [0.22, 0.18, 0.20], p: 2 }, torso: { c: [0, -0.06, 0], r: [0.18, 0.18, 0.16], p: 2 }, glove: 0.045, faceLo: 0.06, faceZ: 0.17, faceHalfW: 0.17, browY: 0.235, floorY: 0.0 },
 };
 const DEFAULT_SPEC = BODY_SPECS.biscuit;
-export const bodySpecFor = (id?: string): BodySpec => (id && BODY_SPECS[id]) || DEFAULT_SPEC;
+export const bodySpecFor = (id?: string): BodySpec => byKey(BODY_SPECS, id) ?? DEFAULT_SPEC;
+/** Figure keys of standing models (manifest "chair": false), registered when the model loads. */
+export const STANDING_IDS = new Set<string>(['ammar']);
+/** The chibi beanie Livo (the plain 'livo' id or the hidden 'beanie' outfit) keeps her tuned chibi numbers. */
+export const isChibiLivo = (id?: string) => id === 'livo' || id === 'livo@beanie';
+
+/** Rest pose of the outfit (if any): arm targets/curl for hands in the jacket pockets or hanging at the sides. It replaces
+ *  the idle hover/gesture arms (no waving); card play (reach/hold/brace) still blends from here as before. */
+export function restArmsFor(id: string | undefined, t: number, seat: number): { tL: [number, number, number]; tR: [number, number, number]; cL: number; cR: number } | null {
+  if (!id) return null;
+  const [cid, o] = splitKey(id); if (!o) return null;
+  const rest = outfitDef(cid, o)?.rest; if (!rest) return null;
+  const sp = bodySpecFor(id), tor = sp.torso ?? { c: [sp.cx, sp.head.c[1] - sp.head.r[1] - 0.2, 0] as [number, number, number], r: [0.2, 0.2, 0.18] as [number, number, number], p: 2 };
+  const br = Math.sin(t * 2.1 + seat) * 0.008, sw = Math.sin(t * 0.9 + seat * 1.7) * 0.01;
+  const mk = (sg: number): [number, number, number] => rest === 'pockets'
+    ? [sp.cx + sg * tor.r[0] * 0.78, tor.c[1] - tor.r[1] * 0.78 + br, tor.c[2] + tor.r[2] * 0.72 + sw * 0.5]
+    : [sp.cx + sg * (tor.r[0] + 0.035), tor.c[1] - tor.r[1] * 1.02 + br, tor.c[2] + 0.02 + sw];
+  const c = rest === 'pockets' ? 0.62 : 0.22;
+  return { tL: mk(-1), tR: mk(1), cL: c, cR: c };
+}
 
 /** Normalised "radius" of a point inside a volume (<1 = inside). */
 export function volRadius(v: BodyVol, x: number, y: number, z: number, inflate = 0): number {
@@ -802,9 +822,9 @@ export function computeIdlePose(id: string | undefined, seat: number, t: number,
   const isOrange = id === 'tango';
   const isBlocky = id === 'sugar' || id === 'choco';
   const cx = id === 'mint' ? -0.066 : 0;
-  const downX = isOrange ? 0.28 : isBlocky ? 0.24 : id === 'ammar' ? 0.18 : id === 'mint' ? 0.17 : id === 'livo' ? 0.19 : 0.21;
+  const downX = isOrange ? 0.28 : isBlocky ? 0.24 : id === 'ammar' ? 0.18 : id === 'mint' ? 0.17 : isChibiLivo(id) ? 0.19 : 0.21;
   // Resting glove heights sit at/below each character's chin line (Orange guy's face reaches almost to the table).
-  const downY = isOrange ? 0.045 : id === 'sugar' ? 0.05 : id === 'choco' ? 0.12 : id === 'ammar' ? 0.09 : id === 'livo' ? 0.08 : id === 'mint' ? 0.12 : 0.14;
+  const downY = isOrange ? 0.045 : id === 'sugar' ? 0.05 : id === 'choco' ? 0.12 : id === 'ammar' ? 0.09 : isChibiLivo(id) ? 0.08 : id === 'mint' ? 0.12 : 0.14;
   const downZ = isOrange ? 0.34 : isBlocky ? 0.28 : 0.29;
 
   const br = Math.sin(t * 2.1);

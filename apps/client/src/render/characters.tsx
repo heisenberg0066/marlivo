@@ -1,6 +1,7 @@
 // Characters (§14.6): Biscuit (bear), Mint (cat), Pepper (owl), Orange guy (id 'tango', Ammar's orange creature)
 // Ammar (a chibi from his own cartoon avatar) and Livo (a chibi girl in a pompom beanie and camel coat). 2D busts with a few expressions; the 3D models live in render3d.
-import { memo, useId, useState } from 'react';
+import { memo, useEffect, useId, useState } from 'react';
+import { byKey, figKey, outfitOf } from '../outfits';
 
 export type Mood = 'idle' | 'happy' | 'sad' | 'away' | 'think' | 'surprised';
 export const CHARACTER_IDS = ['biscuit', 'mint', 'pepper', 'tango', 'ammar', 'choco', 'sugar', 'livo'] as const;
@@ -179,10 +180,19 @@ function Ammar({ mood }: { mood: Mood }) {
 
 /** Livo: chubby chibi girl, cream ribbed beanie with a pompom, wavy dark-brown hair, big blue eyes, hoop earrings,
  *  royal-blue knit scarf over a camel double-breasted coat (SVG fallback; the portrait is rendered from her 3D model). */
-function Livo({ mood }: { mood: Mood }) {
+/** SVG bust colours per Livo outfit (fallback art when a portrait is missing). 'beanie' = the chibi build. */
+const LIVO_SVG: Record<string, { coat: string; coatD: string; inner: string; scarf?: [string, string]; hair: string; hairHi: string; beanie?: boolean; stripe?: string; strap?: string }> = {
+  beanie:     { coat: '#c69a6b', coatD: '#a87d52', inner: '#1f4fc4', scarf: ['#1f4fc4', '#173c99'], hair: '#352a26', hairHi: '#5a4a44', beanie: true },
+  streetwear: { coat: '#a3a6ab', coatD: '#86898f', inner: '#a3a6ab', hair: '#6b3f26', hairHi: '#93603d', strap: '#2b2622' },
+  sporty:     { coat: '#1f2b4d', coatD: '#16203a', inner: '#1f2b4d', hair: '#6b3f26', hairHi: '#93603d', stripe: '#f2f2f2' },
+  denim:      { coat: '#5c84b1', coatD: '#46698f', inner: '#f4f2ee', hair: '#6b3f26', hairHi: '#93603d' },
+  stockholm:  { coat: '#1f1f23', coatD: '#141417', inner: '#1f1f23', scarf: ['#2f62c9', '#244ea3'], hair: '#6b3f26', hairHi: '#93603d' },
+};
+function Livo({ mood, outfit = 'beanie' }: { mood: Mood; outfit?: string }) {
   const id = useId().replace(/:/g, '');
-  const skin = '#f6d3bf', blush = '#f2a39a', hair = '#352a26', hairHi = '#5a4a44', knit = '#f0e4d4', knitD = '#dccdb8';
-  const blue = '#1f4fc4', blueD = '#173c99', coat = '#c69a6b', coatD = '#a87d52';
+  const P = LIVO_SVG[outfit] ?? LIVO_SVG.beanie!;
+  const skin = '#f6d3bf', blush = '#f2a39a', hair = P.hair, hairHi = P.hairHi, knit = '#f0e4d4', knitD = '#dccdb8';
+  const blue = P.scarf?.[0] ?? '#1f4fc4', blueD = P.scarf?.[1] ?? '#173c99', coat = P.coat, coatD = P.coatD;
   const look = mood === 'think' ? [2.2, -1.6] : mood === 'sad' ? [0, 1.4] : [0, 0];
   const eye = (cx: number) => mood === 'happy'
     ? <path d={`M${cx - 7} 72 q7 -8 14 0`} stroke="#2b1a10" strokeWidth="2.8" fill="none" strokeLinecap="round" />
@@ -201,9 +211,11 @@ function Livo({ mood }: { mood: Mood }) {
       {waves(-1)}{waves(1)}
       {/* camel coat with lapels + buttons, blue sweater */}
       <path d="M14 140 Q16 114 36 108 L50 104 L70 104 L84 108 Q104 114 106 140 Z" fill={coat} />
-      <path d="M48 104 L58 140 L62 140 L72 104 Z" fill={blue} />
+      <path d="M48 104 L58 140 L62 140 L72 104 Z" fill={P.inner} />
+      {P.stripe && <path d="M22 140 Q24 118 38 110 M98 140 Q96 118 82 110" stroke={P.stripe} strokeWidth="2.4" fill="none" />}
+      {P.strap && <path d="M38 108 L84 140" stroke={P.strap} strokeWidth="4" />}
       <path d="M42 106 L54 122 L50 140 L40 140 Z M78 106 L66 122 L70 140 L80 140 Z" fill={coatD} opacity=".55" />
-      <circle cx="44" cy="128" r="2.2" fill="#4a3424" /><circle cx="76" cy="128" r="2.2" fill="#4a3424" />
+      {P.beanie && <><circle cx="44" cy="128" r="2.2" fill="#4a3424" /><circle cx="76" cy="128" r="2.2" fill="#4a3424" /></>}
       {/* head */}
       <ellipse cx="33" cy="76" rx="5" ry="7" fill={skin} /><ellipse cx="87" cy="76" rx="5" ry="7" fill={skin} />
       <circle cx="32" cy="84" r="2.4" fill="none" stroke="#c9ccd2" strokeWidth="1.4" /><circle cx="88" cy="84" r="2.4" fill="none" stroke="#c9ccd2" strokeWidth="1.4" />
@@ -222,38 +234,41 @@ function Livo({ mood }: { mood: Mood }) {
       {mood === 'idle' || mood === 'happy'
         ? <g><path d="M51 89 Q60 101 69 89 Z" fill="#8a2a2e" /><path d="M52.5 89.4 Q60 92 67.5 89.4 L67 91 Q60 93 53 91 Z" fill="#fff" /><path d="M55 96 Q60 99 65 96 Q60 94 55 96 Z" fill="#e8737a" /></g>
         : <Mouth mood={mood} x={60} y={91} color="#8a2a2e" />}
-      {/* cream ribbed beanie + pompom */}
+      {!P.beanie && <path d="M28 70 C24 40 40 30 60 30 C80 30 96 40 92 70 C88 56 80 48 66 47 Q60 52 54 47 C40 48 32 56 28 70 Z" fill={hair} />}
+      {P.beanie && <>{/* cream ribbed beanie + pompom */}
       <path d="M26 56 C24 28 40 14 60 14 C80 14 96 28 94 56 Z" fill={knit} />
       <g stroke={knitD} strokeWidth="1.4" opacity=".9">{[34, 42, 50, 58, 66, 74, 82, 88].map((x) => <path key={x} d={`M${x} ${x < 40 || x > 84 ? 30 : 20} L${x} 50`} />)}</g>
       <rect x="24" y="44" width="72" height="14" rx="7" fill={knit} stroke={knitD} strokeWidth="1.2" />
       <g stroke={knitD} strokeWidth="1.3">{Array.from({ length: 14 }, (_, i) => 28 + i * 5).map((x) => <path key={x} d={`M${x} 46 L${x} 56`} />)}</g>
-      <circle cx="60" cy="12" r="10" fill="#f3ead8" /><circle cx="57" cy="9" r="4" fill="#fffaf0" opacity=".8" />
-      {/* royal-blue scarf over the shoulders */}
+      <circle cx="60" cy="12" r="10" fill="#f3ead8" /><circle cx="57" cy="9" r="4" fill="#fffaf0" opacity=".8" /></>}
+      {P.scarf && <>{/* royal-blue scarf over the shoulders */}
       <path d="M36 100 Q60 116 84 100 Q88 108 80 114 Q60 124 40 114 Q32 108 36 100 Z" fill={blue} />
-      <path d="M66 112 L76 112 L78 140 L66 140 Z" fill={blueD} />
+      <path d="M66 112 L76 112 L78 140 L66 140 Z" fill={blueD} /></>}
     </g>
   );
 }
 
 /** Portraits rendered from the 3D models (Blender, see tools/character-pipeline); the SVG busts stay as fallback art. */
-const PORTRAITS: Record<string, string> = { tango: 'tango.webp', ammar: 'ammar.webp', biscuit: 'biscuit.webp', mint: 'mint.webp', pepper: 'pepper.webp', choco: 'choco.webp', sugar: 'sugar.webp', livo: 'livo.webp' };
-const portraitUrl = (id: string) => (import.meta.env?.BASE_URL ?? '/') + 'assets/characters/portraits/' + PORTRAITS[id];
-function Portrait({ id, mood }: { id: string; mood: Mood }) {
+const PORTRAITS: Record<string, string> = { tango: 'tango.webp', ammar: 'ammar.webp', biscuit: 'biscuit.webp', mint: 'mint.webp', pepper: 'pepper.webp', choco: 'choco.webp', sugar: 'sugar.webp', livo: 'livo.webp',
+  'livo@beanie': 'livo.webp', 'livo@streetwear': 'livo_streetwear.webp', 'livo@sporty': 'livo_sporty.webp', 'livo@denim': 'livo_denim.webp', 'livo@stockholm': 'livo_stockholm.webp' };
+const portraitUrl = (key: string) => (import.meta.env?.BASE_URL ?? '/') + 'assets/characters/portraits/' + byKey(PORTRAITS, key);
+function Portrait({ id, outfit, mood }: { id: string; outfit?: string; mood: Mood }) {
   const [ok, setOk] = useState(true);
-  const Svg = id === 'livo' ? Livo : id === 'ammar' ? Ammar : id === 'tango' ? Tango : id === 'mint' ? Mint : id === 'pepper' ? Pepper : Biscuit;
-  if (!ok) return <Svg mood={mood} />;
-  return <image href={portraitUrl(id)} x="0" y="0" width="120" height="140" preserveAspectRatio="xMidYMax meet" onError={() => setOk(false)} />;
+  const key = figKey(id, outfit);
+  useEffect(() => setOk(true), [key]);
+  if (!ok) return id === 'livo' ? <Livo mood={mood} outfit={outfitOf(id, outfit)} /> : (() => { const Svg = id === 'ammar' ? Ammar : id === 'tango' ? Tango : id === 'mint' ? Mint : id === 'pepper' ? Pepper : Biscuit; return <Svg mood={mood} />; })();
+  return <image key={key} href={portraitUrl(key)} x="0" y="0" width="120" height="140" preserveAspectRatio="xMidYMax meet" onError={() => setOk(false)} />;
 }
 
-export const CharacterBust = memo(function CharacterBust({ id, mood = 'idle', color, size = 90, className = '' }: { id: string; mood?: Mood; color?: string; size?: number; className?: string }) {
+export const CharacterBust = memo(function CharacterBust({ id, outfit, mood = 'idle', color, size = 90, className = '' }: { id: string; outfit?: string; mood?: Mood; color?: string; size?: number; className?: string }) {
   if (PORTRAITS[id]) return (
     <svg viewBox="0 0 120 140" width={size} height={size * 140 / 120} className={`char-bust mood-${mood} ${className}`} aria-hidden>
       {color && <ellipse cx="60" cy="136" rx="52" ry="8" fill={color} opacity=".55" />}
-      <g className="char-body"><Portrait id={id} mood={mood} /></g>
+      <g className="char-body"><Portrait id={id} outfit={outfit} mood={mood} /></g>
       {mood === 'away' && <text x="96" y="22" fontSize="18" fill="#f6ebd9" fontFamily="Fredoka, system-ui" className="zzz">z<tspan dy="-8" fontSize="13">z</tspan></text>}
     </svg>
   );
-  const Comp = id === 'livo' ? Livo : id === 'mint' ? Mint : id === 'pepper' ? Pepper : id === 'tango' ? Tango : id === 'ammar' ? Ammar : Biscuit;
+  const Comp = id === 'livo' ? ((pr: { mood: Mood }) => <Livo mood={pr.mood} outfit={outfitOf(id, outfit)} />) : id === 'mint' ? Mint : id === 'pepper' ? Pepper : id === 'tango' ? Tango : id === 'ammar' ? Ammar : Biscuit;
   return (
     <svg viewBox="0 0 120 140" width={size} height={size * 140 / 120} className={`char-bust mood-${mood} ${className}`} aria-hidden>
       {color && <ellipse cx="60" cy="136" rx="52" ry="8" fill={color} opacity=".55" />}

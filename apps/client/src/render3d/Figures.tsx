@@ -26,12 +26,15 @@ import {
   computeEmotePose,
   computeIdlePose,
   computeMouthTarget,
+  restArmsFor,
+  STANDING_IDS,
   type Actor,
   type EmotePose,
   type IdlePose,
   type Side,
 } from './actors';
 import { getCtx3 } from './backend3d';
+import { byKey, splitKey } from '../outfits';
 
 const G = {
   sphere: new THREE.SphereGeometry(1, 18, 14),
@@ -143,7 +146,7 @@ const EYE_SPEC: Record<string, { ey: number; eh: number; ex: number; ew: number;
   livo:  { ey: 0.635, eh: 0.031, ex: 0.055, ew: 0.026, col: '#e1bdab', my: 0.569, mh: 0.000, mw: 0.041, mcol: '#deb19e', mz: 0.12 },
 };
 export function attachBlinkShader(root: THREE.Object3D, id: string, ryDeg: number): FaceShaderUniform[] {
-  const spec = EYE_SPEC[id]; if (!spec) return [];
+  const spec = byKey(EYE_SPEC, id); if (!spec) return [];
   root.updateMatrixWorld(true);
   let skinned = false;
   root.traverse((o) => { const m = o as THREE.SkinnedMesh; if (m.isSkinnedMesh) { skinned = true; m.skeleton.update(); } });
@@ -260,6 +263,7 @@ function ModelFigure({ e, id, mood, seed, pose: stance, fallback, onFail }: { e:
       });
       const blinkU = attachBlinkShader(root, id, e.rotationY ?? 0);
       normalise(root, stance === 'stand' && e.chair !== false ? { ...e, baseY: -0.12 } : e);
+      if (e.chair === false) STANDING_IDS.add(id);
       lk.current.bodyQ.clear();
       setObj({
         root,
@@ -350,8 +354,12 @@ function ModelFigure({ e, id, mood, seed, pose: stance, fallback, onFail }: { e:
     const now = performance.now();
     const em = activeEmoteFor(seed, now);
     const busyArms = !!(actor.current && Object.values(actor.current.cmd.arm).some((x) => x && !x.hold && x.w > 0.05));
-    const ep = em && !busyArms ? computeEmotePose(em.kind, em.u) : null;
+    const restArms = restArmsFor(id, st.clock.elapsedTime, seed);
+    let ep = em && !busyArms ? computeEmotePose(em.kind, em.u) : null;
+    // Outfits with a rest pose never wave: the wave emote keeps her hands where they rest (head/body motion only).
+    if (ep && restArms && em?.kind === 'wave') ep = { ...ep, wL: 0, wR: 0 };
     const idle = computeIdlePose(id, seed, st.clock.elapsedTime, mood, lk.current.yaw);
+    if (restArms) Object.assign(idle, restArms);
     // Reset torso/head bones to rest before computing this frame's target pose
     for (const [kBone, br] of Object.entries(b)) if (kBone !== 'armL' && kBone !== 'armR' && br) br.bone.quaternion.copy(br.rest);
     if (e.motion === 'creature') {
@@ -656,7 +664,7 @@ export function useCharacterEntry(id: string): CharacterEntry | null {
 export function Figure({ id, mood, seed = 0, pose = 'sit' }: { id: string; mood: Mood; seed?: number; pose?: 'sit' | 'stand' }) {
   const entry = useCharacterEntry(id);
   const [failed, setFailed] = useState(false);
-  const kind: Placeholder = useMemo(() => entry?.placeholder ?? ({ biscuit: 'bear', mint: 'cat', pepper: 'owl', tango: 'orange', ammar: 'ammar' } as Record<string, Placeholder>)[id] ?? 'generic', [entry, id]);
+  const kind: Placeholder = useMemo(() => entry?.placeholder ?? ({ biscuit: 'bear', mint: 'cat', pepper: 'owl', tango: 'orange', ammar: 'ammar' } as Record<string, Placeholder>)[splitKey(id)[0]] ?? 'generic', [entry, id]);
   const builtin = kind === 'orange' ? <OrangeGuy mood={mood} seed={seed} pose={pose} /> : kind === 'ammar' ? <AmmarFigure mood={mood} seed={seed} pose={pose} /> : <PlaceholderFigure kind={kind} mood={mood} seed={seed} />;
   if (entry?.model && !failed) return <ModelFigure key={id} e={entry} id={id} mood={mood} seed={seed} pose={pose} fallback={builtin} onFail={() => setFailed(true)} />;
   return builtin;

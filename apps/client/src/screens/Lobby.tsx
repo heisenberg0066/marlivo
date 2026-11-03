@@ -1,4 +1,6 @@
 // Room lobby (§9): seats, ready, host settings, bots, share link, two-window/test seats.
+import { OutfitPicker } from './OutfitPicker';
+import { myOutfit, setMyOutfit } from '../outfitPrefs';
 import { useState } from 'react';
 import type { PlayerView, Intent, BotLevel, Settings } from '@marlivo/engine';
 import type { Session } from '../game/session';
@@ -39,7 +41,7 @@ export function Lobby({ session, view, onExit }: { session: Session; view: Playe
           {view.seats.slice(0, st.maxPlayers).map((s, i) => (
             <li key={i} className={`seat ${s ? '' : 'free'}`} style={{ borderColor: SEAT_COLORS[i] }}>
               {s ? <>
-                <CharacterBust id={s.characterId} size={46} color={SEAT_COLORS[i]} mood={!s.isBot && !s.connected ? 'away' : s.ready || s.isBot ? 'happy' : 'idle'} />
+                <CharacterBust id={s.characterId} outfit={s.outfit} size={46} color={SEAT_COLORS[i]} mood={!s.isBot && !s.connected ? 'away' : s.ready || s.isBot ? 'happy' : 'idle'} />
                 <div className="seat-info"><b>{s.name}{i === me ? ` (${t('common.you')})` : ''}</b>
                   <small>{view.host === i ? `👑 ${t('lobby.host')} · ` : ''}{s.isBot ? `🤖 ${t('lobby.bot')} · ${t('practice.' + s.botLevel)}` : !s.connected ? t('lobby.disconnected') : s.ready ? '✓ ' + t('lobby.ready') : t('lobby.notReady')}</small></div>
                 {isHost && i !== me && (s.isBot ? <button onClick={() => act({ t: 'HOST_REMOVE_BOT', seat: i })}>{t('lobby.removeBot')}</button> : <button onClick={() => act({ t: 'HOST_KICK', seat: i })}>{t('lobby.kick')}</button>)}
@@ -50,8 +52,9 @@ export function Lobby({ session, view, onExit }: { session: Session; view: Playe
         {mine && (
           <div className="me-setup">
             <div className="chars">{CHARACTER_IDS.map((c) => (
-              <button key={c} className={`char ${mine.characterId === c ? 'on' : ''}`} onClick={() => { setPrefs({ characterId: c }); act({ t: 'PICK_CHARACTER', id: c }); }} aria-label={t('char.' + c)}>
-                <CharacterBust id={c} size={40} /><small>{t('char.' + c)}</small></button>))}</div>
+              <button key={c} className={`char ${mine.characterId === c ? 'on' : ''}`} onClick={() => { setPrefs({ characterId: c }); act({ t: 'PICK_CHARACTER', id: c, ...(myOutfit(c) ? { outfit: myOutfit(c) } : {}) }); }} aria-label={t('char.' + c)}>
+                <CharacterBust id={c} outfit={c === mine.characterId ? mine.outfit : myOutfit(c)} size={40} /><small>{t('char.' + c)}</small></button>))}</div>
+            <OutfitPicker charId={mine.characterId} value={mine.outfit} onPick={(o) => { setMyOutfit(mine.characterId, o); act({ t: 'PICK_CHARACTER', id: mine.characterId, outfit: o }); }} size={40} />
             <LayoutPicker n={st.cardsPerPlayer} value={mine.layout} onPick={(id) => { setPrefs({ layout: id }); act({ t: 'SET_LAYOUT', layout: id }); }} />
             <button className={`act ${mine.ready ? '' : 'primary'}`} onClick={() => act({ t: 'SET_READY', ready: !mine.ready })}>{mine.ready ? t('lobby.notReady') : t('lobby.ready')}</button>
           </div>

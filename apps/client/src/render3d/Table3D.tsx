@@ -25,6 +25,7 @@ import { propLayout } from './scenes/propLayout';
 import { Card3D, PLANE, type Glow } from './Card3D';
 import { Figure, useCharacterEntry } from './Figures';
 import { Die3D } from './Die3D';
+import { figKey } from '../outfits';
 import { backend3d, setCtx3, project, updateMyEmoteHand } from './backend3d';
 import { triggerEmote, activeEmoteFor, subscribeEmotes } from './actors';
 import { setMaxAnisotropy, glowTexture } from './textures';
@@ -284,8 +285,8 @@ const Scene = memo(function Scene({ p, L, stage, points, els, portrait, scene }:
             })}
             {!isMe && si && L.chars[seat] && (
               <group position={L.chars[seat]!.p} rotation={[0, L.chars[seat]!.yaw, 0]} scale={CHAR_SCALE} onClick={(e) => { if (pick) { e.stopPropagation(); p.onSeat(seat); } }}>
-                <SeatChair id={si.characterId} scene={scene} />
-                <Suspense fallback={null}><Figure key={si.characterId} id={si.characterId} mood={moodOf(v, ov, seat)} seed={seat} /></Suspense>
+                <SeatChair id={figKey(si.characterId, si.outfit)} scene={scene} />
+                <Suspense fallback={null}><Figure key={figKey(si.characterId, si.outfit)} id={figKey(si.characterId, si.outfit)} mood={moodOf(v, ov, seat)} seed={seat} /></Suspense>
               </group>
             )}
             {!isMe && r?.drawn?.by === seat && !ov.hideHand[seat] && L.hands[seat] && (

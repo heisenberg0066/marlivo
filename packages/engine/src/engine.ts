@@ -23,6 +23,8 @@ function botCharacter(s: { seats: ({ characterId: string } | null)[] }, seat: nu
   for (let k = 1; k <= CHARACTERS.length; k++) { const c = CHARACTERS[(seat + k) % CHARACTERS.length]!; if (!used.has(c)) return c; }
   return CHARACTERS[(seat + 1) % CHARACTERS.length]!;
 }
+/** Outfit ids are short lowercase tokens; anything else is dropped (the client then shows the default outfit). */
+export const cleanOutfit = (o: unknown): string | undefined => (typeof o === 'string' && /^[a-z0-9_-]{1,24}$/.test(o) ? o : undefined);
 export const PENALTY_PER_WRONG = 2;
 
 class Reject extends Error { constructor(public reason: string) { super(reason); } }
@@ -503,7 +505,13 @@ function apply(c: Ctx, actor: Actor, it: Intent) {
   const r = s.round;
   switch (it.t) {
     // ----- lobby -----
-    case 'PICK_CHARACTER': check(typeof it.id === 'string' && it.id.length <= 40, 'BAD_CHARACTER'); si.characterId = it.id; emit(c, '_SEAT', { seat: me }); return;
+    case 'PICK_CHARACTER': {
+      check(typeof it.id === 'string' && it.id.length <= 40, 'BAD_CHARACTER');
+      check(it.outfit === undefined || cleanOutfit(it.outfit) !== undefined, 'BAD_OUTFIT');
+      si.characterId = it.id;
+      const o = cleanOutfit(it.outfit); if (o) si.outfit = o; else delete si.outfit;
+      emit(c, '_SEAT', { seat: me }); return;
+    }
     case 'SET_NAME': check(s.phase === 'LOBBY', 'NOT_LOBBY'); si.name = cleanName(it.name); emit(c, '_SEAT', { seat: me }); return;
     case 'SET_LAYOUT': check(s.phase === 'LOBBY' || s.phase === 'MATCH_END', 'LAYOUT_LOCKED'); check(['r1', 'r2', 'r3', 'r4'].includes(it.layout), 'BAD_LAYOUT'); si.layout = it.layout; emit(c, '_SEAT', { seat: me }); return;
     case 'SET_READY': check(s.phase === 'LOBBY', 'NOT_LOBBY'); si.ready = !!it.ready; emit(c, '_SEAT', { seat: me }); return;
@@ -557,6 +565,7 @@ function apply(c: Ctx, actor: Actor, it: Intent) {
       const used = new Set(s.seats.filter(Boolean).map((x) => x!.name));
       const name = it.name ? cleanName(it.name) : BOT_NAMES.find((n) => !used.has(n)) ?? 'Bot';
       s.seats[free!] = { name, characterId: botCharacter(s, free!, it.characterId), lang: 'en', isBot: true, botLevel: it.level as BotLevel, ready: true, connected: true };
+      { const o = cleanOutfit(it.outfit); if (o && s.seats[free!]!.characterId === it.characterId) s.seats[free!]!.outfit = o; }
       emit(c, 'BOT_ADDED', { seat: free, level: it.level });
       return;
     }
@@ -867,6 +876,7 @@ function applySys(c: Ctx, it: Intent) {
       check(s.phase === 'LOBBY', 'IN_PROGRESS');
       check(seatedIds(s).length < s.settings.maxPlayers, 'ROOM_FULL');
       s.seats[it.seat] = { name: cleanName(it.name), characterId: it.characterId || 'biscuit', lang: it.lang === 'fr' ? 'fr' : 'en', isBot: false, ready: false, connected: true };
+      { const o = cleanOutfit(it.outfit); if (o) s.seats[it.seat]!.outfit = o; }
       if (s.host === null || !s.seats[s.host]) s.host = it.seat;
       emit(c, 'JOINED', { seat: it.seat });
       return;
