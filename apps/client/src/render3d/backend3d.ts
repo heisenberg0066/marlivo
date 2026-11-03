@@ -202,10 +202,6 @@ const FP_PALETTE: Record<string, { paw: string; sleeve: string }> = {
   choco:   { paw: '#5a321e', sleeve: '#d4a638' },
   sugar:   { paw: '#f2ece2', sleeve: '#d8d0c5' },
   livo:  { paw: '#f3c9a8', sleeve: '#c49a6c' },
-  'livo@streetwear': { paw: '#f1c7aa', sleeve: '#a3a6ab' },
-  'livo@sporty':     { paw: '#f1c7aa', sleeve: '#1f2b4d' },
-  'livo@denim':      { paw: '#f1c7aa', sleeve: '#5c84b1' },
-  'livo@stockholm':  { paw: '#f1c7aa', sleeve: '#1f1f23' },
 };
 /** Figure key of the local player (character + outfit) for the first-person hand. */
 function myFigKey(): string {

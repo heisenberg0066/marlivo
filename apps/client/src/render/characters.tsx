@@ -183,10 +183,6 @@ function Ammar({ mood }: { mood: Mood }) {
 /** SVG bust colours per Livo outfit (fallback art when a portrait is missing). 'beanie' = the chibi build. */
 const LIVO_SVG: Record<string, { coat: string; coatD: string; inner: string; scarf?: [string, string]; hair: string; hairHi: string; beanie?: boolean; stripe?: string; strap?: string }> = {
   beanie:     { coat: '#c69a6b', coatD: '#a87d52', inner: '#1f4fc4', scarf: ['#1f4fc4', '#173c99'], hair: '#352a26', hairHi: '#5a4a44', beanie: true },
-  streetwear: { coat: '#a3a6ab', coatD: '#86898f', inner: '#a3a6ab', hair: '#6b3f26', hairHi: '#93603d', strap: '#2b2622' },
-  sporty:     { coat: '#1f2b4d', coatD: '#16203a', inner: '#1f2b4d', hair: '#6b3f26', hairHi: '#93603d', stripe: '#f2f2f2' },
-  denim:      { coat: '#5c84b1', coatD: '#46698f', inner: '#f4f2ee', hair: '#6b3f26', hairHi: '#93603d' },
-  stockholm:  { coat: '#1f1f23', coatD: '#141417', inner: '#1f1f23', scarf: ['#2f62c9', '#244ea3'], hair: '#6b3f26', hairHi: '#93603d' },
 };
 function Livo({ mood, outfit = 'beanie' }: { mood: Mood; outfit?: string }) {
   const id = useId().replace(/:/g, '');
@@ -250,7 +246,7 @@ function Livo({ mood, outfit = 'beanie' }: { mood: Mood; outfit?: string }) {
 
 /** Portraits rendered from the 3D models (Blender, see tools/character-pipeline); the SVG busts stay as fallback art. */
 const PORTRAITS: Record<string, string> = { tango: 'tango.webp', ammar: 'ammar.webp', biscuit: 'biscuit.webp', mint: 'mint.webp', pepper: 'pepper.webp', choco: 'choco.webp', sugar: 'sugar.webp', livo: 'livo.webp',
-  'livo@beanie': 'livo.webp', 'livo@streetwear': 'livo_streetwear.webp', 'livo@sporty': 'livo_sporty.webp', 'livo@denim': 'livo_denim.webp', 'livo@stockholm': 'livo_stockholm.webp' };
+  'livo@beanie': 'livo.webp' };
 const portraitUrl = (key: string) => (import.meta.env?.BASE_URL ?? '/') + 'assets/characters/portraits/' + byKey(PORTRAITS, key);
 function Portrait({ id, outfit, mood }: { id: string; outfit?: string; mood: Mood }) {
   const [ok, setOk] = useState(true);

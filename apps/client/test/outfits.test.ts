@@ -1,67 +1,56 @@
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { OUTFITS, outfitOf, figKey, splitKey, byKey, outfitDef } from '../src/outfits';
+import { OUTFITS, outfitOf, figKey, splitKey, byKey, outfitDef, hasOutfitChoice } from '../src/outfits';
 import { entryFor, type Manifest } from '../src/render3d/registry';
-import { restArmsFor, computeIdlePose, computeSeatedLegPose, STANDING_IDS, isChibiLivo } from '../src/render3d/actors';
+import { restArmsFor, computeIdlePose, bodySpecFor, STANDING_IDS, isChibiLivo, BODY_SPECS } from '../src/render3d/actors';
 
-const manifest = JSON.parse(readFileSync(resolve(__dirname, '../public/assets/characters/manifest.json'), 'utf8')) as Manifest;
+const dir = resolve(__dirname, '../public/assets/characters');
+const manifest = JSON.parse(readFileSync(resolve(dir, 'manifest.json'), 'utf8')) as Manifest;
+const src = (p: string) => readFileSync(resolve(__dirname, '../src', p), 'utf8');
 
-describe('Livo outfits', () => {
-  it('labels the 4 looks Livo 1-4 in both languages (ids unchanged)', () => {
-    expect(OUTFITS.livo!.list.map((o) => [o.id, o.name.en, o.name.fr])).toEqual([['streetwear', 'Livo 1', 'Livo 1'], ['sporty', 'Livo 2', 'Livo 2'], ['denim', 'Livo 3', 'Livo 3'], ['stockholm', 'Livo 4', 'Livo 4']]);
+describe('Livo: the chibi beanie build is her only look (v0.11, adult outfits dropped)', () => {
+  it("'beanie' is the only and default outfit, so there is no outfit choice (picker hidden)", () => {
+    expect(OUTFITS.livo!.list.map((o) => o.id)).toEqual(['beanie']);
+    expect(OUTFITS.livo!.def).toBe('beanie');
+    expect(OUTFITS.livo!.hidden ?? []).toEqual([]);
+    expect(hasOutfitChoice('livo')).toBe(false);
+    expect(hasOutfitChoice('mint')).toBe(false);
+    expect(src('screens/OutfitPicker.tsx')).toMatch(/!hasOutfitChoice\(charId\)\) return null/);
   });
-  it('offers the 4 adult looks with streetwear as default; the chibi beanie stays available but hidden', () => {
-    expect(OUTFITS.livo!.list.map((o) => o.id)).toEqual(['streetwear', 'sporty', 'denim', 'stockholm']);
-    expect(outfitOf('livo')).toBe('streetwear');
-    expect(outfitOf('livo', 'nope')).toBe('streetwear');
-    expect(outfitOf('livo', 'beanie')).toBe('beanie');
+  it('a saved/synced adult outfit (localStorage livo=streetwear etc.) falls back to the beanie', () => {
+    for (const o of ['streetwear', 'sporty', 'denim', 'stockholm', 'nope', undefined, null]) {
+      expect(outfitOf('livo', o)).toBe('beanie');
+      expect(figKey('livo', o)).toBe('livo');
+    }
     expect(outfitOf('mint', 'denim')).toBeUndefined();
-    expect(figKey('livo', 'denim')).toBe('livo@denim');
-    expect(figKey('livo')).toBe('livo@streetwear');
     expect(figKey('mint', 'denim')).toBe('mint');
-    expect(splitKey('livo@sporty')).toEqual(['livo', 'sporty']);
-    expect(byKey({ livo: 1, 'livo@denim': 2 }, 'livo@denim')).toBe(2);
-    expect(byKey({ livo: 1 }, 'livo@sporty')).toBe(1);
+    expect(splitKey('livo@x')).toEqual(['livo', 'x']);
+    expect(byKey({ livo: 1, 'livo@x': 2 }, 'livo@x')).toBe(2);
+    expect(byKey({ livo: 1 }, 'livo@x')).toBe(1);
   });
-  it('jacket/coat outfits rest with hands in pockets, the hoodie with arms at her sides', () => {
-    expect(outfitDef('livo', 'streetwear')!.rest).toBe('sides');
-    for (const o of ['sporty', 'denim', 'stockholm']) expect(outfitDef('livo', o)!.rest).toBe('pockets');
-    expect(outfitDef('livo', 'beanie')!.rest).toBeUndefined();
+  it('renders under the plain livo id with the 417eb6d tuning (chibi, no rest pose, sitting, her body spec)', () => {
+    expect(isChibiLivo(figKey('livo', 'streetwear'))).toBe(true);
+    expect(restArmsFor(figKey('livo', 'denim'), 1, 1)).toBeNull();
+    expect(outfitDef('livo', 'stockholm')!.rest).toBeUndefined();
+    expect(STANDING_IDS.has('livo')).toBe(false);
+    expect(bodySpecFor('livo')).toBe(BODY_SPECS.livo);
+    expect(BODY_SPECS.livo).toEqual({ cx: 0, head: { c: [0, 0.295, 0.0], r: [0.22, 0.18, 0.20], p: 2 }, torso: { c: [0, -0.06, 0], r: [0.18, 0.18, 0.16], p: 2 }, glove: 0.045, faceLo: 0.06, faceZ: 0.17, faceHalfW: 0.17, browY: 0.235, floorY: 0.0 });
+    expect(Object.keys(BODY_SPECS).filter((k) => k.includes('@'))).toEqual([]);
+    expect(computeIdlePose('livo', 0, 1, 'idle').tL).toHaveLength(3);
+    expect(src('render3d/Figures.tsx')).toContain("livo:  { ey: 0.635, eh: 0.031, ex: 0.055, ew: 0.026, col: '#e1bdab', my: 0.569, mh: 0.000, mw: 0.041, mcol: '#deb19e', mz: 0.12 },");
+    expect(src('render3d/Figures.tsx')).not.toMatch(/'livo@/);
+    expect(src('render3d/backend3d.ts')).toContain('livo: { dy: -0.075, out: 0.03, lat: 0.07 }');
   });
-  it('every outfit has a model + low model in the manifest; entries merge over the base livo entry', () => {
-    for (const o of [...OUTFITS.livo!.list, ...(OUTFITS.livo!.hidden ?? [])]) {
-      const e = entryFor(manifest, 'livo@' + o.id);
-      expect(e.model, o.id).toBeTruthy();
-      expect(e.modelLow, o.id).toBeTruthy();
-      expect(readFileSync(resolve(__dirname, '../public/assets/characters', e.model!)).length).toBeGreaterThan(1000);
-      expect(readFileSync(resolve(__dirname, '../public/assets/characters', e.modelLow!)).length).toBeGreaterThan(1000);
-      expect(readFileSync(resolve(__dirname, '../public/assets/characters/portraits', o.id === 'beanie' ? 'livo.webp' : `livo_${o.id}.webp`)).length).toBeGreaterThan(1000);
+  it('manifest: the base livo entry (livo.glb / livo-low.glb, seated chibi), no outfit variants; adult files not shipped', () => {
+    const e = manifest.characters.livo!;
+    expect(e.outfits).toBeUndefined();
+    expect(e.model).toBe('livo.glb'); expect(e.modelLow).toBe('livo-low.glb');
+    expect(entryFor(manifest, figKey('livo', 'sporty'))).toBe(e);
+    for (const f of [e.model!, e.modelLow!, 'portraits/livo.webp']) expect(readFileSync(resolve(dir, f)).length).toBeGreaterThan(1000);
+    for (const o of ['streetwear', 'sporty', 'denim', 'stockholm']) {
+      expect(existsSync(resolve(dir, `livo_${o}.glb`))).toBe(false);
+      expect(existsSync(resolve(dir, `portraits/livo_${o}.webp`))).toBe(false);
     }
-    expect(entryFor(manifest, 'livo@beanie').model).toBe(entryFor(manifest, 'livo').model);
-    expect(entryFor(manifest, 'mint').model).toBe(manifest.characters.mint!.model);
-  });
-  it('rest pose: pockets at the hips in front of the body, sides lower and wider; no gesture swings', () => {
-    const p = restArmsFor('livo@denim', 1.0, 1)!, s = restArmsFor('livo@streetwear', 1.0, 1)!;
-    expect(restArmsFor('livo@beanie', 1, 1)).toBeNull();
-    expect(restArmsFor('mint', 1, 1)).toBeNull();
-    expect(p.tL[0]).toBeLessThan(0); expect(p.tR[0]).toBeGreaterThan(0);
-    expect(p.cL).toBeGreaterThan(s.cL);
-    expect(Math.abs(s.tR[0])).toBeGreaterThan(Math.abs(p.tR[0]));
-    expect(s.tR[1]).toBeLessThan(p.tR[1] + 1e-9);
-    // stable over time (only a small breathing sway), unlike the idle hover gestures
-    for (let t = 0; t < 10; t += 0.37) {
-      const q = restArmsFor('livo@sporty', t, 2)!;
-      expect(Math.abs(q.tR[1] - restArmsFor('livo@sporty', 0, 2)!.tR[1])).toBeLessThan(0.03);
-    }
-    expect(computeIdlePose('livo@denim', 0, 1, 'idle').tL).toHaveLength(3);
-  });
-  it('standing figures are registered by figure key; the chibi tuning only applies to the beanie build', () => {
-    expect(STANDING_IDS.has('ammar')).toBe(true);
-    expect(isChibiLivo('livo')).toBe(true); expect(isChibiLivo('livo@beanie')).toBe(true); expect(isChibiLivo('livo@denim')).toBe(false);
-    STANDING_IDS.add('livo@denim');
-    const st = computeSeatedLegPose('livo@denim', 0, 1, 'happy', 0, { kind: 'cheer', u: 0.3 } as never);
-    const sit = computeSeatedLegPose('livo@beanie', 0, 1, 'happy', 0, { kind: 'cheer', u: 0.3 } as never);
-    expect(Math.abs(st.L.hipPitch)).toBeLessThan(Math.abs(sit.L.hipPitch) + 1e-9);
   });
 });
