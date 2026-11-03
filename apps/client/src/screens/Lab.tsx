@@ -1,9 +1,25 @@
 // Figure lab (dev / tests only, not linked from the UI): #/lab?id=tango&mood=idle&pose=stand&yaw=0&bg=1e1e1e
 // Renders one 3D figure on a plain background so it can be compared with its reference art.
-import { Canvas } from '@react-three/fiber';
+import { Canvas, useFrame, useThree } from '@react-three/fiber';
+import * as THREE from 'three';
 import { Suspense } from 'react';
 import { Figure } from '../render3d/Figures';
 import type { Mood } from '../render/characters';
+
+/** Test probe: screen positions (CSS px) of the hand-tip bones, so scripts can crop hand close-ups. */
+function HandProbe() {
+  const { scene, camera, size } = useThree();
+  useFrame(() => {
+    const out: { name: string; x: number; y: number }[] = []; const v = new THREE.Vector3();
+    for (const n of ['armL_curl', 'armR_curl']) {
+      const b = scene.getObjectByName(n); if (!b) continue;
+      b.getWorldPosition(v).project(camera);
+      out.push({ name: n, x: (v.x * 0.5 + 0.5) * size.width, y: (-v.y * 0.5 + 0.5) * size.height });
+    }
+    (window as unknown as { __labHands?: unknown }).__labHands = out;
+  });
+  return null;
+}
 
 export default function Lab({ q }: { q: URLSearchParams }) {
   const id = q.get('id') ?? 'tango';
@@ -22,6 +38,7 @@ export default function Lab({ q }: { q: URLSearchParams }) {
         <directionalLight position={[-2, 1, 1]} intensity={0.45} color="#c8d8ff" />
         <pointLight position={[0, 1.2, 1.2]} intensity={0.6} color="#ffd8a8" />
         <group rotation={[0, yaw, 0]}><Suspense fallback={null}><Figure id={id} mood={mood} pose={pose} /></Suspense></group>
+        <HandProbe />
       </Canvas>
     </div>
   );
