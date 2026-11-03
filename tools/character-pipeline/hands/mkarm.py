@@ -132,7 +132,7 @@ def build(side, lod):
     S, d = ch['S'], ch['d']
     tip = ch['K'] + d * cfg['finger'] * 1.05
     pts = np.array([S + d * -0.07, tip + d * 0.01]); lo = pts.min(0) - 0.07; hi = pts.max(0) + 0.07
-    B = cfg.get('budget', {}).get(lod) or ({'skin': 5200, 'cloth': 2400, 'watch': 360} if lod == 'hi' else {'skin': 1500, 'cloth': 700, 'watch': 120})
+    B = cfg.get('budget', {}).get(lod) or ({'skin': 5200, 'cloth': 2400, 'watch': 360} if lod == 'hi' else {'skin': 3400, 'cloth': 700, 'watch': 120})
     VX = {'skin': VOX, 'cloth': VOX * 1.6, 'watch': VOX * 0.6}
     names = [x[0] for x in P]; kind = {x[0]: x[1] for x in P}; grp = {x[0]: x[2] for x in P}
     Vs, Ns, Fs, Ms, Ws = [], [], [], [], []; off = 0

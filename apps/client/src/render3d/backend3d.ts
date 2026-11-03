@@ -156,7 +156,7 @@ class Sprite3D implements SpriteLike {
     const me = ctx?.view.you ?? null;
     const charId = myFigKey();
     const fp = isMyAction && ctx ? createFpHand(charId) : null;
-    if (fp && ctx) ctx.group.add(fp.root);
+    if (fp && ctx) { fp.root.visible = false; ctx.group.add(fp.root); moveFpRoot = fp.root; } // stays hidden until the first frame places it (else it flashes at the table centre)
     const dx = dest.p[0] - from.p[0], dz = dest.p[2] - from.p[2];
     const bankMax = reduced ? 0 : THREE.MathUtils.clamp(dx * 0.36, -0.22, 0.22);
     return new Promise<void>((res) => {
@@ -177,11 +177,11 @@ class Sprite3D implements SpriteLike {
         this.apply(arc);
         if (fp) {
           const nearMe = THREE.MathUtils.clamp((c.p[2] - 0.18) / 0.55, 0, 1) * Math.sin(Math.PI * Math.min(1, raw * 1.15));
-          const hx = c.p[0] + 0.04, hy = c.p[1] + arc - 0.01, hz = c.p[2] + 0.075;
+          const hx = c.p[0] + 0.04, hy = c.p[1] + arc + 0.014, hz = c.p[2] + 0.062; // on top of the carried card's near edge (under it the fingers were hidden)
           fp.root.position.set(lerp(0.18, hx, nearMe), lerp(-0.08, hy, nearMe), lerp(1.08, hz, nearMe));
           fp.root.visible = !fp.root.userData.human || nearMe > 0.45; fpNearGuard(fp.root); // off-screen start/end: hide so the long sleeve never pokes into view
           fp.root.rotation.set(0.22 * nearMe, -0.15, c.roll * 0.5);
-          fp.fingers.rotation.x = -0.7 * nearMe;
+          fp.fingers.rotation.x = -0.45 * nearMe;
           void dz;
         }
         if (raw < 1) requestAnimationFrame(frame);
@@ -196,13 +196,14 @@ class Sprite3D implements SpriteLike {
 // ---- First-person hand for the local player's seat (mySeat) ------------------------------------------------
 const FP_PALETTE: Record<string, { paw: string; sleeve: string; cuff?: string; watch?: boolean; human?: boolean; cuffZ?: number }> = {
   ammar:   { paw: '#dc976c', sleeve: '#26211f', cuff: '#1c1817', watch: true, human: true, cuffZ: 0.5 },
-  biscuit: { paw: '#9b643b', sleeve: '#3b6fb0' },
-  mint:    { paw: '#9ab8a0', sleeve: '#3f8a5a' },
-  pepper:  { paw: '#d87a2e', sleeve: '#a52d26' },
-  tango:   { paw: '#f39a2e', sleeve: '#d97828' },
-  choco:   { paw: '#5a321e', sleeve: '#d4a638' },
-  sugar:   { paw: '#f2ece2', sleeve: '#d8d0c5' },
-  livo:  { paw: '#e9b79b', sleeve: '#9c7f65', cuff: '#8f735a', human: true, cuffZ: 0.08 },
+  // mascots: white cartoon gloves (with fingers, like their GLB mittens + render3d/fingers.ts), sleeve = arm colour
+  biscuit: { paw: '#f2efe9', sleeve: '#b9814f', cuff: '#3a2a20', human: true, cuffZ: 0.06 },
+  mint:    { paw: '#f2efe9', sleeve: '#a9bfa4', cuff: '#2c2c2c', human: true, cuffZ: 0.06 },
+  pepper:  { paw: '#f2efe9', sleeve: '#a0703f', cuff: '#2c2c2c', human: true, cuffZ: 0.06 },
+  tango:   { paw: '#f2efe9', sleeve: '#f08a2c', cuff: '#262222', human: true, cuffZ: 0.06 },
+  choco:   { paw: '#f2efe9', sleeve: '#6b3f22', cuff: '#2c2c2c', human: true, cuffZ: 0.06 },
+  sugar:   { paw: '#f2efe9', sleeve: '#e9e2d6', cuff: '#2c2c2c', human: true, cuffZ: 0.06 },
+  livo:  { paw: '#f1c5a9', sleeve: '#9c7f65', cuff: '#8f735a', human: true, cuffZ: 0.08 },
 };
 /** Figure key of the local player (character + outfit) for the first-person hand. */
 function myFigKey(): string {
@@ -238,6 +239,7 @@ function createHumanFpHand(pal: { paw: string; sleeve: string; cuff?: string; wa
   const cuffM = new THREE.MeshLambertMaterial({ color: pal.cuff ?? pal.sleeve, emissive: '#0a0808' });
   const mats: THREE.Material[] = [skin, cloth, cuffM];
   const root = new THREE.Group(); root.renderOrder = 6; root.userData.human = true;
+  const hs = new THREE.Group(); hs.scale.setScalar(1.18); // hand parts a bit larger so the fingers read at table distance
   // forearm + sleeve run toward the camera (+Z), slightly down/right
   const arm = new THREE.Group(); arm.rotation.set(-0.16, 0, -0.18); root.add(arm);
   const wrist = new THREE.Mesh(FP_GEO.sph, skin); wrist.scale.set(0.022, 0.014, 0.022); wrist.position.set(0, -0.001, 0.034); arm.add(wrist);
@@ -256,16 +258,16 @@ function createHumanFpHand(pal: { paw: string; sleeve: string; cuff?: string; wa
     const dial = new THREE.Mesh(FP_GEO.cyl, fm); dial.scale.set(0.0085, 0.004, 0.0085); dial.position.set(0, 0.016, 0.05); arm.add(dial);
   }
   // palm: flattened, slightly wider at the knuckles; back of the hand faces up (+Y)
-  const palm = new THREE.Mesh(FP_GEO.sph, skin); palm.scale.set(0.031, 0.0125, 0.034); palm.position.set(0, 0, -0.004); root.add(palm);
-  const heel = new THREE.Mesh(FP_GEO.sph, skin); heel.scale.set(0.024, 0.012, 0.02); heel.position.set(0.004, -0.002, 0.018); root.add(heel);
+  const palm = new THREE.Mesh(FP_GEO.sph, skin); palm.scale.set(0.033, 0.0125, 0.034); palm.position.set(0, 0, -0.004); hs.add(palm);
+  const heel = new THREE.Mesh(FP_GEO.sph, skin); heel.scale.set(0.024, 0.012, 0.02); heel.position.set(0.004, -0.002, 0.018); hs.add(heel);
   // thumb on the left side (right hand seen from behind), two segments angled forward and inward
-  const thumb = new THREE.Group(); thumb.position.set(-0.024, -0.004, 0.010); thumb.rotation.set(0.15, 0.75, 0.35); root.add(thumb);
+  const thumb = new THREE.Group(); thumb.position.set(-0.024, -0.004, 0.010); thumb.rotation.set(0.15, 0.75, 0.35); hs.add(thumb);
   const pad = new THREE.Mesh(FP_GEO.sph, skin); pad.scale.set(0.012, 0.010, 0.017); pad.position.set(0, 0, -0.006); thumb.add(pad);
   const t1 = new THREE.Group(); t1.position.z = -0.016; thumb.add(t1); t1.add(fpSeg(skin, 0.020, 0.0078));
   const t2 = new THREE.Group(); t2.position.z = -0.017; t2.rotation.y = 0.25; t2.rotation.x = -0.25; t1.add(t2); t2.add(fpSeg(skin, 0.017, 0.0072));
   // fingers: knuckle line at the front of the palm; the group curls (rotation.x) like the paw's
-  const fingers = new THREE.Group(); fingers.position.set(0, 0.001, -0.032); root.add(fingers);
-  const spec: [number, number, number][] = [[-0.0195, 0.026, 0.0072], [-0.0065, 0.030, 0.0075], [0.0065, 0.029, 0.0073], [0.0190, 0.023, 0.0066]];
+  const fingers = new THREE.Group(); fingers.position.set(0, 0.001, -0.032); hs.add(fingers); root.add(hs);
+  const spec: [number, number, number][] = [[-0.0225, 0.026, 0.0064], [-0.0075, 0.030, 0.0067], [0.0075, 0.029, 0.0066], [0.0220, 0.023, 0.0059]];
   for (const [x, l, r] of spec) {
     const k = new THREE.Group(); k.position.set(x, 0, 0); k.rotation.set(-0.14, (x) * -2.2, 0); fingers.add(k);
     k.add(fpSeg(skin, l * 0.56, r));
@@ -311,6 +313,7 @@ function createFpHand(charId: string): { root: THREE.Group; fingers: THREE.Group
   };
 }
 
+let moveFpRoot: THREE.Object3D | null = null;
 let peekHand: { charId: string; h: ReturnType<typeof createFpHand>; lastAt: number } | null = null;
 /** Drives a subtle first-person hand holding the bottom edge of the local player's peeked card. */
 export function updateMyPeekHand(cardPos: [number, number, number], lift: number) {
@@ -330,12 +333,14 @@ export function updateMyPeekHand(cardPos: [number, number, number], lift: number
   peekHand.lastAt = performance.now();
   const k = Math.min(1, lift / 0.065);
   const restX = cardPos[0] + 0.05, restY = -0.04, restZ = cardPos[2] + 0.22;
-  const holdX = cardPos[0] + 0.035, holdY = cardPos[1] + lift * 0.72, holdZ = cardPos[2] + 0.075;
+  // hold the lifted card by its near right corner from the front, so the fingers stay in view (behind/under the card they
+  // were hidden and the hand read as a fingerless stump)
+  const holdX = cardPos[0] + 0.058, holdY = cardPos[1] + lift * 0.55 + 0.012, holdZ = cardPos[2] + 0.127;
   peekHand.h.root.visible = k > 0.15; // near the off-screen rest the long sleeve would poke through the table
   peekHand.h.root.position.set(lerp(restX, holdX, k), lerp(restY, holdY, k), lerp(restZ, holdZ, k));
-  peekHand.h.root.rotation.set(0.25 * k, -0.15, 0.1 * k);
+  peekHand.h.root.rotation.set(0.15 * k, -0.15 + 0.6 * k, 0.1 * k);
   fpNearGuard(peekHand.h.root);
-  peekHand.h.fingers.rotation.x = -0.65 * k;
+  peekHand.h.fingers.rotation.x = -0.4 * k;
 }
 
 let heldHand: { charId: string; h: ReturnType<typeof createFpHand> } | null = null;
@@ -369,6 +374,8 @@ export function updateMyHeldHand() {
 }
 
 let emoteHand: { charId: string; h: ReturnType<typeof createFpHand> } | null = null;
+// test/debug probe: which first-person hands exist right now (scripts/fp-check.mjs)
+(globalThis as unknown as { __mlFp?: () => Record<string, THREE.Object3D | undefined> }).__mlFp = () => ({ peek: peekHand?.h.root, held: heldHand?.h.root, emote: emoteHand?.h.root, move: moveFpRoot ?? undefined });
 /** Drives the local player's first-person hand during a HUD emote (wave, cheer, boo, slam). */
 export function updateMyEmoteHand() {
   updateMyHeldHand();

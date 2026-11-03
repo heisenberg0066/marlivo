@@ -1,5 +1,6 @@
 // Character registry for the 3D table. The list lives in public/assets/characters/manifest.json, so real
 // figures (GLB files) can be dropped in later without code changes — see docs/ADDING-CHARACTERS.md.
+import { addCartoonFingers } from './fingers';
 import * as THREE from 'three';
 import type { GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import type { Mood } from '../render/characters';
@@ -80,6 +81,7 @@ export function loadModel(e: CharacterEntry, level: 'high' | 'low' = 'high'): Pr
   if (!p) {
     p = Promise.all([import('three/examples/jsm/loaders/GLTFLoader.js'), import('three/examples/jsm/libs/meshopt_decoder.module.js')])
       .then(([{ GLTFLoader }, { MeshoptDecoder }]) => new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).loadAsync(url))
+      .then((g) => { try { addCartoonFingers(g.scene, level === 'low'); } catch (err) { console.warn('fingers', err); } return g; })
       .catch((err) => { console.warn('character model failed, using placeholder', url, err); return null; });
     glbCache.set(url, p);
   }

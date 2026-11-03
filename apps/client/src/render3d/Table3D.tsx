@@ -48,6 +48,7 @@ type OverlayPoints = Map<string, () => V3 | null>;
 /** Fits the seat-view camera so every seat's card area, the deck/pile and the opponents' heads are on screen. */
 function CameraRig({ L, me, mode, portrait, outdoor }: { L: Layout3; me: number | null; mode: 'seat' | 'top'; portrait: boolean; outdoor: boolean }) {
   const { camera, size } = useThree();
+  if (typeof window !== 'undefined') (window as unknown as { __mlCamObj?: unknown }).__mlCamObj = camera; // test probe (hand crops); __mlCam is the camera-override hook
   const seatsKey = Object.entries(L.seats).map(([s, x]) => s + x.pos + (L.maxAreas[Number(s)]?.w ?? 0).toFixed(2)).join(',');
   useLayoutEffect(() => {
     const cam = camera as THREE.PerspectiveCamera;

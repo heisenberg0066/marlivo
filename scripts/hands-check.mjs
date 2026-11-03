@@ -11,7 +11,8 @@ const opps = (process.env.OPPS ?? 'livo,ammar,tango').split(','); const me = pro
 const sizes = { phone: { viewport: { width: 390, height: 844 }, deviceScaleFactor: 1, isMobile: true, hasTouch: true }, laptop: { viewport: { width: 1280, height: 720 } }, big: { viewport: { width: 1280, height: 720 }, deviceScaleFactor: 2 } };
 const b = await chromium.launch({ executablePath: '/usr/bin/google-chrome', args: ['--no-sandbox', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
 const errs = [];
-const ctx = await b.newContext(sizes[process.env.SIZE ?? 'laptop']);
+const sz = { ...sizes[process.env.SIZE ?? 'laptop'] }; if (process.env.DSF) sz.deviceScaleFactor = Number(process.env.DSF);
+const ctx = await b.newContext(sz);
 await ctx.addInitScript(([g, c]) => { localStorage.setItem('marlivo.prefs', JSON.stringify({ name: 'Ammar', characterId: c, speed: 'normal', sound: false, renderer: '3d', graphics: g })); localStorage.setItem('marlivo.lang', 'en'); }, [process.env.GFX ?? 'high', me]);
 const p = await ctx.newPage(); p.on('pageerror', (e) => errs.push(e.message));
 await p.goto(base + '#/practice'); await p.waitForTimeout(800);
@@ -44,7 +45,8 @@ for (let k = 0; k < N; k++) {
         const S = c.up.getWorldPosition(new c.up.position.constructor()), E = c.fore.getWorldPosition(new c.up.position.constructor()), H = (c.curl ?? c.hand).getWorldPosition(new c.up.position.constructor());
         const u = S.clone().sub(E).normalize(), v = H.clone().sub(E).normalize();
         const tip = (c.curl ?? c.hand).localToWorld(new c.up.position.constructor(0, -0.045, 0)); const cm = a.cmd?.arm?.[sd];
-        r[sd] = { tipY: +tip.y.toFixed(3), tipR: +Math.hypot(tip.x, tip.z).toFixed(3), act: cm ? (cm.hold ? 'hold' : 'reach') + (+cm.w).toFixed(2) : '', elbow: +(Math.acos(Math.max(-1, Math.min(1, u.dot(v)))) * 180 / Math.PI).toFixed(0), handY: +H.y.toFixed(3), handR: +Math.hypot(H.x, H.z).toFixed(3), elbY: +E.y.toFixed(3) };
+        const cam = window.__mlCamObj; let scr = null; if (cam) { const q = H.clone().project(cam); const cv = [...document.querySelectorAll('canvas')].sort((x, y) => y.clientWidth * y.clientHeight - x.clientWidth * x.clientHeight)[0]; const R = cv ? cv.getBoundingClientRect() : { left: 0, top: 0, width: innerWidth, height: innerHeight }; scr = [+(R.left + (q.x * 0.5 + 0.5) * R.width).toFixed(0), +(R.top + (-q.y * 0.5 + 0.5) * R.height).toFixed(0)]; }
+        r[sd] = { scr, tipY: +tip.y.toFixed(3), tipR: +Math.hypot(tip.x, tip.z).toFixed(3), act: cm ? (cm.hold ? 'hold' : 'reach') + (+cm.w).toFixed(2) : '', elbow: +(Math.acos(Math.max(-1, Math.min(1, u.dot(v)))) * 180 / Math.PI).toFixed(0), handY: +H.y.toFixed(3), handR: +Math.hypot(H.x, H.z).toFixed(3), elbY: +E.y.toFixed(3) };
       }
       o.push(r);
     }

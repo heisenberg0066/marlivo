@@ -56,3 +56,29 @@ describe('Livo + Ammar real arms and hands (Phase 5)', () => {
     expect(src).toMatch(/livo:\s+\{[^}]*human: true/);
   });
 });
+
+describe('Fingers everywhere (Phase 6)', () => {
+  it('cartoon finger geometry has 4 two-segment fingers + a 2-segment thumb growing out of the mitten', async () => {
+    const THREE = await import('three');
+    const { fingerGeometry } = await import('../src/render3d/fingers');
+    const g = fingerGeometry({ r: 0.05, c: new THREE.Vector3(), d: new THREE.Vector3(0, -1, 0), x: new THREE.Vector3(1, 0, 0), n: new THREE.Vector3(0, 0, -1), medial: -1 });
+    const box = new THREE.Box3().setFromBufferAttribute(g.getAttribute('position') as THREE.BufferAttribute);
+    expect(g.getAttribute('position').count).toBeGreaterThan(500);
+    expect(box.min.y).toBeLessThan(-0.05 * 1.2); // fingertips reach well past the mitten
+    expect(box.max.x - box.min.x).toBeGreaterThan(0.05 * 1.6); // spread across the knuckles
+    const lo = fingerGeometry({ r: 0.05, c: new THREE.Vector3(), d: new THREE.Vector3(0, -1, 0), x: new THREE.Vector3(1, 0, 0), n: new THREE.Vector3(0, 0, -1), medial: 1 }, true);
+    expect(lo.getAttribute('position').count).toBeLessThan(g.getAttribute('position').count);
+  });
+
+  it('every model goes through addCartoonFingers on load, and it skips the modelled hands (curlSign)', () => {
+    const reg = readFileSync(resolve(__dirname, '../src/render3d/registry.ts'), 'utf8');
+    expect(reg).toContain('addCartoonFingers(g.scene');
+    const f = readFileSync(resolve(__dirname, '../src/render3d/fingers.ts'), 'utf8');
+    expect(f).toMatch(/curlSign !== undefined/);
+  });
+
+  it('every character has a fingered first-person hand (no sphere paw)', () => {
+    const src = readFileSync(resolve(__dirname, '../src/render3d/backend3d.ts'), 'utf8');
+    for (const id of ['ammar', 'biscuit', 'mint', 'pepper', 'tango', 'choco', 'sugar', 'livo']) expect(src).toMatch(new RegExp(`${id}:\\s+\\{[^}]*human: true`));
+  });
+});
